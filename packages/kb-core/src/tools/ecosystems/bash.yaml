@@ -1,0 +1,21 @@
+# Bash/shell has no package ecosystem comparable to npm/Cargo.
+# Tree-sitter still indexes functions via code-index.
+
+id: bash
+display_name: Bash / shell
+status: not_applicable
+note: >
+  Shell scripts are not package atoms. Installers (Homebrew formulae, etc.) are
+  out of band. Process names may appear via infra Procfile / compose command
+  fields in a later infra expansion.
+
+frameworks: {}
+kind_rules: []
+
+symbols:
+  status: not_applicable
+  note: Function symbols stay in the tree-sitter code-index cycle.
+
+routes:
+  status: not_applicable
+  note: No HTTP route model for shell.

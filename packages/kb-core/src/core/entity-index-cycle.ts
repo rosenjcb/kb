@@ -5,7 +5,7 @@
  * a failed harvest must never fail `kb init` / `kb scan`.
  *
  * Steps:
- *  1. Harvest entity candidates from manifest-class files (tools/harvesters).
+ *  1. Harvest entity candidates from manifest-class files (ecosystem-harvesters).
  *  2. Upsert entities + aliases into the registry (repo itself becomes an entity).
  *  3. Link facts whose subject/object normalizes to a known alias — exact match
  *     only; the un-harvested world stays unlinked and therefore unprunable.
@@ -15,7 +15,7 @@
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { isEnvFalse } from '../config/env-boolean.js'
-import { harvestRepoEntities } from '../tools/harvesters/index.js'
+import { harvestRepoEntities } from '../tools/ecosystem-harvesters.js'
 import { EntityRegistry, normalizeEntityName } from '../tools/entity-registry.js'
 
 export interface EntityIndexInput {

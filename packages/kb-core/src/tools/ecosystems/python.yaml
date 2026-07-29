@@ -1,0 +1,77 @@
+# Python ecosystem harvester coverage.
+# Primary manifest: pyproject.toml (uv/poetry/hatch/pdm). setup.py is fallback.
+
+id: python
+display_name: Python
+status: implemented
+
+package_manifests:
+  - path: pyproject.toml
+    format: pyproject_toml
+    role: package
+  - path: setup.cfg
+    format: setup_cfg
+    role: package
+  - path: setup.py
+    format: setup_py
+    role: package
+
+workspace:
+  sources:
+    - path: pyproject.toml
+      # uv/poetry workspace member globs live under tool.uv.workspace / tool.poetry
+
+frameworks:
+  server:
+    - fastapi
+    - django
+    - flask
+    - starlette
+    - litestar
+    - aiohttp
+    - tornado
+    - sanic
+    - quart
+  frontend:
+    - streamlit
+    - gradio
+    - dash
+    - nicegui
+    - panel
+  cli:
+    - click
+    - typer
+    - fire
+    - argparse # stdlib — weak
+    - cyclopts
+
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: surface
+    confidence: 0.8
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.8
+    match:
+      has_scripts_entry: true # [project.scripts]
+  - kind: library
+    confidence: 0.5
+    match: {}
+
+symbols:
+  status: not_implemented
+  note: Python symbols stay in tree-sitter code-index.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: FastAPI/Django URLConf route tables are tier-4 — not harvested yet.
+  planned_frameworks: [fastapi, django, flask]

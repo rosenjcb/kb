@@ -1,0 +1,54 @@
+# Language-agnostic deploy/infra harvester coverage.
+# Runs for every repo alongside per-language ecosystem YAMLs.
+
+id: infra
+display_name: Deploy / infra manifests
+status: implemented
+
+compose:
+  files:
+    - docker-compose.yml
+    - docker-compose.yaml
+    - compose.yaml
+  services_key: services
+  kind: service
+  confidence: 0.85
+
+fly:
+  file: fly.toml
+  # Captures `app = "name"` (TOML string form used by Fly).
+  app_pattern: '^app\s*=\s*["'']([^"'']+)["'']'
+  kind: service
+  confidence: 0.85
+
+backstage:
+  file: catalog-info.yaml
+  kind_map:
+    API: api
+    Domain: domain
+    default: service
+  confidence: 0.95
+  # Edge: component → spec.domain or spec.system
+  belongs_to_keys: [domain, system]
+
+# Declared for future inference — not harvested yet.
+planned:
+  kubernetes:
+    note: Harvest metadata.name from Deployment/Service/Ingress and kustomization.yaml.
+    kinds: [Deployment, Service, Ingress, StatefulSet, DaemonSet]
+  helm:
+    note: Chart.yaml name → service candidate.
+    file: Chart.yaml
+  procfile:
+    note: Procfile process type names (web, worker) as service aliases.
+    file: Procfile
+  terraform:
+    note: Low signal for app entities — module names only if clearly app-scoped.
+
+symbols:
+  status: not_applicable
+  note: Infra manifests declare deployable names, not code symbols.
+
+routes:
+  status: not_applicable
+  note: No route extraction from compose/fly/Backstage.

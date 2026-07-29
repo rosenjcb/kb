@@ -1,0 +1,129 @@
+# Go ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a Go harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity candidate per go.mod (workspace members via
+# go.work `use`, or every go.mod found under the repo).
+# Does not emit: HTTP/gRPC routes or in-code symbols (see symbols/ / routes/).
+
+id: go
+display_name: Go
+status: implemented
+
+# Manifest atoms. Primary identity is go.mod; go.work enumerates members.
+package_manifests:
+  - path: go.mod
+    format: gomod
+    role: module # harvest atom — `module` path = canonical name
+  - path: go.work
+    format: gowork
+    role: workspace # `use` dirs → member go.mod roots; may be gitignored
+  - path: go.sum
+    format: gosum
+    role: lock # companion only; never an entity
+
+# Identity / gloss (no description field in go.mod):
+#   canonicalName ← module path (`module github.com/org/repo[/v2]`)
+#   aliases       ← last path segment; strip major-version suffix `/vN`
+#   gloss         ← package doc comment on `.` or `cmd/<name>`; else README
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+# Entries are go.mod `require` module paths (with major-version suffix where
+# current majors require it). Stdlib `net/http` is NOT listed here — match via
+# imports_stdlib in kind_rules / routes.planned_frameworks.
+frameworks:
+  server:
+    # HTTP routers / frameworks (frontier + still-common in existing repos)
+    - github.com/gin-gonic/gin
+    - github.com/labstack/echo/v4
+    - github.com/gofiber/fiber/v2
+    - github.com/go-chi/chi/v5
+    - github.com/go-chi/chi # pre-v5 import path still seen
+    - github.com/gorilla/mux # legacy-detect only; maintenance / not for new work
+  rpc:
+    # Separate from HTTP so gin+grpc → service, grpc-only → api
+    - google.golang.org/grpc
+    - connectrpc.com/connect
+  frontend:
+    # Rare in Go; HTML/component kits that imply a UI surface
+    - github.com/a-h/templ
+    - github.com/maragudk/gomponents
+  cli:
+    - github.com/spf13/cobra
+    - github.com/urfave/cli/v3
+    - github.com/urfave/cli/v2
+    - github.com/alecthomas/kong
+
+# Avoid listing as primary (do not add to frameworks.*):
+#   martini, revel, negroni, macaron, iris (dead / abandoned / contested)
+#   beego as default — still exists but not a frontier signal for kind
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals even if the Go harvester is not wired.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server # HTTP frameworks; wins over rpc→api
+  - kind: api
+    confidence: 0.85
+    match:
+      any_dependency_group: rpc
+      without_dependency_group: frontend
+  - kind: service
+    confidence: 0.7
+    match:
+      imports_stdlib: [net/http]
+      has_package_main: true
+      # go.dev/doc/modules/layout — servers often live under cmd/ + internal/
+      any_layout: [cmd, internal]
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.7
+    match:
+      has_cmd_dir: true
+      has_package_main: true
+      without_dependency_group: server
+  - kind: surface
+    confidence: 0.7
+    match:
+      any_dependency_group: frontend
+  - kind: library
+    confidence: 0.75
+    match:
+      has_exportable_packages: true # non-internal, non-main packages
+      without_package_main: true
+  - kind: library
+    confidence: 0.55
+    match:
+      has_go_mod: true
+      without_package_main: true
+  - kind: module
+    confidence: 0.4
+    match: {} # fallback — any go.mod with no stronger signal
+
+# Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
+symbols:
+  status: not_implemented
+  note: >
+    Code symbols (funcs, types, methods) stay in the tree-sitter code-index
+    cycle. This harvester does not promote symbols to entity candidates.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Optional AST enrichment for route registration is planned; frameworks we
+    cannot parse simply lose endpoint granularity. Prefer chi/gin patterns
+    (r.Get/POST, router.Handle) and Go 1.22+ ServeMux method+path patterns;
+    Fiber/Echo similar. gRPC/Connect service methods are contract-tier (proto),
+    not HTTP route strings.
+  planned_frameworks:
+    - github.com/go-chi/chi/v5
+    - github.com/gin-gonic/gin
+    - github.com/labstack/echo/v4
+    - github.com/gofiber/fiber/v2
+    - net/http # ServeMux Go 1.22+ patterns

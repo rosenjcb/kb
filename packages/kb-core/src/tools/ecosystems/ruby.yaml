@@ -1,0 +1,145 @@
+# Ruby ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a Ruby harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity per installable unit — *.gemspec packages and
+# app roots that have a Gemfile (Rails apps often have Gemfile, no gemspec).
+# Rails engines are gemspec packages with engine.rb / railtie signals.
+# Does not emit: HTTP routes, in-code symbols, or Homebrew formulae.
+# Edges (intended): path-gem / engine → host app via part_of when Gemfile
+# references `gem "x", path: "..."`.
+
+id: ruby
+display_name: Ruby
+status: planned
+
+# Manifest atoms. Prefer gemspec for identity; Gemfile declares deps + path members.
+package_manifests:
+  - path: "*.gemspec"
+    format: gemspec
+    role: package # harvest atom — Gem::Specification#name = canonical name
+  - path: Gemfile
+    format: gemfile
+    role: package # app root when no gemspec (typical Rails app)
+  - path: Gemfile
+    format: gemfile
+    role: workspace # `gem "…", path:` + `gemspec` → member dirs
+  - path: Gemfile.lock
+    format: bundler_lock
+    role: lock # companion only; never an entity
+
+# Identity / gloss:
+#   gemspec  → canonicalName ← spec.name; gloss ← summary || description
+#              aliases ← name; hyphen/underscore forms; basename; executables
+#   Gemfile-only app → canonicalName ← directory basename (or module from
+#              config/application.rb when present); gloss ← README
+#   engines  → same as gemspec; also alias engine_name when detectable
+
+# Path / engine membership (no first-class Bundler workspace table).
+# Host Gemfile: gem "blorgh", path: "engines/blorgh" → member gemspec root.
+# Developing a gem: Gemfile calls `gemspec` to pull runtime/dev deps from *.gemspec.
+workspace:
+  sources:
+    - path: Gemfile
+      path_gems: true # Bundler path: / git: local members
+      gemspec_method: true # `gemspec` / `gemspec path:` pulls package atom
+  # Globs for engine layouts commonly seen in monorepos (discovery fallback).
+  engine_globs:
+    - engines/*
+    - gems/*
+    - components/*
+
+# Named dependency groups — gem names as they appear in Gemfile / gemspec
+# add_dependency / add_runtime_dependency (and Gemfile `gem "name"`).
+# Match direct declarations only; ignore transitive from Gemfile.lock.
+frameworks:
+  server:
+    - rails
+    - railties # engines / plugins often depend on railties without full rails
+    - sinatra
+    - hanami
+    - grape
+    - rack # low-level; weak alone but common detect
+    - padrino # still seen; not a greenfield default
+  frontend:
+    # Hotwire stack + view components — surface signals when no server wins
+    - view_component
+    - turbo-rails
+    - stimulus-rails
+    - hotwire-rails # meta gem still appears in older apps
+    - propshaft # asset pipeline; weak surface cue alone
+  cli:
+    - thor # dominant (Rails generators use it)
+    - gli
+    - commander # detect; less maintained than thor
+
+# Avoid as primary (do not add): merb, camping, ramaze, cuba-as-default
+# (niche / abandoned). Homebrew formulae are Ruby DSLs but OUT OF SCOPE —
+# this harvester targets application/library repos' Gemfile + gemspec only.
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals for the future Ruby harvester.
+#
+# Engine vs app:
+#   has_rails_engine ← lib/**/engine.rb subclassing Rails::Engine
+#                      (and not Rails::Application)
+#   has_rails_app    ← config/application.rb / Rails::Application / bin/rails
+# gemspec executables ← spec.executables / bindir (≈ npm bin)
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+      without_rails_engine: true # host apps / Sinatra / Grape win as service
+  - kind: service
+    confidence: 0.85
+    match:
+      has_rails_app: true
+  - kind: library
+    confidence: 0.85
+    match:
+      has_rails_engine: true # mountable engine gem — reusable package
+  - kind: cli
+    confidence: 0.85
+    match:
+      has_executables: true # gemspec executables
+  - kind: cli
+    confidence: 0.75
+    match:
+      any_dependency_group: cli
+      without_dependency_group: server
+  - kind: surface
+    confidence: 0.7
+    match:
+      any_dependency_group: frontend
+      without_dependency_group: server
+  - kind: library
+    confidence: 0.8
+    match:
+      has_gemspec: true
+      without_executables: true
+      without_dependency_group: server
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback — Gemfile-only with no stronger signal
+
+# Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
+symbols:
+  status: not_implemented
+  note: >
+    Code symbols (classes, modules, methods) stay in the tree-sitter code-index
+    cycle (.rb). This harvester does not promote symbols to entity candidates.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Optional enrichment for route tables is planned (tier-4); missing parsers
+    only lose endpoint granularity. Prefer Rails config/routes.rb
+    (get/post/resources/mount), then Sinatra verb DSL and Grape API routes.
+    Never load-bearing for entity identity.
+  planned_frameworks:
+    - rails # config/routes.rb
+    - sinatra
+    - grape
+    - hanami # routes DSL when present

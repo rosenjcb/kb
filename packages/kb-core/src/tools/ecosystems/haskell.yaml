@@ -1,0 +1,96 @@
+# Haskell ecosystem harvester coverage.
+# Inference not wired yet — coverage is reviewable scope only (`status: planned`).
+#
+# Entity atom: one Cabal package (*.cabal, or package.yaml via hpack).
+# Workspace: cabal.project packages: preferred; stack.yaml packages: fallback.
+
+id: haskell
+display_name: Haskell
+status: planned
+
+package_manifests:
+  - path: "*.cabal"
+    format: cabal
+    role: package
+  - path: package.yaml
+    format: hpack
+    role: package # generates *.cabal; prefer reading generated .cabal when both exist
+  - path: cabal.project
+    format: cabal_project
+    role: workspace
+  - path: stack.yaml
+    format: stack
+    role: workspace # secondary; prefer cabal.project when both present
+
+workspace:
+  sources:
+    - path: cabal.project
+      packages_key: packages
+    - path: stack.yaml
+      packages_key: packages
+
+# Hackage package names — referenced by kind_rules.match.any_dependency_group.
+# Verified maintained as of 2026-07 (see research/haskell.md).
+frameworks:
+  server:
+    - servant
+    - servant-server
+    - yesod
+    - yesod-core
+    - scotty
+    - warp
+    - wai
+    - ihp
+  frontend:
+    - reflex
+    - reflex-dom
+    - reflex-dom-core
+    - miso
+    - threepenny-gui
+  cli:
+    - optparse-applicative
+    - cmdargs
+
+# First matching rule wins. Cabal stanza type is the primary signal;
+# dependency groups refine executable packages into service/surface/cli.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.9
+    match:
+      has_executable: true
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.75
+    match:
+      has_executable: true
+      without_library: true # executable-only package
+  - kind: library
+    confidence: 0.85
+    match:
+      has_library: true
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback — named package with no clear stanza/deps signal
+
+symbols:
+  status: not_implemented
+  note: >
+    Haskell symbols stay in the tree-sitter-haskell code-index cycle
+    (.hs / .lhs). This harvester does not promote symbols to entity candidates.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Servant type-level API definitions (e.g. type API = "users" :> Get '[JSON] [User])
+    are the primary planned route signal. Yesod/IHP route DSLs are secondary.
+    Absent parsers only lose endpoint granularity.
+  planned_frameworks: [servant, yesod, ihp, scotty]

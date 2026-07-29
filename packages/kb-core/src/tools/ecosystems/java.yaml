@@ -1,0 +1,189 @@
+# JVM (Java / Kotlin) ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a Java harvester entry exists in ecosystem-harvesters.ts.
+#
+# Kotlin shares Maven/Gradle manifests — harvested under this id (not a
+# separate ecosystem). Scala-first Maven/Gradle modules may dual-claim with
+# scala.yaml; prefer scala.yaml when Scala plugin + .scala sources dominate.
+#
+# Emits (intended): one entity candidate per Maven module (pom.xml) or Gradle
+# project (build.gradle / build.gradle.kts), enumerated via settings.gradle(.kts)
+# `include` when present.
+# Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
+# Edges (intended): multi-module member → root/reactor via part_of.
+
+id: java
+display_name: Java / Kotlin (JVM)
+status: planned
+
+# Manifest atoms. Maven and Gradle are peers — either may be the sole build.
+# libs.versions.toml is catalog-only (never an entity).
+package_manifests:
+  - path: pom.xml
+    format: maven_pom
+    role: package # harvest atom — <artifactId> (+ <groupId>) = identity
+  - path: build.gradle
+    format: gradle
+    role: package # Groovy DSL project
+  - path: build.gradle.kts
+    format: gradle_kts
+    role: package # Kotlin DSL project
+  - path: settings.gradle
+    format: gradle_settings
+    role: workspace # `include` / `includeFlat` → member projects
+  - path: settings.gradle.kts
+    format: gradle_settings_kts
+    role: workspace
+  - path: gradle/libs.versions.toml
+    format: gradle_version_catalog
+    role: catalog # version/library aliases only; never an entity
+
+# Identity / gloss:
+#   Maven  canonicalName ← <artifactId> (alias groupId:artifactId);
+#          packaging jar/war/ear; modules via <modules>
+#   Gradle canonicalName ← settings rootProject.name / project path
+#          (`:app`) or archivesBaseName / base.archivesName; else dir basename
+#   gloss  ← Maven <description> / <name>; else README
+
+workspace:
+  sources:
+    - path: pom.xml
+      members_key: modules # <modules><module>…</module></modules>
+      # Reactor root often packaging=pom — emit members; optional weak root
+    - path: settings.gradle
+      members_key: include # include 'app', 'lib' / include(":app")
+    - path: settings.gradle.kts
+      members_key: include
+  # part_of: each member → reactor/settings root identity
+  # Version catalog (libs.versions.toml) may live under gradle/; resolve
+  # dependency aliases when matching frameworks.* — not a workspace source.
+
+# Named dependency / plugin groups — Maven GAVs, Gradle coordinates, or
+# recognizable plugin ids. Match direct deps + applied plugins; ignore
+# transitive (spring-core often transitive of spring-boot — list starters /
+# BOMs that appear in <dependencies> / implementation(...)).
+frameworks:
+  server:
+    # Spring Boot (plugin + starters — either is enough)
+    - org.springframework.boot # spring-boot-maven-plugin / gradle plugin id
+    - spring-boot-starter-web
+    - spring-boot-starter-webflux
+    - spring-boot-starter-actuator
+    # Quarkus / Micronaut / Dropwizard / Helidon / Vert.x
+    - io.quarkus
+    - io.quarkus.platform # BOM
+    - io.micronaut
+    - io.micronaut.platform
+    - io.dropwizard
+    - io.dropwizard.core
+    - io.helidon
+    - io.helidon.microprofile
+    - io.vertx
+    - io.vertx:vertx-web
+    # Kotlin HTTP
+    - io.ktor # io.ktor:ktor-server-*
+    - io.ktor:ktor-server-core
+  surface:
+    - com.vaadin
+    - com.vaadin:vaadin-spring-boot-starter
+    - org.openjfx # JavaFX (OpenJFX)
+    - javafx-controls
+    # Android — detect carefully; see research/java.md. Not a default surface
+    # signal for plain JVM libs; only when android plugin / applicationId present.
+    - com.android.application # AGP — mobile app, not Vaadin/JavaFX
+    - com.android.library
+  cli:
+    - info.picocli
+    - info.picocli:picocli
+    - com.beust:jcommander
+    - com.beust.jcommander
+
+# Avoid as primary (do not add): SparkJava / Javalin as sole frontier defaults
+# (still exist; detect later if needed). Struts 1.x / ancient MVC — legacy only.
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals for the future JVM harvester.
+#
+# Packaging / plugin signals (Maven + Gradle):
+#   has_spring_boot_plugin  ← spring-boot-maven-plugin or org.springframework.boot
+#   has_application_plugin  ← application plugin / mainClass / mainClassName
+#   has_main_class          ← <mainClass> / application { mainClass } / jar Main-Class
+#   packaging_war           ← <packaging>war</packaging> or war plugin
+#   packaging_jar           ← default jar / java-library
+#   has_android_plugin      ← com.android.application|library
+kind_rules:
+  - kind: service
+    confidence: 0.95
+    match:
+      has_spring_boot_plugin: true
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.85
+    match:
+      packaging_war: true
+  - kind: surface
+    confidence: 0.8
+    match:
+      has_android_plugin: true
+      note: >
+        Android apps are mobile surfaces — separate from Vaadin/JavaFX.
+        Prefer weak confidence; do not treat every Android library as surface.
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: surface
+      without_android_plugin: true # Vaadin / JavaFX only when not AGP
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+      has_main_class: true
+  - kind: cli
+    confidence: 0.75
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.7
+    match:
+      has_application_plugin: true
+      has_main_class: true
+      without_dependency_group: server
+  - kind: library
+    confidence: 0.75
+    match:
+      packaging_jar: true
+      without_main_class: true
+      without_dependency_group: server
+  - kind: library
+    confidence: 0.55
+    match:
+      has_main_class: true # runnable jar, no stronger dep/plugin signal
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+symbols:
+  status: not_implemented
+  note: >
+    Code symbols stay in the tree-sitter code-index cycle (.java). Kotlin
+    grammar is native-only (no WASM) — .kt/.kts are not AST-indexed today.
+    This harvester does not promote symbols to entity candidates.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Optional tier-4 AST enrichment for HTTP mappings is planned; missing
+    parsers only lose endpoint granularity. Prefer Spring MVC
+    @RequestMapping / @GetMapping / @PostMapping (and WebFlux
+    RouterFunction) first; then Quarkus/Micronaut JAX-RS-style and Ktor
+    routing DSL. Never promote route strings to deployable entities.
+  planned_frameworks:
+    - spring-boot # Spring MVC request mappings
+    - spring-webflux # RouterFunction / annotated controllers
+    - quarkus
+    - micronaut
+    - ktor

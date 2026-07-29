@@ -4,6 +4,7 @@
 
 ### Patch Changes
 
+- Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
 - Updated dependencies
   - @kb/core@1.5.12
 

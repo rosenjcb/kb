@@ -1,0 +1,257 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  loadInfraEcosystemConfig,
+  listEcosystemIds,
+  loadTypescriptEcosystemConfig,
+} from '@kb/core/tools/ecosystem-config.js'
+import {
+  classifyPackageKind,
+  harvestGoEcosystem,
+  harvestInfraManifests,
+  harvestPhpEcosystem,
+  harvestPythonEcosystem,
+  harvestRepoEntities,
+  harvestRustEcosystem,
+  harvestTypeScriptEcosystem,
+} from '@kb/core/tools/ecosystem-harvesters.js'
+
+let scanDir: string
+
+beforeEach(async () => {
+  scanDir = await mkdtemp(path.join(os.tmpdir(), 'kb-harvester-'))
+})
+
+afterEach(async () => {
+  await rm(scanDir, { recursive: true, force: true })
+})
+
+async function writePackage(dir: string, pkg: Record<string, unknown>): Promise<void> {
+  await mkdir(dir, { recursive: true })
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg))
+}
+
+describe('ecosystem YAML configs', () => {
+  it('[TC-1] Given typescript.yaml, when loaded, then frameworks, kind_rules, and symbol/route gaps are present', () => {
+    const ts = loadTypescriptEcosystemConfig()
+    expect(ts.id).toBe('typescript')
+    expect(ts.frameworks.server).toContain('express')
+    expect(ts.frameworks.frontend).toContain('react')
+    expect(ts.frameworks.cli).toContain('commander')
+    expect(ts.kind_rules.length).toBeGreaterThanOrEqual(5)
+    expect(ts.symbols.status).toBe('not_implemented')
+    expect(ts.routes.status).toBe('not_implemented')
+  })
+
+  it('[TC-2] Given infra.yaml, when loaded, then compose, fly, and Backstage paths are configured', () => {
+    const infra = loadInfraEcosystemConfig()
+    expect(infra.id).toBe('infra')
+    expect(infra.compose.files).toContain('docker-compose.yml')
+    expect(infra.fly.file).toBe('fly.toml')
+    expect(infra.backstage.file).toBe('catalog-info.yaml')
+  })
+
+  it('[TC-9] Given typescript coverage sections, when inspected, then symbols and routes are not_implemented', () => {
+    const ts = loadTypescriptEcosystemConfig()
+    expect(ts.symbols.status).toBe('not_implemented')
+    expect(ts.routes.status).toBe('not_implemented')
+  })
+
+  it('[TC-10] Given all LANG ecosystems, when listed, then YAML coverage files exist for each', () => {
+    const ids = listEcosystemIds()
+    for (const id of [
+      'typescript',
+      'go',
+      'python',
+      'rust',
+      'ruby',
+      'java',
+      'csharp',
+      'php',
+      'scala',
+      'haskell',
+      'cpp',
+      'css',
+      'html',
+      'bash',
+      'infra',
+    ]) {
+      expect(ids).toContain(id)
+    }
+  })
+})
+
+describe('classifyPackageKind', () => {
+  it('[TC-3] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
+    expect(classifyPackageKind({ dependencies: { express: '4' } }).kind).toBe('service')
+    expect(classifyPackageKind({ bin: { kb: './bin/kb' } }).kind).toBe('cli')
+    expect(classifyPackageKind({ dependencies: { react: '18' } }).kind).toBe('surface')
+    expect(classifyPackageKind({ main: 'index.js' }).kind).toBe('library')
+    expect(classifyPackageKind({}).confidence).toBeLessThan(0.5)
+  })
+})
+
+describe('harvestTypeScriptEcosystem', () => {
+  it('[TC-4] Given a pnpm workspace, when harvested, then packages get identity, aliases, kinds, and part_of edges', async () => {
+    await writeFile(path.join(scanDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
+    await writePackage(scanDir, { name: 'acme-monorepo', private: true })
+    await writePackage(path.join(scanDir, 'packages', 'client'), {
+      name: '@acme/client',
+      description: 'Terminal client',
+      bin: { acme: './bin/acme' },
+    })
+    await writePackage(path.join(scanDir, 'packages', 'server'), {
+      name: '@acme/server',
+      description: 'API daemon',
+      dependencies: { express: '^4.0.0' },
+      scripts: { start: 'node dist/server.js' },
+    })
+    await writePackage(path.join(scanDir, 'packages', 'core'), {
+      name: '@acme/core',
+      main: 'dist/index.js',
+    })
+
+    const result = await harvestTypeScriptEcosystem(scanDir)
+    const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
+
+    expect(byName.get('@acme/client')?.kind).toBe('cli')
+    expect(byName.get('@acme/client')?.aliases).toContain('acme')
+    expect(byName.get('@acme/client')?.aliases).toContain('client')
+    expect(byName.get('@acme/server')?.kind).toBe('service')
+    expect(byName.get('@acme/server')?.gloss).toBe('API daemon')
+    expect(byName.get('@acme/core')?.kind).toBe('library')
+
+    // Workspace membership edges point at the root package.
+    expect(result.edges).toContainEqual({
+      fromName: '@acme/server',
+      toName: 'acme-monorepo',
+      edgeType: 'part_of',
+    })
+  })
+
+  it('[TC-5] Given a solo package or empty dir, when harvested, then root-only or zero candidates', async () => {
+    await writePackage(scanDir, { name: 'solo-svc', dependencies: { fastify: '4' } })
+    const single = await harvestTypeScriptEcosystem(scanDir)
+    expect(single.candidates).toHaveLength(1)
+    expect(single.candidates[0]?.canonicalName).toBe('solo-svc')
+    expect(single.candidates[0]?.kind).toBe('service')
+
+    const emptyDir = await mkdtemp(path.join(os.tmpdir(), 'kb-harvester-empty-'))
+    try {
+      const empty = await harvestTypeScriptEcosystem(emptyDir)
+      expect(empty.candidates).toHaveLength(0)
+    } finally {
+      await rm(emptyDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('harvestInfraManifests', () => {
+  it('[TC-6] Given compose, fly, and Backstage manifests, when harvested, then service/app/catalog candidates and belongs_to', async () => {
+    await writeFile(
+      path.join(scanDir, 'docker-compose.yml'),
+      ['services:', '  payments-svc:', '    image: acme/payments', '  internal:', '    image: acme/internal'].join('\n')
+    )
+    await writeFile(path.join(scanDir, 'fly.toml'), 'app = "acme-edge"\n[env]\n')
+    await writeFile(
+      path.join(scanDir, 'catalog-info.yaml'),
+      [
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: payments',
+        '  description: Payments domain service',
+        'spec:',
+        '  type: service',
+        '  domain: commerce',
+      ].join('\n')
+    )
+
+    const result = await harvestInfraManifests(scanDir)
+    const names = result.candidates.map(c => c.canonicalName).sort()
+    expect(names).toEqual(['acme-edge', 'internal', 'payments', 'payments-svc'])
+    expect(result.candidates.every(c => c.sourceKind === 'manifest')).toBe(true)
+    expect(result.edges).toContainEqual({ fromName: 'payments', toName: 'commerce', edgeType: 'belongs_to' })
+  })
+
+  it('[TC-7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
+    await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
+    const result = await harvestInfraManifests(scanDir)
+    expect(result.candidates).toHaveLength(0)
+  })
+})
+
+describe('harvestRepoEntities', () => {
+  it('[TC-8] Given package and fly declaring the same name, when merged, then two candidates for registry merge', async () => {
+    await writePackage(scanDir, { name: 'edge-worker', dependencies: { koa: '2' } })
+    await writeFile(path.join(scanDir, 'fly.toml'), 'app = "edge-worker"\n')
+    const result = await harvestRepoEntities(scanDir)
+    // Same name from two sources — registry upsert merges them by (kind, name).
+    expect(result.candidates.filter(c => c.canonicalName === 'edge-worker')).toHaveLength(2)
+  })
+})
+
+describe('multi-language package harvest', () => {
+  it('[TC-11] Given go.mod with gin, when harvested, then module is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'go.mod'),
+      ['module github.com/acme/payments', 'go 1.22', '', 'require github.com/gin-gonic/gin v1.9.1'].join('\n')
+    )
+    const result = await harvestGoEcosystem(scanDir)
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0]?.canonicalName).toBe('github.com/acme/payments')
+    expect(result.candidates[0]?.kind).toBe('service')
+  })
+
+  it('[TC-12] Given pyproject.toml with fastapi, when harvested, then project is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'pyproject.toml'),
+      [
+        '[project]',
+        'name = "billing-api"',
+        'description = "Billing HTTP API"',
+        'dependencies = ["fastapi>=0.110", "uvicorn"]',
+      ].join('\n')
+    )
+    const result = await harvestPythonEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('billing-api')
+    expect(result.candidates[0]?.kind).toBe('service')
+  })
+
+  it('[TC-13] Given Cargo.toml with clap bin, when harvested, then package is a cli', async () => {
+    await writeFile(
+      path.join(scanDir, 'Cargo.toml'),
+      [
+        '[package]',
+        'name = "acme-ctl"',
+        'version = "0.1.0"',
+        '',
+        '[[bin]]',
+        'name = "acme-ctl"',
+        'path = "src/main.rs"',
+        '',
+        '[dependencies]',
+        'clap = "4"',
+      ].join('\n')
+    )
+    const result = await harvestRustEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('acme-ctl')
+    expect(result.candidates[0]?.kind).toBe('cli')
+  })
+
+  it('[TC-14] Given composer.json with laravel, when harvested, then package is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'composer.json'),
+      JSON.stringify({
+        name: 'acme/storefront',
+        description: 'Storefront',
+        require: { 'laravel/framework': '^11.0', php: '^8.2' },
+      })
+    )
+    const result = await harvestPhpEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('acme/storefront')
+    expect(result.candidates[0]?.kind).toBe('service')
+  })
+})
