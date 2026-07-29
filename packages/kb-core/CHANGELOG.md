@@ -1,16 +1,11 @@
 # @kb/core
 
-## 1.5.13
-
-### Patch Changes
-
-- Move ecosystem harvester coverage (frameworks, kind rubric, infra manifests, declared symbol/route gaps) into reviewable per-ecosystem YAML under tools/ecosystems/.
-
 ## 1.5.12
 
 ### Patch Changes
 
 - Organizational Ontology Index, indexing only (issue #167): entity registry tables (entities, aliases, edges, fact links), deterministic ecosystem harvesters (TS workspaces, compose, fly.toml, Backstage catalog) wired into init/scan as an `entity-index` cycle with a `KB_ENTITY_INDEX=false` kill switch, deterministic name-collision detection, and a `kb entities` CLI (list, show, collisions). Retrieval is unchanged — nothing in the query path reads these tables yet.
+- Move ecosystem harvester coverage (frameworks, kind rubric, infra manifests, declared symbol/route gaps) into reviewable per-ecosystem YAML under tools/ecosystems/.
 
 ## 1.5.11
 
