@@ -9,7 +9,7 @@ tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
 description: Manifest-driven entity harvest — YAML coverage per ecosystem, deterministic inference
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-07-28T18:23:00Z
+timestamp: 2026-07-28T18:40:00Z
 ---
 
 ### Intro
@@ -58,6 +58,11 @@ entity candidates for the `entity-index` scan cycle. Plan context:
 | FR-6 | Emit no candidates from malformed infra manifests |
 | FR-7 | Merge TypeScript and infra harvest results (duplicate names may appear once per source for registry merge) |
 | FR-8 | Declare routes and in-code symbols as not harvested (`not_implemented` in YAML) |
+| FR-9 | Provide reviewable YAML coverage for every tree-sitter language ecosystem plus infra |
+| FR-10 | Harvest Go modules from `go.mod` with YAML kind rubric |
+| FR-11 | Harvest Python projects from `pyproject.toml` with YAML kind rubric |
+| FR-12 | Harvest Rust packages from `Cargo.toml` with YAML kind rubric |
+| FR-13 | Harvest PHP packages from `composer.json` with YAML kind rubric |
 
 ### QA Test Cases
 
@@ -72,6 +77,11 @@ entity candidates for the `entity-index` scan cycle. Plan context:
 | TC-7 | FR-6 | Malformed `docker-compose.yml` | Zero candidates |
 | TC-8 | FR-7 | Same name in package.json and fly.toml | Two candidates with that canonical name |
 | TC-9 | FR-8 | Inspect typescript coverage sections | `symbols.status` and `routes.status` are `not_implemented` |
+| TC-10 | FR-9 | List ecosystem YAML ids | Includes go/python/rust/ruby/java/csharp/php/scala/haskell/cpp/css/html/bash/infra/typescript |
+| TC-11 | FR-10 | go.mod requiring gin | Candidate kind `service`, canonical module path |
+| TC-12 | FR-11 | pyproject.toml with fastapi | Candidate kind `service` |
+| TC-13 | FR-12 | Cargo.toml with clap + [[bin]] | Candidate kind `cli` |
+| TC-14 | FR-13 | composer.json requiring laravel/framework | Candidate kind `service` |
 
 ### Related docs
 

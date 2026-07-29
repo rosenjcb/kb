@@ -3,6 +3,7 @@
 
 id: infra
 display_name: Deploy / infra manifests
+status: implemented
 
 compose:
   files:
@@ -29,6 +30,20 @@ backstage:
   confidence: 0.95
   # Edge: component → spec.domain or spec.system
   belongs_to_keys: [domain, system]
+
+# Declared for future inference — not harvested yet.
+planned:
+  kubernetes:
+    note: Harvest metadata.name from Deployment/Service/Ingress and kustomization.yaml.
+    kinds: [Deployment, Service, Ingress, StatefulSet, DaemonSet]
+  helm:
+    note: Chart.yaml name → service candidate.
+    file: Chart.yaml
+  procfile:
+    note: Procfile process type names (web, worker) as service aliases.
+    file: Procfile
+  terraform:
+    note: Low signal for app entities — module names only if clearly app-scoped.
 
 symbols:
   status: not_applicable

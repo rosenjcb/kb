@@ -6,6 +6,7 @@
 
 id: typescript
 display_name: TypeScript / JavaScript
+status: implemented
 
 package_manifest: package.json
 

@@ -1,0 +1,167 @@
+# C# / .NET ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a .NET harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity candidate per *.csproj / *.fsproj (solution
+# members via .sln, or every project file under the repo).
+# Does not emit: HTTP routes, controllers, or in-code symbols (see symbols/ / routes/).
+#
+# Research: ./research/csharp.md
+
+id: csharp
+display_name: C# / .NET
+status: planned
+
+# Manifest atoms. Project files are the harvest unit; .sln enumerates members;
+# Directory.Build.props merges shared MSBuild properties (not an entity).
+package_manifests:
+  - path: "*.csproj"
+    format: csproj
+    role: package # harvest atom — AssemblyName / PackageId / filename stem
+  - path: "*.fsproj"
+    format: fsproj
+    role: package # F# — same MSBuild + PackageReference shape as csproj
+  - path: "*.sln"
+    format: sln
+    role: workspace # Project("{…}") = "Name" → "path.csproj" lines
+  - path: "*.slnx"
+    format: slnx
+    role: workspace # .NET 9+ XML solution — same role as .sln when present
+  - path: Directory.Build.props
+    format: msbuild_props
+    role: shared_props # imported by projects; never a solo entity
+  - path: Directory.Build.targets
+    format: msbuild_targets
+    role: shared_props # late imports; same non-entity role
+  - path: Directory.Packages.props
+    format: msbuild_props
+    role: central_versions # CPM Version overrides; PackageReference still on project
+
+# Dependency / framework signals come from MSBuild items and attributes:
+#   PackageReference Include="…"
+#   FrameworkReference Include="Microsoft.AspNetCore.App"
+#   Project Sdk="Microsoft.NET.Sdk.Web" | .Worker | .Maui | .BlazorWebAssembly | .Razor
+#   PropertyGroup: OutputType, UseWPF, UseWindowsForms, UseMaui, UsingMicrosoftNETSdkWeb
+#
+# Identity / gloss (no description field in csproj by default):
+#   canonicalName ← AssemblyName | PackageId | project file stem
+#   aliases       ← RootNamespace, product name, sln project title
+#   gloss         ← README near project / solution; else none
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+# Entries are NuGet package IDs (PackageReference Include=) or FrameworkReference IDs.
+# ASP.NET Core apps using Sdk.Web often have NO PackageReference for the shared
+# framework — match via sdk / use_aspnetcore instead (see kind_rules).
+frameworks:
+  server:
+    # Shared-framework / hosting (also detected via Sdk.Web — see kind_rules)
+    - Microsoft.AspNetCore.App # FrameworkReference
+    - Microsoft.AspNetCore # legacy / trimmed package refs
+    - Microsoft.Extensions.Hosting # Worker / generic host (weak alone)
+    # gRPC on ASP.NET Core
+    - Grpc.AspNetCore
+    - Grpc.AspNetCore.Server
+    # Orleans silo / server
+    - Microsoft.Orleans.Server
+    - Microsoft.Orleans.Sdk
+    # Minimal APIs are ASP.NET Core — no separate package ID
+  frontend:
+    # Blazor (server + WASM components)
+    - Microsoft.AspNetCore.Components.Web
+    - Microsoft.AspNetCore.Components.WebAssembly
+    - Microsoft.AspNetCore.Components.WebAssembly.Server
+    # MAUI
+    - Microsoft.Maui
+    - Microsoft.Maui.Controls
+    # Desktop (also UseWPF / UseWindowsForms properties — see kind_rules)
+    - Microsoft.WindowsDesktop.App # FrameworkReference when present
+  cli:
+    - System.CommandLine
+    - Spectre.Console
+    - Spectre.Console.Cli
+
+# Sdk attribute values that imply kind without a PackageReference.
+sdks:
+  service:
+    - Microsoft.NET.Sdk.Web
+    - Microsoft.NET.Sdk.Worker
+  surface:
+    - Microsoft.NET.Sdk.BlazorWebAssembly
+    - Microsoft.NET.Sdk.Maui
+  # Microsoft.NET.Sdk / Microsoft.NET.Sdk.Razor — kind from OutputType + deps
+
+# Avoid listing as primary (do not add to frameworks.*):
+#   Nancy, OWIN/Katana-only stacks, ServiceStack (niche) as default kind signals
+#   packages.config-era ASP.NET System.Web (Framework, not Core) — out of scope
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals even if the .NET harvester is not wired.
+kind_rules:
+  - kind: service
+    confidence: 0.95
+    match:
+      any_sdk: [Microsoft.NET.Sdk.Web]
+  - kind: service
+    confidence: 0.9
+    match:
+      use_aspnetcore: true # FrameworkReference Microsoft.AspNetCore.App / UsingMicrosoftNETSdkWeb
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.85
+    match:
+      any_sdk: [Microsoft.NET.Sdk.Worker]
+  - kind: surface
+    confidence: 0.9
+    match:
+      any_sdk: [Microsoft.NET.Sdk.BlazorWebAssembly, Microsoft.NET.Sdk.Maui]
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_dependency_group: frontend
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_msbuild_property_true: [UseWPF, UseWindowsForms, UseMaui]
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.7
+    match:
+      output_type: Exe
+      without_dependency_group: server
+      without_sdk: [Microsoft.NET.Sdk.Web, Microsoft.NET.Sdk.Worker]
+  - kind: surface
+    confidence: 0.7
+    match:
+      output_type: WinExe # WPF / WinForms / desktop default
+  - kind: library
+    confidence: 0.8
+    match:
+      output_type: Library
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+# Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
+symbols:
+  status: not_implemented
+  note: >
+    Code symbols (types, methods) stay in the tree-sitter code-index cycle
+    (.cs). This harvester does not promote symbols to entity candidates.
+    F# (.fs) grammar is out of band.
+  planned: []
+
+routes:
+  status: not_implemented
+  note: >
+    Optional AST enrichment for Minimal API Map* and MVC/API controllers is
+    planned; frameworks we cannot parse simply lose endpoint granularity.
+    Never load-bearing for entity identity.
+  planned_frameworks:
+    - aspnetcore-minimal # MapGet / MapPost / MapPut / MapDelete / MapMethods / MapGroup
+    - aspnetcore-controllers # [Route] / [HttpGet] / MapControllers

@@ -16,8 +16,10 @@ import path from 'node:path'
 import { load as loadYaml } from 'js-yaml'
 import {
   loadInfraEcosystemConfig,
+  loadPackageEcosystemConfig,
   loadTypescriptEcosystemConfig,
   type KindRule,
+  type PackageEcosystemConfig,
   type TypescriptEcosystemConfig,
 } from './ecosystem-config.js'
 import type { EntityKind } from './entity-registry.js'
@@ -90,23 +92,95 @@ function unscoped(name: string): string {
   return name.startsWith('@') ? (name.split('/')[1] ?? name) : name
 }
 
-function ruleMatches(rule: KindRule, pkg: PackageJson, config: TypescriptEcosystemConfig): boolean {
-  const match = rule.match
-  const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
-  const hasBin = Boolean(pkg.bin && (typeof pkg.bin === 'string' || Object.keys(pkg.bin).length > 0))
-  const hasEntry = Boolean(pkg.main || pkg.exports)
+export interface KindSignals {
+  deps: string[]
+  hasBin?: boolean
+  withoutBin?: boolean
+  hasEntry?: boolean
+  hasScriptsEntry?: boolean
+  hasBinTarget?: boolean
+  hasLibTarget?: boolean
+  composerType?: string
+  anyScript?: string[]
+}
 
-  if (match.any_dependency_group) {
+function dependencyHitsGroup(deps: string[], group: string[] | undefined): boolean {
+  if (!group?.length) return false
+  return group.some(name => deps.some(d => d === name || d.startsWith(`${name}/`) || d.endsWith(`/${name}`)))
+}
+
+function ruleMatchesSignals(rule: KindRule, signals: KindSignals, config: PackageEcosystemConfig): boolean {
+  const match = rule.match
+  const keys = Object.keys(match)
+  // Fallback rule: empty match always wins when reached.
+  if (keys.length === 0) return true
+
+  let sawKnown = false
+  if (match.any_dependency_group !== undefined) {
+    sawKnown = true
     const group = config.frameworks[match.any_dependency_group]
-    if (!group?.some(n => n in deps)) return false
+    if (!dependencyHitsGroup(signals.deps, group)) return false
   }
-  if (match.any_script?.length) {
-    if (!match.any_script.some(s => Boolean(pkg.scripts?.[s]))) return false
+  if (match.any_dependency !== undefined) {
+    sawKnown = true
+    if (!match.any_dependency.some(name => dependencyHitsGroup(signals.deps, [name]))) return false
   }
-  if (match.has_bin === true && !hasBin) return false
-  if (match.without_bin === true && hasBin) return false
-  if (match.has_entry === true && !hasEntry) return false
-  return true
+  if (match.without_dependency_group !== undefined) {
+    sawKnown = true
+    const group = config.frameworks[match.without_dependency_group]
+    if (dependencyHitsGroup(signals.deps, group)) return false
+  }
+  if (match.any_script !== undefined) {
+    sawKnown = true
+    if (!match.any_script.some(s => signals.anyScript?.includes(s))) return false
+  }
+  if (match.has_bin !== undefined) {
+    sawKnown = true
+    if (match.has_bin !== Boolean(signals.hasBin)) return false
+  }
+  if (match.without_bin !== undefined) {
+    sawKnown = true
+    if (match.without_bin && signals.hasBin) return false
+  }
+  if (match.has_entry !== undefined) {
+    sawKnown = true
+    if (match.has_entry !== Boolean(signals.hasEntry)) return false
+  }
+  if (match.has_scripts_entry !== undefined) {
+    sawKnown = true
+    if (match.has_scripts_entry !== Boolean(signals.hasScriptsEntry)) return false
+  }
+  if (match.has_bin_target !== undefined) {
+    sawKnown = true
+    if (match.has_bin_target !== Boolean(signals.hasBinTarget)) return false
+  }
+  if (match.has_lib_target !== undefined) {
+    sawKnown = true
+    if (match.has_lib_target !== Boolean(signals.hasLibTarget)) return false
+  }
+  if (match.without_bin_target !== undefined) {
+    sawKnown = true
+    if (match.without_bin_target && signals.hasBinTarget) return false
+  }
+  if (match.composer_type !== undefined) {
+    sawKnown = true
+    if (signals.composerType !== match.composer_type) return false
+  }
+  // Unknown-only match keys must not spuriously match (agents may draft ahead of inference).
+  return sawKnown
+}
+
+/** Apply YAML kind_rules against extracted dependency/target signals. */
+export function classifyFromSignals(
+  signals: KindSignals,
+  config: PackageEcosystemConfig
+): { kind: EntityKind; confidence: number } {
+  for (const rule of config.kind_rules) {
+    if (ruleMatchesSignals(rule, signals, config)) {
+      return { kind: rule.kind, confidence: rule.confidence }
+    }
+  }
+  return { kind: 'library', confidence: 0.4 }
 }
 
 /**
@@ -117,12 +191,17 @@ export function classifyPackageKind(
   pkg: PackageJson,
   config: TypescriptEcosystemConfig = loadTypescriptEcosystemConfig()
 ): { kind: EntityKind; confidence: number } {
-  for (const rule of config.kind_rules) {
-    if (ruleMatches(rule, pkg, config)) {
-      return { kind: rule.kind, confidence: rule.confidence }
-    }
-  }
-  return { kind: 'library', confidence: 0.4 }
+  const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) })
+  const hasBin = Boolean(pkg.bin && (typeof pkg.bin === 'string' || Object.keys(pkg.bin).length > 0))
+  return classifyFromSignals(
+    {
+      deps,
+      hasBin,
+      hasEntry: Boolean(pkg.main || pkg.exports),
+      anyScript: Object.keys(pkg.scripts ?? {}),
+    },
+    config
+  )
 }
 
 async function workspacePackageDirs(
@@ -323,11 +402,221 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
 export async function harvestRepoEntities(scanDir: string): Promise<HarvestResult> {
   const results = await Promise.all([
     harvestTypeScriptEcosystem(scanDir),
+    harvestGoEcosystem(scanDir),
+    harvestPythonEcosystem(scanDir),
+    harvestRustEcosystem(scanDir),
+    harvestPhpEcosystem(scanDir),
     harvestInfraManifests(scanDir),
   ])
   return {
     candidates: results.flatMap(r => r.candidates),
     edges: results.flatMap(r => r.edges),
+  }
+}
+
+/** Parse `module path` + require deps from go.mod (best-effort). */
+function parseGoMod(raw: string): { module: string | null; deps: string[] } {
+  const moduleMatch = raw.match(/^module\s+(\S+)/m)
+  const deps: string[] = []
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('//') || trimmed === ')' || trimmed.startsWith('module ')) continue
+    if (trimmed.startsWith('require ') && !trimmed.includes('(')) {
+      const parts = trimmed.slice('require '.length).split(/\s+/)
+      if (parts[0]) deps.push(parts[0])
+      continue
+    }
+    // Inside require ( ) block: "path v1.2.3"
+    const req = trimmed.match(/^([^\s]+)\s+v[\d.]+/)
+    if (req?.[1] && !req[1].startsWith('require')) deps.push(req[1])
+  }
+  return { module: moduleMatch?.[1] ?? null, deps }
+}
+
+export async function harvestGoEcosystem(scanDir: string): Promise<HarvestResult> {
+  const config = loadPackageEcosystemConfig('go')
+  const raw = await readText(path.join(scanDir, 'go.mod'))
+  if (!raw) return { candidates: [], edges: [] }
+  const { module, deps } = parseGoMod(raw)
+  if (!module) return { candidates: [], edges: [] }
+  const { kind, confidence } = classifyFromSignals({ deps }, config)
+  const short = module.includes('/') ? (module.split('/').pop() ?? module) : module
+  return {
+    candidates: [
+      {
+        kind,
+        canonicalName: module,
+        aliases: [module, short],
+        sourceFile: 'go.mod',
+        sourceKind: 'manifest',
+        confidence,
+        contentHash: sha256(raw),
+      },
+    ],
+    edges: [],
+  }
+}
+
+/** Minimal TOML: extract string keys under [section] and dependency table keys. */
+function tomlSectionStrings(raw: string, section: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  const re = new RegExp(`^\\[${section.replace('.', '\\.')}\\]\\s*$`, 'm')
+  const start = raw.search(re)
+  if (start < 0) return out
+  const rest = raw.slice(start).split('\n').slice(1)
+  for (const line of rest) {
+    if (/^\s*\[/.test(line)) break
+    const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*=\s*"(.*?)"/)
+    if (m?.[1] && m[2] !== undefined) out[m[1]] = m[2]
+  }
+  return out
+}
+
+function tomlTableKeys(raw: string, section: string): string[] {
+  const keys: string[] = []
+  const re = new RegExp(`^\\[${section.replace('.', '\\.')}\\]\\s*$`, 'm')
+  const start = raw.search(re)
+  if (start < 0) return keys
+  const rest = raw.slice(start).split('\n').slice(1)
+  for (const line of rest) {
+    if (/^\s*\[/.test(line)) break
+    const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*=/)
+    if (m?.[1]) keys.push(m[1])
+  }
+  return keys
+}
+
+function tomlHasArrayTable(raw: string, name: string): boolean {
+  return new RegExp(`^\\[\\[${name}\\]\\]`, 'm').test(raw)
+}
+
+function tomlHasTable(raw: string, name: string): boolean {
+  return new RegExp(`^\\[${name}\\]`, 'm').test(raw)
+}
+
+export async function harvestPythonEcosystem(scanDir: string): Promise<HarvestResult> {
+  const config = loadPackageEcosystemConfig('python')
+  const raw = await readText(path.join(scanDir, 'pyproject.toml'))
+  if (!raw) return { candidates: [], edges: [] }
+  const project = tomlSectionStrings(raw, 'project')
+  const name = project.name
+  if (!name) return { candidates: [], edges: [] }
+
+  const deps: string[] = []
+  // project.dependencies = ["fastapi>=0.100", ...]
+  const depArray = raw.match(/\[project\][\s\S]*?dependencies\s*=\s*\[([\s\S]*?)\]/)
+  if (depArray?.[1]) {
+    for (const m of depArray[1].matchAll(/["']([A-Za-z0-9_.-]+)/g)) {
+      if (m[1]) deps.push(m[1].toLowerCase().replace(/_/g, '-'))
+    }
+  }
+  for (const key of [
+    ...tomlTableKeys(raw, 'tool.poetry.dependencies'),
+    ...tomlTableKeys(raw, 'project.optional-dependencies'),
+  ]) {
+    if (key !== 'python') deps.push(key.toLowerCase().replace(/_/g, '-'))
+  }
+
+  const hasScriptsEntry = /\[project\.scripts\]/.test(raw) || /\[tool\.poetry\.scripts\]/.test(raw)
+  const { kind, confidence } = classifyFromSignals({ deps, hasScriptsEntry }, config)
+  return {
+    candidates: [
+      {
+        kind,
+        canonicalName: name,
+        aliases: [name],
+        ...(project.description ? { gloss: project.description } : {}),
+        sourceFile: 'pyproject.toml',
+        sourceKind: 'manifest',
+        confidence,
+        contentHash: sha256(raw),
+      },
+    ],
+    edges: [],
+  }
+}
+
+export async function harvestRustEcosystem(scanDir: string): Promise<HarvestResult> {
+  const config = loadPackageEcosystemConfig('rust')
+  const raw = await readText(path.join(scanDir, 'Cargo.toml'))
+  if (!raw) return { candidates: [], edges: [] }
+  const pkg = tomlSectionStrings(raw, 'package')
+  const name = pkg.name
+  if (!name) return { candidates: [], edges: [] }
+
+  const deps = [
+    ...tomlTableKeys(raw, 'dependencies'),
+    ...tomlTableKeys(raw, 'dev-dependencies'),
+  ]
+  const { kind, confidence } = classifyFromSignals(
+    {
+      deps,
+      hasBinTarget: tomlHasArrayTable(raw, 'bin') || /\[\[bin\]\]/.test(raw),
+      hasLibTarget: tomlHasTable(raw, 'lib'),
+    },
+    config
+  )
+  return {
+    candidates: [
+      {
+        kind,
+        canonicalName: name,
+        aliases: [name],
+        ...(pkg.description ? { gloss: pkg.description } : {}),
+        sourceFile: 'Cargo.toml',
+        sourceKind: 'manifest',
+        confidence,
+        contentHash: sha256(raw),
+      },
+    ],
+    edges: [],
+  }
+}
+
+export async function harvestPhpEcosystem(scanDir: string): Promise<HarvestResult> {
+  const config = loadPackageEcosystemConfig('php')
+  const raw = await readText(path.join(scanDir, 'composer.json'))
+  if (!raw) return { candidates: [], edges: [] }
+  let parsed: {
+    name?: string
+    description?: string
+    type?: string
+    bin?: string | string[]
+    require?: Record<string, string>
+    'require-dev'?: Record<string, string>
+  }
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { candidates: [], edges: [] }
+  }
+  if (!parsed.name) return { candidates: [], edges: [] }
+  const deps = [
+    ...Object.keys(parsed.require ?? {}),
+    ...Object.keys(parsed['require-dev'] ?? {}),
+  ].filter(d => d !== 'php')
+  const hasBin = Boolean(
+    parsed.bin && (typeof parsed.bin === 'string' || (Array.isArray(parsed.bin) && parsed.bin.length > 0))
+  )
+  const { kind, confidence } = classifyFromSignals(
+    { deps, hasBin, composerType: parsed.type },
+    config
+  )
+  const aliases = new Set<string>([parsed.name, parsed.name.split('/')[1] ?? parsed.name])
+  return {
+    candidates: [
+      {
+        kind,
+        canonicalName: parsed.name,
+        aliases: [...aliases],
+        ...(parsed.description ? { gloss: parsed.description } : {}),
+        sourceFile: 'composer.json',
+        sourceKind: 'manifest',
+        confidence,
+        contentHash: sha256(raw),
+      },
+    ],
+    edges: [],
   }
 }
 

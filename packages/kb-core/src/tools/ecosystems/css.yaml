@@ -1,0 +1,20 @@
+# CSS has no package/deploy entity ecosystem for this harvester.
+# Tree-sitter still indexes selectors as code symbols via code-index.
+
+id: css
+display_name: CSS
+status: not_applicable
+note: >
+  CSS has no package manifest or deployable-unit identity. Styling packages
+  (npm) are harvested by the TypeScript ecosystem when present as package.json.
+
+frameworks: {}
+kind_rules: []
+
+symbols:
+  status: not_applicable
+  note: Selector symbols stay in the tree-sitter code-index cycle.
+
+routes:
+  status: not_applicable
+  note: No HTTP routes in CSS.
