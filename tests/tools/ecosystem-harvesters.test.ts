@@ -3,8 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   listEcosystemIds,
+  loadCommonEcosystemConfig,
   loadInfraEcosystemConfig,
   loadTypescriptEcosystemConfig,
+  parseSourcePattern,
 } from '@kb/core/tools/ecosystem-config.js'
 import {
   classifyPackageKind,
@@ -26,6 +28,7 @@ import {
   harvestTypeScriptEcosystem,
   prismaSchemaAtoms,
 } from '@kb/core/tools/ecosystem-harvesters.js'
+import { runSourcePatterns } from '@kb/core/tools/pattern-engine.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 let scanDir: string
@@ -94,6 +97,60 @@ describe('ecosystem YAML configs', () => {
     ]) {
       expect(ids).toContain(id)
     }
+    expect(ids).not.toContain('common')
+  })
+
+  it('[TC-29] Given typescript.yaml and common.yaml, when loaded, then source_patterns are present', () => {
+    const ts = loadTypescriptEcosystemConfig()
+    const common = loadCommonEcosystemConfig()
+    expect(ts.source_patterns.length).toBeGreaterThan(0)
+    expect(common.source_patterns.length).toBeGreaterThan(0)
+    expect(common.source_patterns.some(p => p.strategy === 'openapi_path_items')).toBe(true)
+    expect(common.source_patterns.some(p => p.id === 'graphql_root_operations')).toBe(true)
+  })
+
+  it('[TC-31] Given a source_pattern with an unknown strategy, when parsed, then load throws', () => {
+    expect(() =>
+      parseSourcePattern({
+        id: 'bad',
+        kind: 'api',
+        strategy: 'not_a_real_strategy',
+        confidence: 0.5,
+        filter: 'none',
+        files: { extensions: ['.ts'] },
+      })
+    ).toThrow(/Unknown strategy "not_a_real_strategy"/)
+  })
+
+  it('[TC-32] Given Nest class_method_prefix_join in YAML, when harvested, then joined method routes emit', async () => {
+    const ts = loadTypescriptEcosystemConfig()
+    expect(
+      ts.source_patterns.some(
+        p => p.strategy === 'class_method_prefix_join' && p.join_style === 'nest'
+      )
+    ).toBe(true)
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'orders.controller.ts'),
+      [
+        "@Controller('orders')",
+        'export class OrdersController {',
+        "  @Get(':id')",
+        '  getOne() {}',
+        '}',
+      ].join('\n')
+    )
+    const routes = await harvestRouteDecorators(scanDir)
+    expect(routes.candidates.map(c => c.canonicalName)).toContain('GET /orders/:id')
+  })
+
+  it('[TC-33] Given package.json with express, when classified, then YAML kind_rules set service', () => {
+    const { kind, confidence } = classifyPackageKind({
+      name: 'payments-api',
+      dependencies: { express: '4' },
+    })
+    expect(kind).toBe('service')
+    expect(confidence).toBeGreaterThanOrEqual(0.9)
   })
 })
 
@@ -577,10 +634,10 @@ describe('harvestAppConcepts', () => {
       path.join(scanDir, 'src', 'orders.controller.ts'),
       [
         "@Controller('orders')",
-        "export class OrdersController {",
+        'export class OrdersController {',
         "  @Get(':id')",
         '  getOne() {}',
-        "  @Post()",
+        '  @Post()',
         '  create() {}',
         '}',
         "hono.get('/hono-up', c => c.text('ok'))",
@@ -605,9 +662,11 @@ describe('harvestAppConcepts', () => {
     )
     await writeFile(
       path.join(scanDir, 'schema.graphql'),
-      ['type Query { me: User }', 'type Mutation { createUser: User }', 'type User { id: ID! }'].join(
-        '\n'
-      )
+      [
+        'type Query { me: User }',
+        'type Mutation { createUser: User }',
+        'type User { id: ID! }',
+      ].join('\n')
     )
     await writeFile(
       path.join(scanDir, 'sinatra.rb'),
@@ -651,9 +710,12 @@ describe('harvestAppConcepts', () => {
     )
     await writeFile(
       path.join(scanDir, 'config', 'routes.rb'),
-      ['Rails.application.routes.draw do', '  resources :accounts', '  resource :profile', 'end'].join(
-        '\n'
-      )
+      [
+        'Rails.application.routes.draw do',
+        '  resources :accounts',
+        '  resource :profile',
+        'end',
+      ].join('\n')
     )
     await writeFile(
       path.join(scanDir, 'src', 'views.py'),
@@ -691,7 +753,7 @@ describe('harvestAppConcepts', () => {
     await writeFile(
       path.join(scanDir, 'src', 'slim.php'),
       [
-        "<?php",
+        '<?php',
         "$app->get('/slim-up', $h);",
         "$app->map(['GET', 'POST'], '/slim-items', $h);",
       ].join('\n')
@@ -925,6 +987,29 @@ describe('harvestAppConcepts', () => {
     expect(models).toEqual(expect.arrayContaining(['facts', 'entities']))
   })
 
+  it('[TC-30] Given a YAML-only regex source_pattern, when harvested, then it emits an api entity without a new strategy', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'demo.ts'),
+      ["@DemoRoute('/demo-only')", 'export function handler() {}'].join('\n')
+    )
+    const rule = parseSourcePattern({
+      id: 'demo_route_yaml_only',
+      kind: 'api',
+      gloss: 'Demo route',
+      confidence: 0.5,
+      filter: 'plausible_http_route',
+      strategy: 'regex',
+      pattern: '@DemoRoute\\s*\\(\\s*[\'"]([^\'"]+)[\'"]',
+      flags: 'g',
+      name_group: 1,
+      files: { extensions: ['.ts'] },
+    })
+    const result = await runSourcePatterns(scanDir, { phase: 'routes', patterns: [rule] })
+    expect(result.candidates.map(c => c.canonicalName)).toContain('/demo-only')
+    expect(result.candidates[0]?.gloss).toBe('Demo route')
+  })
+
   it('[TC-28] Given rich Prisma schema + TypeORM Entity name, when harvested, then model/enum/view/type and @@map aliases', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
@@ -992,9 +1077,11 @@ describe('harvestAppConcepts', () => {
     expect(byName.Order?.aliases).toEqual(expect.arrayContaining(['Order', 'orders']))
     expect(byName.Invoice?.aliases).toEqual(expect.arrayContaining(['Invoice', 'invoices']))
     expect(models.every(c => c.kind === 'model')).toBe(true)
-    expect(result.candidates.some(c => /generator|datasource|client|email_address/i.test(c.canonicalName))).toBe(
-      false
-    )
+    expect(
+      result.candidates.some(c =>
+        /generator|datasource|client|email_address/i.test(c.canonicalName)
+      )
+    ).toBe(false)
   })
 })
 

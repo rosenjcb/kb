@@ -5,6 +5,7 @@
 ### Minor Changes
 
 - Organizational Ontology Index (issue #167): entity registry + harvest cycle across ecosystems (TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra, OpenAPI/protobuf, tier-4 routes and app-layer `module`/`model` capture). Exhaustive Prisma schema harvest (`model`/`enum`/`view`/composite `type` + block-level `@@map` aliases; skip generator/datasource/field `@map`/client call-sites) and TypeORM `@Entity({ name|tableName })`. Capture-first denser ontology for later query use — inspect with `kb entities`.
+- Tier-4 harvest is YAML-driven: `source_patterns` in `ecosystems/*.yaml` + `common.yaml` select named strategies in `pattern-engine.ts` (`regex`, class/method joins, Rails/Django/OpenAPI/Prisma/Next/tRPC/Symfony/SQL DDL, …). Contributors add simple regex rules in YAML without new TypeScript; unknown strategy ids fail at config load.
 
 ## 1.5.11
 

@@ -4,14 +4,16 @@ title: "Spec: Ecosystem Harvesters"
 sources:
   - ./ecosystem-harvesters.ts
   - ./ecosystem-config.ts
+  - ./pattern-engine.ts
   - ./ecosystems/
+  - ./ecosystems/common.yaml
 tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
 description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
-  candidates. YAML files state coverage per ecosystem.
+  candidates. YAML source_patterns drive tier-4 route and app harvest.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-08-01T21:10:00Z
+timestamp: 2026-08-01T21:30:00Z
 ---
 
 ### Intro
@@ -21,9 +23,10 @@ manifest files and selected source patterns. It does not call an LLM. It does
 not use the network.
 
 Coverage data is in YAML files under `ecosystems/`. There is one YAML file for
-each ecosystem. Each file lists frameworks, kind rules, and coverage for
-symbols, routes, app classes, and models. The harvester code loads that YAML.
-It emits entity candidates for the `entity-index` scan cycle. See
+each ecosystem, plus `common.yaml` for cross-language rules. Each package file
+lists frameworks, kind rules, coverage notes, and executable `source_patterns`.
+The pattern engine loads those rules. It emits entity candidates for the
+`entity-index` scan cycle. See
 [NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md) §4a.
 
 Tier-4 harvest writes registry rows for later use. Those rows can have kind
@@ -33,8 +36,14 @@ results today. You can inspect the registry with `kb entities`.
 ### Definitions
 
 - **Ecosystem YAML**: A file at `ecosystems/<id>.yaml`. It lists frameworks,
-  kind rules, workspace sources, and coverage for `symbols` and `routes`. It
-  can also list coverage for `app_classes` and `models`.
+  kind rules, workspace sources, coverage notes, and `source_patterns`.
+- **Source pattern**: One YAML rule under `source_patterns`. It sets `kind`,
+  file filters, a named `strategy`, and optional regex or join fields.
+- **Pattern engine**: The runner in `pattern-engine.ts`. It walks the repo. It
+  applies each source pattern. It emits entity candidates.
+- **Named strategy**: A fixed join or parse algorithm in TypeScript. YAML
+  selects it by id. Examples: `regex`, `class_method_prefix_join`,
+  `rails_resources_crud`. This is not a free-form join DSL.
 - **Entity candidate**: A record that a harvester emits. Fields: `kind`,
   `canonicalName`, `aliases`, optional `gloss`, `sourceFile`,
   `sourceKind: manifest`, `confidence`, `contentHash`.
@@ -50,20 +59,22 @@ results today. You can inspect the registry with `kb entities`.
 ### Scope
 
 ## In Scope
-- Load and validate ecosystem YAML
+- Load and validate ecosystem YAML, including `source_patterns` and `common.yaml`
 - Harvest TypeScript and JavaScript packages (workspace and root)
 - Harvest Go, Python, Rust, PHP, Ruby, Java, Haskell, C++, C#, and Scala packages
 - Classify package kind from YAML rules
 - Harvest infra manifests (compose, Fly, Backstage, Kubernetes, Helm, Procfile)
 - Harvest OpenAPI and protobuf contracts (tier-3)
-- Harvest HTTP routes with regular expressions (tier-4; `routes.status: partial`)
-- Harvest app classes and ORM models (tier-4; kinds `module` and `model`)
+- Harvest HTTP routes from YAML `source_patterns` (tier-4; `routes.status: partial`)
+- Harvest app classes and ORM models from YAML `source_patterns` (tier-4)
+- Run named strategies in the pattern engine; fail on an unknown strategy id
 - Merge candidate lists from package, infra, contract, route, and app harvest
 
 ## Out of Scope
 - Entity registry upsert, fact links, and collisions (`entity-index-cycle.ts`)
 - Ambiguity lanes and ontology assembly (plan phases 4–6)
 - Query rules that use new route and model entities (follow-up work)
+- A free-form YAML join DSL (named strategies only)
 - Full Gradle, Mill, vcpkg, and Conan identity (Maven, CMake, and sbt first)
 
 ### Functional Requirements
@@ -90,12 +101,17 @@ results today. You can inspect the registry with `kb entities`.
 | FR-18 | Harvest C# projects from `*.csproj` with the YAML kind rubric. A `.sln` `part_of` edge is optional. |
 | FR-19 | Harvest Scala projects from `build.sbt` `name :=` with the YAML kind rubric. |
 | FR-20 | Harvest Kubernetes, Helm, Procfile, OpenAPI, and protobuf candidates as `service` or `api`. |
-| FR-21 | Harvest tier-4 HTTP routes as low-confidence `api` entities. Harvest Next.js pages as `surface`. Reject file-path false matches. |
-| FR-22 | Harvest tier-4 app classes as `module`. Harvest ORM and SQL models as `model`. Do not emit kind `service` for those atoms. |
+| FR-21 | [UPDATED] Harvest tier-4 HTTP routes as low-confidence `api` entities from YAML `source_patterns`. Harvest Next.js pages as `surface`. Reject file-path false matches. |
+| FR-22 | [UPDATED] Harvest tier-4 app classes as `module` and ORM models as `model` from YAML `source_patterns`. Do not emit kind `service` for those atoms. |
 | FR-23 | Harvest extra route and model patterns: Nest method verbs, Hono, Go 1.22 ServeMux, Sinatra/Grape, Tapir `.in`, Drogon, GraphQL roots/types, Drizzle/Mongoose/Sequelize, EF `ToTable`, Exposed, Persistent lines. |
 | FR-24 | Join Spring and Nest class/controller prefixes with method paths. Expand Rails `resources` to CRUD verbs. Harvest Symfony YAML routes, Slim maps, Flask MethodView `add_url_rule`, Django `include()` prefixes, tRPC procedures, OpenAPI path items, Room `tableName`, Hibernate XML, and Persistent TH blocks. |
 | FR-25 | Harvest raw Node `url`/`pathname` route checks, embedded `CREATE TABLE` in source, Nest `setGlobalPrefix`, FastAPI `APIRouter(prefix=)`, Gin/chi `Group` joins, Rails `namespace`/`scope` stacks, Django `app_name`, Micronaut/JAX-RS path joins, ASGI `Route`/`Mount`, and same-document OpenAPI `$ref` path items. Capture `*Store`/`*Indexer` classes as modules. |
 | FR-26 | Harvest Prisma schema declarations exhaustively: `model` / `enum` / `view` / composite `type` as kind `model`; attach block-level `@@map("…")` as a model alias. Skip `generator`, `datasource`, field `@map`, and Prisma client call-sites. Also harvest TypeORM `@Entity({ name|tableName })` table aliases. |
+| FR-27 | [NEW] Drive tier-4 route and app harvest from YAML `source_patterns` in `common.yaml` and each language ecosystem YAML. |
+| FR-28 | [NEW] Run each source pattern through a named strategy in the pattern engine (`regex`, join strategies, and specialized parsers). |
+| FR-29 | [NEW] Reject an unknown `strategy` id at config load. Do not run the harvest for that config. |
+| FR-30 | [NEW] Allow a contributor to add a simple regex source pattern in YAML without a TypeScript change. |
+| FR-31 | [NEW] Keep package kind classification on YAML `frameworks` and `kind_rules` (unchanged path). |
 
 ### QA Test Cases
 
@@ -129,8 +145,14 @@ results today. You can inspect the registry with `kb entities`.
 | TC-26 | FR-24 | Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH | Joined routes, CRUD expansions, and ORM models are harvested. |
 | TC-27 | FR-25 | Raw Node HTTP, embedded SQL DDL, Nest global prefix, FastAPI router prefix, Gin Group, Rails namespace, Django app_name, Micronaut/JAX-RS join, ASGI Route, OpenAPI `$ref`, Store/Indexer classes | kb-like api/model/module candidates and Round-4 route joins are harvested. |
 | TC-28 | FR-26 | Rich `schema.prisma` with model, enum, view, composite type, `@@map`, and TypeORM `@Entity({ name })` | Prisma atoms are kind `model`; `@@map` / entity `name` appear as aliases. Generator/datasource are not harvested. |
+| TC-29 | FR-27 | Load `typescript.yaml` and `common.yaml` | `source_patterns` lists are non-empty. Common includes OpenAPI and GraphQL rules. |
+| TC-30 | FR-30 | Inline regex `source_pattern` for `@DemoRoute('…')` with no new strategy | Harvest emits the matching `api` candidate from that rule alone. |
+| TC-31 | FR-29 | Source pattern with `strategy: not_a_real_strategy` | Config load throws. Message names the unknown strategy. |
+| TC-32 | FR-28 | `typescript.yaml` includes `class_method_prefix_join` for Nest | Route harvest emits a joined Nest method path (`GET /orders/:id`). |
+| TC-33 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
 
 ### Related docs
 
 - [NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md)
 - [TREE_SITTER_INDEXER.spec.md](./TREE_SITTER_INDEXER.spec.md) — Code symbols stay in the code-index.
+- [ecosystems/README.md](./ecosystems/README.md) — How to add a library rule or a named strategy.
