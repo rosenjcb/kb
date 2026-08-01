@@ -89,19 +89,85 @@ require_bucket() {
   fi
 }
 
+# Required objects for a publishable/adoptable snapshot prefix. Cross-region
+# Tigris LIST/GET has been observed to return a *partial* object set (e.g. just
+# .kb-index.sqlite + one manifest) while the writer region sees the full prefix
+# — which made the serving node crash-loop with "no kb-snapshot.json". Always
+# verify these before flipping latest.json and after every download.
+SNAPSHOT_REQUIRED_FILES=(kb-snapshot.json .kb-index.sqlite)
+
+# True when every required snapshot file exists under <dir>.
+snapshot_dir_complete() {
+  local dir="$1" f
+  for f in "${SNAPSHOT_REQUIRED_FILES[@]}"; do
+    [[ -f "$dir/$f" ]] || return 1
+  done
+  return 0
+}
+
+# True when every required object exists at s3://$BUCKET_NAME/<prefix>/.
+# Uses head-object (not LIST) so a partial LIST cannot false-positive.
+s3_prefix_complete() {
+  local prefix="$1" f
+  for f in "${SNAPSHOT_REQUIRED_FILES[@]}"; do
+    _s3api head-object --bucket "$BUCKET_NAME" --key "${prefix}/${f}" >/dev/null 2>&1 || return 1
+  done
+  return 0
+}
+
+# head-object with retries — for post-upload read-after-write confirmation.
+s3_wait_prefix_complete() {
+  local prefix="$1"
+  local attempts="${2:-12}"
+  local sleep_s="${3:-5}"
+  local i
+  for ((i = 1; i <= attempts; i++)); do
+    if s3_prefix_complete "$prefix"; then
+      return 0
+    fi
+    echo "    ! s3://$BUCKET_NAME/$prefix missing required object(s) (attempt $i/$attempts); retrying in ${sleep_s}s…" >&2
+    sleep "$sleep_s"
+  done
+  return 1
+}
+
 # Download an immutable snapshot prefix into a local dir.
+# Progress goes to stderr so callers can safely capture stdout (e.g. version=).
+# Retries on incomplete pulls — partial cross-region views are not rare.
 #   s3_pull_prefix <version-prefix> <local-dir>
 s3_pull_prefix() {
   local prefix="$1" dest="$2"
-  mkdir -p "$dest"
-  _s3 cp --recursive "s3://${BUCKET_NAME}/${prefix}/" "$dest/"
+  local attempts="${S3_PULL_ATTEMPTS:-6}"
+  local sleep_s="${S3_PULL_RETRY_SLEEP:-5}"
+  local i
+  for ((i = 1; i <= attempts; i++)); do
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    # --no-progress keeps version="$(pull…)" from swallowing aws progress text.
+    if ! _s3 cp --recursive --no-progress "s3://${BUCKET_NAME}/${prefix}/" "$dest/" >&2; then
+      echo "    ! s3 cp failed for s3://$BUCKET_NAME/$prefix (attempt $i/$attempts)" >&2
+    elif snapshot_dir_complete "$dest"; then
+      return 0
+    else
+      echo "    ! downloaded s3://$BUCKET_NAME/$prefix incomplete (missing kb-snapshot.json and/or .kb-index.sqlite) attempt $i/$attempts" >&2
+    fi
+    sleep "$sleep_s"
+  done
+  return 1
 }
 
-# Upload a local snapshot dir to an immutable version prefix (never overwritten).
+# Upload a local snapshot dir to an immutable version prefix (never overwritten),
+# then wait until required objects are readable before returning. Callers must
+# still flip latest.json only after this returns success.
 #   s3_push_prefix <local-dir> <version-prefix>
 s3_push_prefix() {
   local src="$1" prefix="$2"
-  _s3 cp --recursive "$src/" "s3://${BUCKET_NAME}/${prefix}/"
+  _s3 cp --recursive --no-progress "$src/" "s3://${BUCKET_NAME}/${prefix}/" >&2
+  if ! s3_wait_prefix_complete "$prefix"; then
+    echo "error: uploaded s3://$BUCKET_NAME/$prefix but required objects never became readable." >&2
+    echo "       not safe to flip latest.json (cross-region / eventual-consistency gap?)." >&2
+    return 1
+  fi
 }
 
 # Read a base's pointer JSON to stdout (empty string if none exists yet).
