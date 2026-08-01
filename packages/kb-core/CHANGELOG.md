@@ -1,16 +1,11 @@
 # @kb/core
 
-## 1.5.13
-
-### Patch Changes
-
-- Expand tier-4 ecosystem harvest: Spring/Nest path join, Rails CRUD, Symfony YAML, Slim, Flask MethodView, Django include namespaces, tRPC, OpenAPI path items, Room, Hibernate XML, Persistent TH.
-
 ## 1.5.12
 
 ### Patch Changes
 
 - Organizational Ontology Index (issue #167): entity registry + harvest cycle. Ecosystem harvesters cover TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra (compose/fly/Backstage/k8s/Helm/Procfile), OpenAPI/protobuf contracts, tier-4 routes (Nest methods/Hono/Express/FastAPI/Flask/Django/Go 1.22 ServeMux/Spring/JAX-RS/Ktor/Next/Rails/Sinatra/Grape/ASP.NET/Laravel/axum/actix/Play/Tapir/Servant/Crow/Drogon/GraphQL), and tier-4 app-layer capture (`module` + `model` including Prisma/TypeORM/Drizzle/Mongoose/Sequelize/JPA/EF/GORM/ent/ActiveRecord/Eloquent/Diesel/SeaORM/Exposed/Slick/Persistent/SQL/GraphQL types). Capture-first denser ontology for later query use — inspect with `kb entities`.
+- Expand tier-4 ecosystem harvest: Spring/Nest path join, Rails CRUD, Symfony YAML, Slim, Flask MethodView, Django include namespaces, tRPC, OpenAPI path items, Room, Hibernate XML, Persistent TH.
 - Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
 - Expand ecosystem YAML + inference to every tree-sitter language; wire remaining package ecosystems and tier-3/4 harvest.
 
