@@ -168,3 +168,66 @@ app_classes:
 models:
   status: partial
   note: Entity-deriving case classes → model (best-effort).
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: http4s_router_paths
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: http4s route
+    pattern: \b(?:HttpRoutes\.of|Router)\([^)]*["'](\/[^"']+)["']
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: tapir_in_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Tapir .in segment
+    pattern: \.in\s*\(\s*"([A-Za-z0-9_-]+)"\s*\)
+    flags: g
+    name_template: /{1}
+    files:
+      extensions:
+        - .scala
+  - id: scala_app_types
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Scala application type
+    pattern: \b(?:class|object)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|Dao|DAO))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: scala_entity
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Scala entity
+    pattern: \b(?:class|case class)\s+([A-Z][A-Za-z0-9_]*)\s*\([^\)]*\)\s*(?:extends|derives).*Entity
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: slick_table_query
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Slick TableQuery
+    pattern: TableQuery\[\s*([A-Z][A-Za-z0-9_]*)\s*\]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala

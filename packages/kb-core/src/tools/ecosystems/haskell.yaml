@@ -104,3 +104,58 @@ models:
   note: >
     Persistent TH blocks ([persistLowerCase|…|], persistUpperCase) and
     `ModelName json` quasi-quote lines → model. Esqueleto still open.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: servant_one_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Servant route
+    pattern: '"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b'
+    flags: g
+    name_template: '{2|upper} /{1}'
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: servant_two_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Servant nested route
+    pattern: '"([A-Za-z0-9_-]+)"\s*:>\s*"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b'
+    flags: g
+    name_template: '{3|upper} /{1}/{2}'
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: persistent_th_block
+    kind: model
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Persistent model (TH block)
+    pattern: \[persist(?:LowerCase|UpperCase|With)?\|([\s\S]*?)\|\]
+    flags: g
+    name_from: persistent_th
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: persistent_json_line
+    kind: model
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Persistent model (quasi-quote line)
+    pattern: ^([A-Z][A-Za-z0-9_]*)\s+json(\s|$)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .hs
+        - .lhs

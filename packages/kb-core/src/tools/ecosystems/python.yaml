@@ -93,3 +93,175 @@ models:
   note: >
     Django models.Model, SQLAlchemy Base/SQLModel/__tablename__, Peewee
     table_name, and Pydantic BaseModel → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: fastapi_decorator_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: FastAPI/Starlette route
+    pattern: '@(?:app|router|api_router|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*[''"]([^''"]+)[''"]'
+    flags: gi
+    name_template: '{1|upper} {2}'
+    files:
+      extensions:
+        - .py
+  - id: fastapi_router_prefix_join
+    kind: api
+    gloss: FastAPI APIRouter prefix join
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: router_group_prefix_join
+    join_style: fastapi
+    files:
+      extensions:
+        - .py
+  - id: asgi_route_mount
+    kind: api
+    gloss: ASGI Route/Mount
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: router_group_prefix_join
+    join_style: asgi
+    files:
+      extensions:
+        - .py
+  - id: flask_route_decorator
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Flask route
+    pattern: '@(?:app|bp|blueprint)\.route\s*\(\s*[''"]([^''"]+)[''"]'
+    flags: gi
+    name_group: 1
+    files:
+      extensions:
+        - .py
+  - id: flask_add_url_rule
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Flask add_url_rule
+    pattern: \.add_url_rule\s*\(\s*['"]([^'"]+)['"]
+    flags: g
+    name_template: '{1|/}'
+    files:
+      extensions:
+        - .py
+  - id: flask_method_view_route
+    kind: api
+    confidence: 0.5
+    filter: none
+    strategy: regex
+    gloss: Flask MethodView
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*MethodView\s*\)
+    flags: gm
+    name_template: flask:{1}
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .py
+  - id: django_include_join
+    kind: api
+    gloss: Django path/include join
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: django_include_join
+    files:
+      extensions:
+        - .py
+  - id: django_app_name
+    kind: api
+    confidence: 0.5
+    filter: none
+    strategy: regex
+    gloss: Django app_name
+    pattern: \bapp_name\s*=\s*['"]([a-z][a-z0-9_]*)['"]
+    flags: g
+    name_template: django-app/{1}
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .py
+  - id: python_app_suffix_classes
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Python application class
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Presenter|UseCase|Interactor|ViewSet|APIView))\s*[\(:]
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .py
+  - id: flask_method_view_module
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Flask MethodView
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*MethodView\s*\)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .py
+  - id: python_orm_model_class
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: ORM model class
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:models\.Model|Base|db\.Model|SQLModel|Model|tortoise\.models\.Model)\s*\)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .py
+  - id: pydantic_sqlmodel_schema
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Pydantic/SQLModel schema
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:BaseModel|SQLModel)\s*\)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .py
+  - id: sqlalchemy_tablename
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: SQLAlchemy table
+    pattern: __tablename__\s*=\s*['"]([^'"]+)['"]
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .py
+  - id: peewee_table_name
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Peewee/ORM table_name
+    pattern: table_name\s*=\s*['"]([^'"]+)['"]
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .py

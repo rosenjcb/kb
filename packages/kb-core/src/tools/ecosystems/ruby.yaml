@@ -148,3 +148,107 @@ app_classes:
 models:
   status: partial
   note: ApplicationRecord / ActiveRecord::Base → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: rails_resources_crud
+    kind: api
+    gloss: Rails nested routes
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: rails_resources_crud
+    files:
+      extensions:
+        - .rb
+      path_suffixes:
+        - routes.rb
+  - id: sinatra_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Sinatra route
+    pattern: ^\s*(?:get|post|put|patch|delete|options|head)\s+['"]([^'"]+)['"]
+    flags: gm
+    name_template: '{1|/}'
+    files:
+      extensions:
+        - .rb
+  - id: grape_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Grape route
+    pattern: \b(?:get|post|put|patch|delete)\s+['"]([^'"]+)['"]
+    flags: g
+    name_group: 1
+    require_leading_slash: true
+    files:
+      extensions:
+        - .rb
+  - id: grape_resource_symbol
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Grape resource
+    pattern: \bresource\s+:([a-z][a-z0-9_]*)
+    flags: g
+    name_template: /{1}
+    files:
+      extensions:
+        - .rb
+  - id: rails_controller
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Rails controller
+    pattern: >-
+      ^class\s+([A-Z][A-Za-z0-9_]*(?:::[A-Z][A-Za-z0-9_]*)*)\s*<\s*(?:ApplicationController|ActionController::Base|ActionController::API)
+    flags: gm
+    name_template: '{1|class_leaf}'
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .rb
+  - id: rails_app_suffix
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Rails application class
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Interactor|Worker|Job|Query|Command))\b
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .rb
+  - id: activerecord_model
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: ActiveRecord model
+    pattern: ^class\s+([A-Z][A-Za-z0-9_]*)\s*<\s*(?:ApplicationRecord|ActiveRecord::Base)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .rb
+  - id: activerecord_table_name
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: ActiveRecord table_name
+    pattern: self\.table_name\s*=\s*['"]([^'"]+)['"]
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .rb

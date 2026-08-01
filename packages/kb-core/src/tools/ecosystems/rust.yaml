@@ -140,3 +140,92 @@ app_classes:
 models:
   status: partial
   note: SeaORM EntityModel / Diesel table! → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: rocket_verb_attrs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Rocket route
+    pattern: '#\[(?:get|post|put|patch|delete|head|options)\s*\(\s*"([^"]+)"'
+    flags: gi
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: axum_route
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Axum route
+    pattern: \.route\s*\(\s*"([^"]+)"\s*,\s*(?:get|post|put|patch|delete|any)\b
+    flags: gi
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: actix_resource
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Actix resource
+    pattern: web::resource\s*\(\s*"([^"]+)"\s*\)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: rust_app_structs
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Rust application struct
+    pattern: \bstruct\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repo|Repository|UseCase))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: seaorm_entity
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: SeaORM entity
+    pattern: '#\[derive\([^\]]*EntityModel[^\]]*\)\][\s\S]{0,80}?struct\s+([A-Z][A-Za-z0-9_]*)'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: diesel_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Diesel table
+    pattern: \btable!\s*\{\s*([a-z][a-z0-9_]*)\s*\(
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: seaorm_table_name
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: SeaORM table_name
+    pattern: '#\[sea_orm\(table_name\s*=\s*"([^"]+)"\)\]'
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .rs

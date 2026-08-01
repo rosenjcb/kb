@@ -170,3 +170,107 @@ app_classes:
 models:
   status: partial
   note: EF Core [Table] / DbSet<> → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: aspnet_route_attr
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Route
+    pattern: \[Route\s*\(\s*"([^"]+)"\s*\)\]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_http_verb_attr
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Http* attribute
+    pattern: \[Http(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*"([^"]+)"\s*\)\]
+    flags: g
+    name_template: '{1|upper} {2}'
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_map_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Map*
+    pattern: \.Map(Get|Post|Put|Patch|Delete|Methods|Group)\s*\(\s*"([^"]+)"
+    flags: g
+    name_template: '{1|map_verb} {2}'
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_controller_class
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: ASP.NET controller
+    pattern: (?:\[ApiController\]|\[Route\b)[\s\S]{0,200}?class\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: dotnet_app_suffix
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: .NET application class
+    pattern: \b(?:class|record)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_table_attr
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core entity
+    pattern: \[Table\s*\(\s*"([^"]+)"\s*\)\][\s\S]{0,120}?(?:class|record)\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 2
+    alias_groups:
+      - 2
+      - 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_dbset
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core DbSet
+    pattern: \bDbSet<\s*([A-Z][A-Za-z0-9_]*)\s*>
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_totable
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core ToTable
+    pattern: \.ToTable\s*\(\s*"([^"]+)"\s*\)
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .cs

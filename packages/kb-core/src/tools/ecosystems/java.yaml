@@ -193,3 +193,220 @@ models:
   note: >
     JPA @Entity/@Table, Room @Entity(tableName=…), and Hibernate XML
     class/table mappings → model kind.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: spring_class_method_join
+    kind: api
+    gloss: Spring MVC mapping
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: class_method_prefix_join
+    join_style: spring
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: micronaut_controller_join
+    kind: api
+    gloss: Micronaut controller route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: class_method_prefix_join
+    join_style: micronaut
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: jaxrs_path_join
+    kind: api
+    gloss: JAX-RS path join
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: class_method_prefix_join
+    join_style: jaxrs
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: jaxrs_path_annotation
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: JAX-RS @Path
+    pattern: '@Path\s*\(\s*[''"]([^''"]+)[''"]\s*\)'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: ktor_verb_routes
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Ktor route
+    pattern: \b(?:get|post|put|patch|delete|head|options)\s*\(\s*"(\/[^"]*)"\s*\)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: ktor_route_block
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Ktor route block
+    pattern: \broute\s*\(\s*"(\/[^"]*)"\s*\)\s*\{
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: spring_app_classes
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Spring/Jakarta application class
+    pattern: >-
+      @(?:Service|RestController|Controller|Repository|Component|Dao)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*(?:public\s+|internal\s+|open\s+)?(?:class|object)\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: jpa_entity_class
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: JPA/Mongo/Room entity
+    pattern: >-
+      @(?:Entity|Document)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*(?:public\s+|internal\s+)?(?:class|data\s+class)\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: room_tablename
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Room tableName
+    pattern: '@Entity\s*\([^)]*tableName\s*=\s*["'']([^"'']+)["'']'
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: jpa_table_annotation
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: JPA @Table
+    pattern: '@Table\s*\(\s*(?:name\s*=\s*)?["'']([^"'']+)["'']'
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .java
+        - .kt
+        - .kts
+  - id: exposed_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Exposed Table
+    pattern: \bobject\s+([A-Z][A-Za-z0-9_]*)\s*:\s*Table\s*\(\s*"([^"]+)"\s*\)
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+      - 2
+    files:
+      extensions:
+        - .kt
+        - .kts
+  - id: hibernate_xml_mappings
+    kind: model
+    gloss: Hibernate mapping
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    pattern: <class\s+[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\btable\s*=\s*["']([^"']+)["']
+    flags: gi
+    name_template: '{1|class_leaf}'
+    alias_groups:
+      - 1
+      - 2
+    emit_extra_group_as_model: 2
+    files:
+      extensions:
+        - .xml
+  - id: hibernate_xml_table_name_first
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Hibernate class
+    pattern: <class\s+[^>]*\btable\s*=\s*["']([^"']+)["'][^>]*\bname\s*=\s*["']([^"']+)["']
+    flags: gi
+    name_template: '{2|class_leaf}'
+    alias_groups:
+      - 2
+      - 1
+    emit_extra_group_as_model: 1
+    files:
+      extensions:
+        - .xml
+  - id: jpa_orm_xml_entity
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: JPA orm.xml entity
+    pattern: <entity\s+[^>]*\bclass\s*=\s*["']([^"']+)["']
+    flags: gi
+    name_template: '{1|class_leaf}'
+    files:
+      extensions:
+        - .xml
+  - id: jpa_orm_xml_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: JPA orm.xml table
+    pattern: <table\s+[^>]*\bname\s*=\s*["']([^"']+)["']
+    flags: gi
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .xml
