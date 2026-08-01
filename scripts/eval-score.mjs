@@ -358,7 +358,7 @@ export async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, us
 // ---------------------------------------------------------------------------
 
 /** Max questions per judge call — larger batches truncate JSON when notes are verbose. */
-export const SCORE_BATCH_SIZE = 4
+export const SCORE_BATCH_SIZE = 8
 
 /**
  * Score a contiguous slice of questions from `workdir/q{n}.json`.
@@ -459,7 +459,7 @@ export async function runAutoScoreFile({
 
   if (geminiKey) {
     providerUsed = 'gemini'
-    modelUsed = process.env.EVAL_SCORER_MODEL || 'gemini-2.5-flash'
+    modelUsed = process.env.EVAL_SCORER_MODEL || 'gemini-3-flash-preview'
   } else if (openaiKey) {
     providerUsed = 'openai'
     modelUsed = process.env.EVAL_SCORER_OPENAI_MODEL || 'gpt-4o-mini'

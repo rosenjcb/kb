@@ -119,7 +119,7 @@ tasks:
       - axis: correctness
         check: "Explains that rubric_focus from the suite YAML is injected into the LLM auto-score prompt."
       - axis: correctness
-        check: "Names both provider env vars (GEMINI_API_KEY → gemini-2.5-flash, OPENAI_API_KEY as fallback) and that --manual-score opts out."
+        check: "Names both provider env vars (GEMINI_API_KEY → gemini-3-flash-preview, OPENAI_API_KEY as fallback) and that --manual-score opts out."
       - axis: specificity
         check: "States that all 8 Q&A pairs are sent in a single batch to the scoring LLM, results saved to auto-scores.json and artifact.json."
       - axis: evidence_handling

@@ -19,7 +19,9 @@
 //   SERVE_HEALTH_URL  public health URL (default https://<SERVE_APP>.fly.dev/healthz)
 
 const API = process.env.FLY_API_HOSTNAME || 'https://api.machines.dev'
-const healthTimeoutMs = Number(process.env.ROLL_HEALTH_TIMEOUT_MS || 120_000)
+// Multi-base boot used to download ~800MB before binding; even with
+// default-first listen this needs headroom for a cold SQLite adopt + slow link.
+const healthTimeoutMs = Number(process.env.ROLL_HEALTH_TIMEOUT_MS || 600_000)
 const settleMs = Number(process.env.ROLL_SETTLE_MS || 3_000)
 
 function req(name) {

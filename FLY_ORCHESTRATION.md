@@ -34,12 +34,21 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 | | Serving node (`kb-demo`) | Builder (`kb-demo-builder`) |
 |---|---|---|
 | Config | [`fly.toml`](fly.toml) | [`fly.builder.toml`](fly.builder.toml) |
-| Size | `shared-cpu-1x` / **1024MB**, always-warm | `performance-2x` / **4GB**, daily one-shot |
+| Size | `shared-cpu-1x` / **1024MB**, always-warm | `performance-4x` / **8GB**, daily one-shot |
+| Region | **`iad` (must match builder)** | **`iad`** |
 | Volume | **none** (stateless) | none (ephemeral `/work`) |
 | Command | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) |
-| Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default via `start --from`, rest via verified `import`) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
+| Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default first + listen, then the rest) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
 | Policy | `--bootstrap-policy snapshot-only` (frozen: no git, no reindex) | `auto` (clones/pulls + indexes) |
-| Cost | one tiny machine 24/7 | ~minutes of 4GB per day |
+| Cost | one tiny machine 24/7 | ~minutes of 8GB per day |
+
+> **Region co-location is load-bearing.** Builder writes snapshots to Tigris from
+> `iad`; serving from `ams` has been observed to `LIST`/`GET` a *partial* object
+> set for the same prefix (e.g. only `.kb-index.sqlite` + one manifest — no
+> `kb-snapshot.json`), which crash-loops the snapshot-only boot. Keep
+> `primary_region` identical on both apps. Publish also waits for required
+> objects to be readable before flipping `latest.json`, and serve retries
+> incomplete pulls.
 
 Both run the **same image** ([`Dockerfile.fly`](Dockerfile.fly)); the Fly config
 picks the command and VM size.
@@ -272,7 +281,7 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performa
 
 | Path | Role |
 |---|---|
-| [`fly.toml`](fly.toml) | serving app (256MB, stateless, snapshot-only) |
+| [`fly.toml`](fly.toml) | serving app (1024MB, stateless, snapshot-only, region-matched to builder) |
 | [`fly.builder.toml`](fly.builder.toml) | builder app (4GB, scheduled one-shot) |
 | [`Dockerfile.fly`](Dockerfile.fly) | shared image: server + AWS CLI + `scripts/fly` |
 | [`scripts/fly/bases.json`](scripts/fly/bases.json) | committed base manifest (default + one per eval-suite repo) |
@@ -282,6 +291,7 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performa
 | [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: deploy builder + recreate scheduler + deploy serving + seed all bases |
 | [`scripts/fly/roll-serving.mjs`](scripts/fly/roll-serving.mjs) | health-gated rolling restart via Fly Machines API |
 | [`scripts/fly/lib.sh`](scripts/fly/lib.sh) | shared config + S3 transport helpers |
+| [`scripts/fly/FLY.spec.md`](scripts/fly/FLY.spec.md) | behavioral spec (region co-location, complete publish/pull, default-first boot) |
 
 ## Related docs
 

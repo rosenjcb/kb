@@ -27,7 +27,8 @@
 # Full model + operations: FLY_ORCHESTRATION.md
 
 app = "kb-demo-builder"
-primary_region = "ams"
+# Keep builder + serving + Tigris traffic in one region (see fly.toml note).
+primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile.fly"

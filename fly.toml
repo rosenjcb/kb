@@ -21,7 +21,10 @@
 #   fly deploy -a kb-demo
 
 app = "kb-demo"
-primary_region = "ams"
+# Must match the builder + Tigris write region. Serving from a different Fly
+# region has observed incomplete LIST/GET of freshly published snapshot
+# prefixes (missing kb-snapshot.json / .kb-index.sqlite) → crash loop on boot.
+primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile.fly"
