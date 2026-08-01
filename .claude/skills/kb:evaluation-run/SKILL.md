@@ -117,6 +117,33 @@ Questions are defined in `eval/suites/<suite>.yaml`. The kb and raylib suites in
 
 Do not hardcode question text in prompts or scripts — always load from the YAML.
 
+## Entity harvest report (after index)
+
+After index/scan (or a full eval), report **what entities were harvested** — ontology kinds, counts, and sample names — not only query scores. The session store is `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases`).
+
+```bash
+# One base or suite (base = eval-{suiteId})
+pnpm run eval:entities -- --base eval-kb
+pnpm run eval:entities -- --suite kb --samples 8
+
+# Every suite id under eval/suites/*.yaml
+pnpm run eval:entities -- --all-suites
+pnpm run eval:entities -- --list-suites
+pnpm run eval:entities -- --suite raylib --json
+```
+
+Implementation: `scripts/eval-entities.mjs` (`pnpm run eval:entities`). Human table on stdout by default; `--json` for machine output.
+
+**Harvest-only mode** (reindex all suites, no query/control): another agent or you run init/scan via `scripts/eval-index.ts` (or `pnpm run eval` scan path). Then dump entities — do **not** require a full query+control eval-run. There is no `--skip-query` on `eval-run`; use the dedicated script:
+
+```bash
+# After indexes exist under ~/.kb/sessions/eval-*
+pnpm run eval:entities -- --all-suites
+# Or after scanning one base:
+pnpm exec tsx scripts/eval-index.ts scan --base eval-kb
+pnpm run eval:entities -- --suite kb
+```
+
 ## Auto-scoring
 
 `--auto-score` needs `GEMINI_API_KEY` or `OPENAI_API_KEY`. The judge picks a descriptive **label** per axis (e.g. `mostly_correct`), each mapping to an ordinal `0–4` level. Or `--scores-file` with eight `{ correctness, usefulness, relevance, specificity, evidence_handling, notes }` objects — each axis a rubric label or an equivalent raw `0–4` level per `EVALUATION.md`.

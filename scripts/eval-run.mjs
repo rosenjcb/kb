@@ -22,6 +22,11 @@
  *   node scripts/eval-run.mjs --suite raylib --base my-session   # override session name
  *   node scripts/eval-run.mjs --suite raylib --force-init        # wipe base + fresh init
  *
+ * Entity harvest report (no query): after scan/index, dump ontology entities with
+ *   `pnpm run eval:entities -- --suite <id>|--base eval-<id>|--all-suites`
+ * (see `scripts/eval-entities.mjs`). Prefer that over a full eval-run when you only
+ * need kind counts / sample names from `~/.kb/sessions/<base>/.kb-index.sqlite`.
+ *
  * Suites: vendor id → `eval/suites/<id>.yaml` (raylib, kb, generic). `--suite-yaml PATH` for custom.
  * Clone: suite YAML repo_url used by default; override with `--repo <git-url>`.
  * Multi-suite: Node spawns one child eval per suite (portable — no bash/xargs). Parallel by default.
