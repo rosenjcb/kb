@@ -87,8 +87,9 @@ symbols:
   note: >
     Best-effort app-layer harvest: Nest @Injectable/@Controller classes and
     *Service/*Controller/*Store/*Indexer suffix types → module; TypeORM
-    @Entity / Prisma model / embedded CREATE TABLE → model kind. Arbitrary
-    symbols stay in tree-sitter code-index.
+    @Entity / Prisma schema declarations (model/enum/view/type + @@map) /
+    embedded CREATE TABLE → model kind. Arbitrary symbols stay in
+    tree-sitter code-index.
   planned: []
 
 routes:
@@ -111,8 +112,10 @@ app_classes:
 models:
   status: partial
   note: >
-    TypeORM/MikroORM @Entity, Prisma model/enum, Sequelize define/Model,
-    Mongoose model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object
-    types, and CREATE TABLE in .sql or embedded in TS/JS → model. OpenAPI
-    path items harvested in contract tier.
+    TypeORM/MikroORM @Entity('t') / @Entity({ name|tableName }), Prisma
+    model/enum/view/composite type with block-level @@map aliases (field
+    @map, generator, datasource skipped), Sequelize define/Model, Mongoose
+    model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object types,
+    and CREATE TABLE in .sql or embedded in TS/JS → model. OpenAPI path
+    items harvested in contract tier.
 

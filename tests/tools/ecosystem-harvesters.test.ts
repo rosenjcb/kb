@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -24,6 +24,7 @@ import {
   harvestRustEcosystem,
   harvestScalaEcosystem,
   harvestTypeScriptEcosystem,
+  prismaSchemaAtoms,
 } from '@kb/core/tools/ecosystem-harvesters.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -922,6 +923,78 @@ describe('harvestAppConcepts', () => {
       expect.arrayContaining(['QueryFeedbackStore', 'SqliteKbIndexer', 'OrdersController'])
     )
     expect(models).toEqual(expect.arrayContaining(['facts', 'entities']))
+  })
+
+  it('[TC-28] Given rich Prisma schema + TypeORM Entity name, when harvested, then model/enum/view/type and @@map aliases', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'schema.prisma'),
+      [
+        'generator client {',
+        '  provider = "prisma-client-js"',
+        '}',
+        'datasource db {',
+        '  provider = "postgresql"',
+        '  url      = env("DATABASE_URL")',
+        '}',
+        'model User {',
+        '  id    Int    @id @default(autoincrement())',
+        '  email String @map("email_address")',
+        '  meta  Json   @default("{}")',
+        '  role  Role',
+        '  @@map("users")',
+        '}',
+        'enum Role {',
+        '  USER',
+        '  ADMIN',
+        '  @@map("user_role")',
+        '}',
+        'view UserInfo {',
+        '  id    Int',
+        '  email String',
+        '  @@map("user_info")',
+        '}',
+        'type Address {',
+        '  street String',
+        '  city   String',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'order.entity.ts'),
+      [
+        "import { Entity } from 'typeorm'",
+        "@Entity({ name: 'orders' })",
+        'export class Order {}',
+        "@Entity({ tableName: 'invoices' })",
+        'export class Invoice {}',
+      ].join('\n')
+    )
+
+    const prismaRaw = await readFile(path.join(scanDir, 'schema.prisma'), 'utf8')
+    const atoms = prismaSchemaAtoms(prismaRaw)
+    expect(atoms.map(a => a.decl)).toEqual(
+      expect.arrayContaining(['model', 'enum', 'view', 'type'])
+    )
+    expect(atoms.find(a => a.name === 'User')?.mapAlias).toBe('users')
+    expect(atoms.find(a => a.name === 'Role')?.mapAlias).toBe('user_role')
+    expect(atoms.find(a => a.name === 'UserInfo')?.mapAlias).toBe('user_info')
+    expect(atoms.find(a => a.name === 'Address')?.mapAlias).toBeUndefined()
+    expect(atoms.some(a => a.name === 'client' || a.name === 'db')).toBe(false)
+
+    const result = await harvestAppConcepts(scanDir)
+    const models = result.candidates.filter(c => c.kind === 'model')
+    const byName = Object.fromEntries(models.map(c => [c.canonicalName, c]))
+    expect(byName.User?.aliases).toEqual(expect.arrayContaining(['User', 'users']))
+    expect(byName.Role?.aliases).toEqual(expect.arrayContaining(['Role', 'user_role']))
+    expect(byName.UserInfo?.aliases).toEqual(expect.arrayContaining(['UserInfo', 'user_info']))
+    expect(byName.Address?.canonicalName).toBe('Address')
+    expect(byName.Order?.aliases).toEqual(expect.arrayContaining(['Order', 'orders']))
+    expect(byName.Invoice?.aliases).toEqual(expect.arrayContaining(['Invoice', 'invoices']))
+    expect(models.every(c => c.kind === 'model')).toBe(true)
+    expect(result.candidates.some(c => /generator|datasource|client|email_address/i.test(c.canonicalName))).toBe(
+      false
+    )
   })
 })
 

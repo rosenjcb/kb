@@ -903,6 +903,70 @@ export function isPlausibleModelName(name: string): boolean {
   return false
 }
 
+export type PrismaSchemaAtom = {
+  /** Prisma declaration keyword (enum stays kind `model` at emit time). */
+  decl: 'model' | 'enum' | 'view' | 'type'
+  name: string
+  /** DB table / enum type name from block-level `@@map("…")`, if any. */
+  mapAlias?: string
+}
+
+const PRISMA_DECL_GLOSS: Record<PrismaSchemaAtom['decl'], string> = {
+  model: 'Prisma model',
+  enum: 'Prisma enum',
+  view: 'Prisma view',
+  type: 'Prisma composite type',
+}
+
+/**
+ * Prisma schema declaration atoms: `model` / `enum` / `view` / composite `type`,
+ * plus block-level `@@map("…")` table aliases. Skips `generator` / `datasource`
+ * and field-level `@map` (column noise). Brace-aware so `@default("{}")` is safe.
+ */
+export function prismaSchemaAtoms(raw: string): PrismaSchemaAtom[] {
+  const atoms: PrismaSchemaAtom[] = []
+  const startRe = /\b(model|enum|view|type)\s+([A-Z][A-Za-z0-9_]*)\s*\{/g
+  for (;;) {
+    const m = startRe.exec(raw)
+    if (!m) break
+    const decl = m[1] as PrismaSchemaAtom['decl']
+    const name = m[2]
+    if (!name) continue
+    const bodyStart = m.index + m[0].length
+    let depth = 1
+    let i = bodyStart
+    let inString: '"' | "'" | null = null
+    while (i < raw.length && depth > 0) {
+      const ch = raw[i]
+      if (ch === undefined) break
+      if (inString) {
+        if (ch === '\\') {
+          i += 2
+          continue
+        }
+        if (ch === inString) inString = null
+        i += 1
+        continue
+      }
+      if (ch === '"' || ch === "'") {
+        inString = ch
+        i += 1
+        continue
+      }
+      if (ch === '{') depth += 1
+      else if (ch === '}') depth -= 1
+      i += 1
+    }
+    if (depth !== 0) continue
+    const body = raw.slice(bodyStart, i - 1)
+    const mapM = body.match(/@@map\s*\(\s*["']([^"']+)["']\s*\)/)
+    const mapAlias = mapM?.[1]
+    atoms.push(mapAlias ? { decl, name, mapAlias } : { decl, name })
+    startRe.lastIndex = i
+  }
+  return atoms
+}
+
 export type NextRouteHit = { path: string; kind: 'api' | 'surface' }
 
 /** Next.js App Router / Pages Router file → URL path + kind (page=surface, route/api=api). */
@@ -2094,14 +2158,33 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'SQL table (embedded)')
       }
+      // TypeORM/MikroORM: @Entity('t'), @Entity({ name|tableName: 't' }), bare @Entity
       for (const m of raw.matchAll(
-        /@Entity\s*\(\s*(?:['"]([^'"]+)['"])?\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
+        /@Entity\s*\(\s*['"]([^'"]+)['"]\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
         const table = m[1]
         const cls = m[2]
         if (cls) {
-          pushModel(cls, rel, hash, 'TypeORM/MikroORM entity', table ? [cls, table] : [cls])
+          const aliases =
+            table && isPlausibleModelName(table) ? [cls, table] : [cls]
+          pushModel(cls, rel, hash, 'TypeORM/MikroORM entity', aliases)
         }
+      }
+      for (const m of raw.matchAll(
+        /@Entity\s*\(\s*\{[^}]*\b(?:name|tableName)\s*:\s*['"]([^'"]+)['"][^}]*\}\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
+      )) {
+        const table = m[1]
+        const cls = m[2]
+        if (cls) {
+          const aliases =
+            table && isPlausibleModelName(table) ? [cls, table] : [cls]
+          pushModel(cls, rel, hash, 'TypeORM/MikroORM entity', aliases)
+        }
+      }
+      for (const m of raw.matchAll(
+        /@Entity\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'TypeORM/MikroORM entity')
       }
       // Sequelize
       for (const m of raw.matchAll(
@@ -2126,17 +2209,23 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'Drizzle table')
       }
-      for (const m of raw.matchAll(/\bmodel\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
-        if (m[1]) pushModel(m[1], rel, hash, 'Prisma model')
+      // Embedded Prisma schema fragments in TS/JS (schema-as-string rare; declaration surface)
+      for (const atom of prismaSchemaAtoms(raw)) {
+        const aliases =
+          atom.mapAlias && isPlausibleModelName(atom.mapAlias)
+            ? [atom.name, atom.mapAlias]
+            : [atom.name]
+        pushModel(atom.name, rel, hash, PRISMA_DECL_GLOSS[atom.decl], aliases)
       }
     }
 
     if (ext === '.prisma') {
-      for (const m of raw.matchAll(/\bmodel\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
-        if (m[1]) pushModel(m[1], rel, hash, 'Prisma model')
-      }
-      for (const m of raw.matchAll(/\benum\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
-        if (m[1]) pushModel(m[1], rel, hash, 'Prisma enum')
+      for (const atom of prismaSchemaAtoms(raw)) {
+        const aliases =
+          atom.mapAlias && isPlausibleModelName(atom.mapAlias)
+            ? [atom.name, atom.mapAlias]
+            : [atom.name]
+        pushModel(atom.name, rel, hash, PRISMA_DECL_GLOSS[atom.decl], aliases)
       }
     }
 

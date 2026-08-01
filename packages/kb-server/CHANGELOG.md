@@ -1,13 +1,5 @@
 # kb-server
 
-## 1.5.3
-
-### Patch Changes
-
-- Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
-- Updated dependencies
-  - @kb/core@1.5.12
-
 ## 1.5.2
 
 ### Patch Changes

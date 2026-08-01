@@ -4,10 +4,9 @@
 
 ### Patch Changes
 
-- Organizational Ontology Index, indexing only (issue #167): entity registry tables (entities, aliases, edges, fact links), deterministic ecosystem harvesters (TS workspaces, compose, fly.toml, Backstage catalog) wired into init/scan as an `entity-index` cycle with a `KB_ENTITY_INDEX=false` kill switch, deterministic name-collision detection, and a `kb entities` CLI (list, show, collisions). Retrieval is unchanged — nothing in the query path reads these tables yet.
-- Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
+- Organizational Ontology Index (issue #167): entity registry + harvest cycle across ecosystems (TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra, OpenAPI/protobuf, tier-4 routes and app-layer `module`/`model` capture). Exhaustive Prisma schema harvest (`model`/`enum`/`view`/composite `type` + block-level `@@map` aliases; skip generator/datasource/field `@map`/client call-sites) and TypeORM `@Entity({ name|tableName })`. Capture-first denser ontology for later query use — inspect with `kb entities`.
 - Updated dependencies
-  - @kb/core@1.5.12
+  - @kb/core@1.6.0
 
 ## 1.3.20
 

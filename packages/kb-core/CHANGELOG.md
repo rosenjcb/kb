@@ -1,14 +1,10 @@
 # @kb/core
 
-## 1.5.12
+## 1.6.0
 
-### Patch Changes
+### Minor Changes
 
-- Organizational Ontology Index (issue #167): entity registry + harvest cycle. Ecosystem harvesters cover TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra (compose/fly/Backstage/k8s/Helm/Procfile), OpenAPI/protobuf contracts, tier-4 routes (Nest methods/Hono/Express/FastAPI/Flask/Django/Go 1.22 ServeMux/Spring/JAX-RS/Ktor/Next/Rails/Sinatra/Grape/ASP.NET/Laravel/axum/actix/Play/Tapir/Servant/Crow/Drogon/GraphQL), and tier-4 app-layer capture (`module` + `model` including Prisma/TypeORM/Drizzle/Mongoose/Sequelize/JPA/EF/GORM/ent/ActiveRecord/Eloquent/Diesel/SeaORM/Exposed/Slick/Persistent/SQL/GraphQL types). Capture-first denser ontology for later query use — inspect with `kb entities`.
-- Expand tier-4 ecosystem harvest: Spring/Nest path join, Rails CRUD, Symfony YAML, Slim, Flask MethodView, Django include namespaces, tRPC, OpenAPI path items, Room, Hibernate XML, Persistent TH.
-- Round 4 dogfood harvest: raw Node `url`/`pathname` route checks (kb-server), embedded `CREATE TABLE` in TS/JS, `*Store`/`*Indexer` modules, Nest `setGlobalPrefix`, FastAPI `APIRouter(prefix=)`, Gin/chi Group joins, Rails namespace/scope stacks, Django `app_name`, Micronaut/JAX-RS path joins, ASGI Route/Mount, same-document OpenAPI `$ref`.
-- Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
-- Expand ecosystem YAML + inference to every tree-sitter language; wire remaining package ecosystems and tier-3/4 harvest.
+- Organizational Ontology Index (issue #167): entity registry + harvest cycle across ecosystems (TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra, OpenAPI/protobuf, tier-4 routes and app-layer `module`/`model` capture). Exhaustive Prisma schema harvest (`model`/`enum`/`view`/composite `type` + block-level `@@map` aliases; skip generator/datasource/field `@map`/client call-sites) and TypeORM `@Entity({ name|tableName })`. Capture-first denser ontology for later query use — inspect with `kb entities`.
 
 ## 1.5.11
 
