@@ -49,7 +49,7 @@ web.py, cgi). Keep tornado/aiohttp/sanic/quart as still-seen ASGI/WSGI options.
 3. Flask / Starlette / Litestar — decorator or route-table patterns
 
 Never load-bearing; missing parsers only lose endpoint granularity
-([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Out of scope for this YAML
 

@@ -1,5 +1,5 @@
 /**
- * Stage-0 scope inference (NOMENCLATURE_INDEX_PLAN.md §5): work out which
+ * Stage-0 scope inference (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md §5): work out which
  * domain / service / api / surface a query is about BEFORE any fuzzy retrieval
  * runs, and turn the verdict into partition pruning under the multiclass
  * confidence gates.

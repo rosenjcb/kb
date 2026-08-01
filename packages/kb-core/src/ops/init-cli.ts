@@ -902,7 +902,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('document-facts', 'reused from checkpoint')
     }
 
-    // Entity ontology harvest + fact linking (NOMENCLATURE_INDEX_PLAN.md). Runs after
+    // Entity ontology harvest + fact linking (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md). Runs after
     // document-facts so both code and doc facts exist for linking. Best-effort and
     // idempotent — a failed harvest never fails init/scan, and empty registries leave
     // query behavior untouched.

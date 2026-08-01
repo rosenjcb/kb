@@ -2,7 +2,7 @@
  * Organizational Ontology Index — entity registry store.
  *
  * Canonical named things (services, surfaces, domains, repos, models, …) with aliases,
- * typed edges, and fact↔entity links, per NOMENCLATURE_INDEX_PLAN.md §3.
+ * typed edges, and fact↔entity links, per packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md §3.
  *
  * The registry partitions the fact pool via `entity_links` so query-time scope
  * inference (`src/query/scope-inference.ts`) can land in the right partition

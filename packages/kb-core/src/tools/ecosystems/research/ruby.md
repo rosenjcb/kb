@@ -57,7 +57,7 @@ should use best-effort regex / structured scan (`spec.name =`, `gem "…"`,
 1. **Rails** — `config/routes.rb` (`get`/`post`/`resources`/`mount`)
 2. Sinatra verb DSL / Grape `get`/`post` / Hanami routes
 
-Never load-bearing ([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+Never load-bearing ([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Sources
 

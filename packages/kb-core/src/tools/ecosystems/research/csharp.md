@@ -80,7 +80,7 @@ in YAML unless we see density).
 2. **Controllers** — `[Route]` / `[HttpGet|Post|…]` / `MapControllers()`.
 
 Missing parsers only lose endpoint granularity
-([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Out of scope for this YAML
 

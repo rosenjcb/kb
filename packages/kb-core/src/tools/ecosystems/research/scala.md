@@ -66,4 +66,4 @@ plugin + `.scala` sources dominate; dual candidates OK until registry merge.
 - [Pekko HTTP](https://pekko.apache.org/docs/pekko-http/current/)
 - [Laminar](https://laminar.dev/) / [raquo/Laminar](https://github.com/raquo/laminar)
 - [twitter/finatra releases](https://github.com/twitter/finatra/releases) (stale OSS cadence)
-- In-repo: `ecosystems/typescript.yaml`, `ECOSYSTEM_HARVESTERS.spec.md`, `NOMENCLATURE_INDEX_PLAN.md` §4a
+- In-repo: `ecosystems/typescript.yaml`, `ECOSYSTEM_HARVESTERS.spec.md`, `ECOSYSTEM_HARVESTERS.spec.md`

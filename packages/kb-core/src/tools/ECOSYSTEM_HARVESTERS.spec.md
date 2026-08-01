@@ -27,7 +27,7 @@ each ecosystem, plus `common.yaml` for cross-language rules. Each package file
 lists frameworks, kind rules, coverage notes, and executable `source_patterns`.
 The pattern engine loads those rules. It emits entity candidates for the
 `entity-index` scan cycle. See
-[NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md) §4a.
+this specification (§4a / harvester tiers).
 
 Tier-4 harvest writes registry rows for later use. Those rows can have kind
 `api`, `module`, `model`, or `surface`. Tier-4 harvest does not control query
@@ -153,6 +153,5 @@ results today. You can inspect the registry with `kb entities`.
 
 ### Related docs
 
-- [NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md)
 - [TREE_SITTER_INDEXER.spec.md](./TREE_SITTER_INDEXER.spec.md) — Code symbols stay in the code-index.
 - [ecosystems/README.md](./ecosystems/README.md) — How to add a library rule or a named strategy.

@@ -8,7 +8,7 @@ coverage only until wired.
 
 Answer “what deployable things does this repo declare?” from ops manifests —
 no LLM, no network — alongside per-language package harvest (tier-1 in
-`NOMENCLATURE_INDEX_PLAN.md` §4a).
+`ECOSYSTEM_HARVESTERS.spec.md`).
 
 ## Implemented today
 

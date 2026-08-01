@@ -87,7 +87,7 @@ legacy detect only if needed.
 4. Ktor routing DSL (`routing { get(...) }`)
 
 Never load-bearing; missing parsers only lose endpoint granularity
-([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Overlap
 

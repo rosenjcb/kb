@@ -64,7 +64,7 @@ justifies.
 3. **Slim** — `$app->get/post(…)` map in bootstrap
 
 Never load-bearing; missing parsers only lose endpoint granularity
-([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Out of scope for this YAML
 
@@ -81,4 +81,4 @@ Never load-bearing; missing parsers only lose endpoint granularity
 - Packagist: laravel/framework, slim/slim, mezzio/mezzio,
   laravel/lumen-framework, codeigniter4/framework, livewire/livewire,
   inertiajs/inertia-laravel, symfony/console
-- NOMENCLATURE_INDEX_PLAN §4a (tier-2 manifests; tier-4 routes optional)
+- [ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) (tier-2 manifests; tier-4 routes optional)

@@ -494,7 +494,7 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
-    // Organizational Ontology Index (NOMENCLATURE_INDEX_PLAN.md): canonical named
+    // Organizational Ontology Index (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md): canonical named
     // things (services, surfaces, domains, repos, …) with aliases, typed edges
     // (`distinct_from` is the anti-conflation edge), and fact↔entity links that
     // partition the fact pool for query-time scope inference. All four tables are

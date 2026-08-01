@@ -72,7 +72,7 @@ a default surface signal.
 **Routes:** `not_implemented`. Planned AST (tier-4): axum `Router` /
 `.route(...)`, actix-web route macros / `web::resource`, Rocket attributes.
 tonic methods are proto contract-tier, not HTTP path strings
-([NOMENCLATURE_INDEX_PLAN.md](../../../../../NOMENCLATURE_INDEX_PLAN.md) §4a).
+([ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) §4a).
 
 ## Out of scope for this YAML
 

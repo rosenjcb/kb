@@ -7,7 +7,7 @@
  *   kb entities collisions          The nomenclature audit: every distinct_from pair
  *
  * Read-only. The registry is populated by the `entity-index` scan cycle
- * (kb init / kb scan); see NOMENCLATURE_INDEX_PLAN.md.
+ * (kb init / kb scan); see packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md.
  */
 
 import { existsSync } from 'node:fs'

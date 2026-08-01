@@ -127,5 +127,5 @@ symbols to entity candidates from this harvester.
 - Conan recipes — [conanfile.py](https://docs.conan.io/2/reference/conanfile.html)
 - xmake — [set_project / target](https://xmake.io/#/manual/project_target)
 - Compilation database — [JSON Compilation Database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
-- NOMENCLATURE_INDEX_PLAN §4a (tier-2 manifests; tier-4 routes optional)
+- [ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) (tier-2 manifests; tier-4 routes optional)
 - Eval fixture: raylib (`eval/suites/raylib.yaml`) — Makefile-primary C library

@@ -1,6 +1,6 @@
 /**
  * `entity-index` scan cycle: deterministic entity harvest + fact↔entity linking
- * (NOMENCLATURE_INDEX_PLAN.md §4). Runs per repo after `document-facts`, so both
+ * (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md §4). Runs per repo after `document-facts`, so both
  * code facts and doc facts exist when links are written. Best-effort by design —
  * a failed harvest must never fail `kb init` / `kb scan`.
  *

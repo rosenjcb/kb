@@ -122,7 +122,7 @@ kind_rules:
     confidence: 0.4
     match: {} # fallback — Gemfile-only with no stronger signal
 
-# Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
 symbols:
   status: partial
   note: >

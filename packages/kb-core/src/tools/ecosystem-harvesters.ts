@@ -1,6 +1,6 @@
 /**
  * Ecosystem harvesters — the deterministic half of the `entity-index` scan cycle
- * (NOMENCLATURE_INDEX_PLAN.md §4a). A harvester answers "what deployable things
+ * (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md §4a). A harvester answers "what deployable things
  * does this repo declare" from manifest-class files: pure functions from a scan
  * directory to entity candidates, no LLM, no network.
  *

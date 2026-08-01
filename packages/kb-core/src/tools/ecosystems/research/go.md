@@ -47,4 +47,4 @@ contested). Do not treat beego as a frontier default.
 - [go.mod reference](https://go.dev/doc/modules/gomod-ref), [modules ref](https://go.dev/ref/mod)
 - [Organizing a Go module](https://go.dev/doc/modules/layout)
 - JetBrains “Popular Go Web Frameworks” (2026) — gin/echo/fiber/chi/mux share
-- NOMENCLATURE_INDEX_PLAN §4a (tier-2 manifests; tier-4 routes optional)
+- [ECOSYSTEM_HARVESTERS.spec.md](../../ECOSYSTEM_HARVESTERS.spec.md) (tier-2 manifests; tier-4 routes optional)
