@@ -1,0 +1,112 @@
+# Cross-ecosystem source patterns (OpenAPI, GraphQL, SQL DDL, raw Node HTTP, …).
+# Loaded by pattern-engine for every repo. Not a package ecosystem.
+
+id: common
+display_name: Cross-language source patterns
+status: implemented
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: openapi_path_items
+    kind: api
+    gloss: OpenAPI path item
+    confidence: 0.75
+    filter: plausible_http_route
+    strategy: openapi_path_items
+    phase: contracts
+    files:
+      extensions:
+        - .yaml
+        - .yml
+        - .json
+  - id: graphql_root_operations
+    kind: api
+    gloss: GraphQL root operation
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    pattern: ^\s*(?:type|extend\s+type)\s+(Query|Mutation|Subscription)\s*[@{]
+    flags: gm
+    name_template: /graphql/{1}
+    files:
+      extensions:
+        - .graphql
+        - .gql
+  - id: graphql_object_types
+    kind: model
+    gloss: GraphQL type
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    pattern: ^\s*type\s+([A-Z][A-Za-z0-9_]*)\s*[@{]
+    flags: gm
+    name_group: 1
+    skip_names:
+      - Query
+      - Mutation
+      - Subscription
+    files:
+      extensions:
+        - .graphql
+        - .gql
+  - id: sql_create_table_files
+    kind: model
+    gloss: SQL table
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: embedded_sql_ddl
+    files:
+      extensions:
+        - .sql
+  - id: embedded_sql_ddl_source
+    kind: model
+    gloss: SQL table (embedded)
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: embedded_sql_ddl
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+        - .py
+        - .go
+        - .java
+        - .kt
+        - .kts
+        - .rb
+        - .cs
+        - .php
+        - .rs
+  - id: raw_node_http_dispatch
+    kind: api
+    gloss: Raw Node HTTP route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: router_group_prefix_join
+    join_style: raw_node_http
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: play_conf_routes
+    kind: api
+    gloss: Play Framework route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    pattern: ^\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/\S+)
+    flags: gm
+    name_template: '{1} {2}'
+    files:
+      basenames:
+        - routes
+      path_suffixes:
+        - conf/routes

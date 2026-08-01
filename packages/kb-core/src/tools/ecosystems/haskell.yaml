@@ -1,0 +1,161 @@
+# Haskell ecosystem harvester coverage.
+# Inference: harvestHaskellEcosystem in ecosystem-harvesters.ts.
+#
+# Entity atom: one Cabal package (*.cabal, or package.yaml via hpack).
+# Workspace: cabal.project packages: preferred; stack.yaml packages: fallback.
+
+id: haskell
+display_name: Haskell
+status: implemented
+
+package_manifests:
+  - path: "*.cabal"
+    format: cabal
+    role: package
+  - path: package.yaml
+    format: hpack
+    role: package # generates *.cabal; prefer reading generated .cabal when both exist
+  - path: cabal.project
+    format: cabal_project
+    role: workspace
+  - path: stack.yaml
+    format: stack
+    role: workspace # secondary; prefer cabal.project when both present
+
+workspace:
+  sources:
+    - path: cabal.project
+      packages_key: packages
+    - path: stack.yaml
+      packages_key: packages
+
+# Hackage package names — referenced by kind_rules.match.any_dependency_group.
+# Verified maintained as of 2026-07 (see research/haskell.md).
+frameworks:
+  server:
+    - servant
+    - servant-server
+    - yesod
+    - yesod-core
+    - scotty
+    - warp
+    - wai
+    - ihp
+  frontend:
+    - reflex
+    - reflex-dom
+    - reflex-dom-core
+    - miso
+    - threepenny-gui
+  cli:
+    - optparse-applicative
+    - cmdargs
+
+# First matching rule wins. Cabal stanza type is the primary signal;
+# dependency groups refine executable packages into service/surface/cli.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.9
+    match:
+      has_executable_stanza: true
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.75
+    match:
+      has_executable_stanza: true
+      has_library_stanza: false # executable-only package
+  - kind: library
+    confidence: 0.85
+    match:
+      has_library_stanza: true
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback — named package with no clear stanza/deps signal
+
+symbols:
+  status: partial
+  note: >
+    Haskell symbols stay in the tree-sitter-haskell code-index cycle
+    (.hs / .lhs). Persistent TH model names are harvested as model kind
+    (see models). Other symbols stay in tree-sitter.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Best-effort Servant path segments: "users" :> Get/Post/…. Confidence
+    ~0.5; capped. Yesod/IHP/Scotty DSLs still open.
+  planned_frameworks: [yesod, ihp, scotty]
+
+app_classes:
+  status: not_implemented
+  note: No stable app-class convention harvested yet.
+
+models:
+  status: partial
+  note: >
+    Persistent TH blocks ([persistLowerCase|…|], persistUpperCase) and
+    `ModelName json` quasi-quote lines → model. Esqueleto still open.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: servant_one_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Servant route
+    pattern: '"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b'
+    flags: g
+    name_template: '{2|upper} /{1}'
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: servant_two_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Servant nested route
+    pattern: '"([A-Za-z0-9_-]+)"\s*:>\s*"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b'
+    flags: g
+    name_template: '{3|upper} /{1}/{2}'
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: persistent_th_block
+    kind: model
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Persistent model (TH block)
+    pattern: \[persist(?:LowerCase|UpperCase|With)?\|([\s\S]*?)\|\]
+    flags: g
+    name_from: persistent_th
+    files:
+      extensions:
+        - .hs
+        - .lhs
+  - id: persistent_json_line
+    kind: model
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Persistent model (quasi-quote line)
+    pattern: ^([A-Z][A-Za-z0-9_]*)\s+json(\s|$)
+    flags: gm
+    name_group: 1
+    files:
+      extensions:
+        - .hs
+        - .lhs

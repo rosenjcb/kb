@@ -1,0 +1,377 @@
+# TypeScript / JavaScript ecosystem harvester coverage.
+# Package identity: frameworks + kind_rules (ecosystem-harvesters.ts).
+# Tier-4 routes/modules/models: source_patterns below (pattern-engine.ts).
+# Add a simple annotation with strategy: regex; add a new join shape in TS.
+#
+# Emits: one entity per package.json (workspace members or root), plus
+# YAML-driven route/app/model candidates from source_patterns.
+
+id: typescript
+display_name: TypeScript / JavaScript
+status: implemented
+
+package_manifest: package.json
+
+workspace:
+  # Globs supported by the loader: `dir/*` and exact paths. Negations / nested * skipped.
+  sources:
+    - path: pnpm-workspace.yaml
+      packages_key: packages
+    - path: package.json
+      workspaces_key: workspaces
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+frameworks:
+  server:
+    - express
+    - fastify
+    - koa
+    - "@nestjs/core"
+    - hapi
+    - "@hapi/hapi"
+    - restify
+  frontend:
+    - react
+    - next
+    - vue
+    - svelte
+    - "@angular/core"
+  cli:
+    - commander
+    - yargs
+    - oclif
+    - meow
+    - ink
+
+# First matching rule wins. Confidence drops when the signal is weak.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  # Daemon packages often ship a bin (kb-server) without listing a web framework.
+  - kind: service
+    confidence: 0.85
+    match:
+      name_ends_with: server
+  - kind: service
+    confidence: 0.85
+    match:
+      bin_name_ends_with: -server
+  - kind: service
+    confidence: 0.6
+    match:
+      any_script: [start, serve]
+      without_bin: true
+  - kind: cli
+    confidence: 0.85
+    match:
+      has_bin: true
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.6
+    match:
+      any_dependency_group: cli
+  - kind: library
+    confidence: 0.8
+    match:
+      has_entry: true # package.json main or exports
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
+symbols:
+  status: partial
+  note: >
+    Best-effort app-layer harvest: Nest @Injectable/@Controller classes and
+    *Service/*Controller/*Store/*Indexer suffix types → module; TypeORM
+    @Entity / Prisma schema declarations (model/enum/view/type + @@map) /
+    embedded CREATE TABLE → model kind. Arbitrary symbols stay in
+    tree-sitter code-index.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Nest @Controller joined to @Get/@Post/… plus setGlobalPrefix /
+    RouterModule path, raw node:http url/pathname equality and startsWith
+    (kb-server style), URLPattern, Express/Koa/Hono verbs, Next.js
+    filesystem routes (page → surface, route/api → api), GraphQL roots,
+    and tRPC publicProcedure/mutation keys as trpc/<name>. Confidence
+    ~0.5; capped.
+  planned_frameworks: []
+
+app_classes:
+  status: partial
+  note: >
+    Nest @Injectable/@Controller/@Resolver and
+    *Service/*Handler/*Store/*Indexer/*Registry/*Pipeline classes → module.
+
+models:
+  status: partial
+  note: >
+    TypeORM/MikroORM @Entity('t') / @Entity({ name|tableName }), Prisma
+    model/enum/view/composite type with block-level @@map aliases (field
+    @map, generator, datasource skipped), Sequelize define/Model, Mongoose
+    model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object types,
+    and CREATE TABLE in .sql or embedded in TS/JS → model. OpenAPI path
+    items harvested in contract tier.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: next_filesystem_routes
+    kind: api
+    gloss: Next.js route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: next_filesystem_routes
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: nest_controller_method_join
+    kind: api
+    gloss: NestJS route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: class_method_prefix_join
+    join_style: nest
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: nest_global_prefix_join
+    kind: api
+    gloss: NestJS global prefix route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: class_method_prefix_join
+    join_style: nest_global_prefix
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: trpc_procedures
+    kind: api
+    gloss: tRPC procedure
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: trpc_procedures
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: express_koa_hono_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Express/Koa/Hono route
+    pattern: \b(?:app|router|r|hono|api)\.(get|post|put|patch|delete|options|head|all)\s*\(\s*['"]([^'"]+)['"]
+    flags: gi
+    name_template: '{1|upper} {2}'
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: nest_decorator_classes
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: NestJS application class
+    pattern: >-
+      @(?:Injectable|Controller|Catch|Resolver|Module)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: ts_app_layer_suffix_classes
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Application layer class
+    pattern: >-
+      export\s+class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase|Interactor|Resolver|Gateway|Store|Indexer|Registry|Pipeline|Orchestrator))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: typeorm_entity_string
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: TypeORM/MikroORM entity
+    pattern: '@Entity\s*\(\s*[''"]([^''"]+)[''"]\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)'
+    flags: g
+    name_group: 2
+    alias_groups:
+      - 2
+      - 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: typeorm_entity_object_name
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: TypeORM/MikroORM entity
+    pattern: >-
+      @Entity\s*\(\s*\{[^}]*\b(?:name|tableName)\s*:\s*['"]([^'"]+)['"][^}]*\}\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 2
+    alias_groups:
+      - 2
+      - 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: typeorm_entity_bare
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: TypeORM/MikroORM entity
+    pattern: '@Entity\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: sequelize_define
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Sequelize model
+    pattern: \b(?:sequelize|Sequelize)\.define\s*\(\s*['"]([A-Za-z][A-Za-z0-9_]*)['"]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: sequelize_model_subclass
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Sequelize Model subclass
+    pattern: export\s+class\s+([A-Z][A-Za-z0-9_]*)\s+extends\s+Model\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: mongoose_model
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Mongoose model
+    pattern: \bmongoose\.model\s*\(\s*['"]([A-Za-z][A-Za-z0-9_]*)['"]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: drizzle_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Drizzle table
+    pattern: \b(?:pgTable|mysqlTable|sqliteTable)\s*\(\s*['"]([a-z][a-z0-9_]*)['"]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs
+  - id: prisma_schema_blocks
+    kind: model
+    gloss: Prisma schema atom
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: prisma_schema_blocks
+    files:
+      extensions:
+        - .prisma
+        - .ts
+        - .tsx
+        - .js
+        - .jsx
+        - .mjs
+        - .cjs

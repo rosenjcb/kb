@@ -18,5 +18,9 @@ export default defineConfig({
     globals: true,
     restoreMocks: true,
     clearMocks: true,
+    // Several retrieval/init tests legitimately run 5-8s and CI runners are
+    // shared: the 5s default made near-limit tests (e.g. TC-29 at ~4.9s local)
+    // flake on slow runs. Hangs still fail — just with a wider margin.
+    testTimeout: 20000,
   },
 })

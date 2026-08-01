@@ -1,0 +1,21 @@
+# HTML has no package/deploy entity ecosystem for this harvester.
+# Tree-sitter still indexes id attributes via code-index.
+
+id: html
+display_name: HTML
+status: not_applicable
+note: >
+  Standalone HTML is not a package ecosystem. App shells shipped via npm/Rails/etc.
+  are harvested by those language ecosystems. Static sites may still appear via
+  infra (compose/fly) when deployed.
+
+frameworks: {}
+kind_rules: []
+
+symbols:
+  status: not_applicable
+  note: Element id symbols stay in the tree-sitter code-index cycle.
+
+routes:
+  status: not_applicable
+  note: Markup links are not treated as service routes.

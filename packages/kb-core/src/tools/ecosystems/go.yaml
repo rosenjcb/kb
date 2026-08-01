@@ -1,0 +1,241 @@
+# Go ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a Go harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity candidate per go.mod (workspace members via
+# go.work `use`, or every go.mod found under the repo).
+# Does not emit: HTTP/gRPC routes or in-code symbols (see symbols/ / routes/).
+
+id: go
+display_name: Go
+status: implemented
+
+# Manifest atoms. Primary identity is go.mod; go.work enumerates members.
+package_manifests:
+  - path: go.mod
+    format: gomod
+    role: module # harvest atom — `module` path = canonical name
+  - path: go.work
+    format: gowork
+    role: workspace # `use` dirs → member go.mod roots; may be gitignored
+  - path: go.sum
+    format: gosum
+    role: lock # companion only; never an entity
+
+# Identity / gloss (no description field in go.mod):
+#   canonicalName ← module path (`module github.com/org/repo[/v2]`)
+#   aliases       ← last path segment; strip major-version suffix `/vN`
+#   gloss         ← package doc comment on `.` or `cmd/<name>`; else README
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+# Entries are go.mod `require` module paths (with major-version suffix where
+# current majors require it). Stdlib `net/http` is NOT listed here — match via
+# imports_stdlib in kind_rules / routes.planned_frameworks.
+frameworks:
+  server:
+    # HTTP routers / frameworks (frontier + still-common in existing repos)
+    - github.com/gin-gonic/gin
+    - github.com/labstack/echo/v4
+    - github.com/gofiber/fiber/v2
+    - github.com/go-chi/chi/v5
+    - github.com/go-chi/chi # pre-v5 import path still seen
+    - github.com/gorilla/mux # legacy-detect only; maintenance / not for new work
+  rpc:
+    # Separate from HTTP so gin+grpc → service, grpc-only → api
+    - google.golang.org/grpc
+    - connectrpc.com/connect
+  frontend:
+    # Rare in Go; HTML/component kits that imply a UI surface
+    - github.com/a-h/templ
+    - github.com/maragudk/gomponents
+  cli:
+    - github.com/spf13/cobra
+    - github.com/urfave/cli/v3
+    - github.com/urfave/cli/v2
+    - github.com/alecthomas/kong
+
+# Avoid listing as primary (do not add to frameworks.*):
+#   martini, revel, negroni, macaron, iris (dead / abandoned / contested)
+#   beego as default — still exists but not a frontier signal for kind
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals even if the Go harvester is not wired.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server # HTTP frameworks; wins over rpc→api
+  - kind: api
+    confidence: 0.85
+    match:
+      any_dependency_group: rpc
+      without_dependency_group: frontend
+  - kind: service
+    confidence: 0.7
+    match:
+      imports_stdlib: [net/http]
+      has_package_main: true
+      # go.dev/doc/modules/layout — servers often live under cmd/ + internal/
+      any_layout: [cmd, internal]
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.7
+    match:
+      has_cmd_dir: true
+      has_package_main: true
+      without_dependency_group: server
+  - kind: surface
+    confidence: 0.7
+    match:
+      any_dependency_group: frontend
+  - kind: library
+    confidence: 0.75
+    match:
+      has_exportable_packages: true # non-internal, non-main packages
+      without_package_main: true
+  - kind: library
+    confidence: 0.55
+    match:
+      has_go_mod: true
+      without_package_main: true
+  - kind: module
+    confidence: 0.4
+    match: {} # fallback — any go.mod with no stronger signal
+
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
+symbols:
+  status: partial
+  note: >
+    Best-effort: *Service/*Handler/*Controller/*Repository structs → module;
+    GORM Model / TableName → model kind. Other symbols stay in tree-sitter.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    gin/chi/echo/fiber verbs, Group("/v1") + member GET/POST join,
+    http.HandleFunc, Go 1.22 ServeMux Handle("GET /path"), chi
+    Mount/Route. gRPC stays contract-tier (proto).
+  planned_frameworks: []
+
+app_classes:
+  status: partial
+  note: '*Service/*Handler/*Controller/*Repository/*Usecase structs → module.'
+
+models:
+  status: partial
+  note: GORM Model / TableName and ent Fields() schemas → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: go_group_prefix_join
+    kind: api
+    gloss: Gin/chi Group join
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: router_group_prefix_join
+    join_style: go_group
+    files:
+      extensions:
+        - .go
+  - id: go_router_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Go router verb
+    pattern: >-
+      \b(?:r|router|mux|e|app)\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Handle|Get|Post|Put|Patch|Delete)\s*\(\s*"([^"]+)"
+    flags: g
+    name_template: '{1|http_verb} {2}'
+    files:
+      extensions:
+        - .go
+  - id: go_http_handle_func
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: http.HandleFunc
+    pattern: \bhttp\.HandleFunc\s*\(\s*"([^"]+)"
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .go
+  - id: go122_servemux_method
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Go 1.22 ServeMux
+    pattern: >-
+      \b(?:mux|http\.DefaultServeMux|\w+)\.(?:Handle|HandleFunc)\s*\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/[^"]*)"
+    flags: g
+    name_template: '{1} {2}'
+    files:
+      extensions:
+        - .go
+  - id: go_chi_mount_route
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: chi Mount/Route
+    pattern: \b(?:r|router)\.(?:Mount|Route)\s*\(\s*"(\/[^"]*)"
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .go
+  - id: go_app_structs
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Go application struct
+    pattern: \btype\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repository|Server|API|Usecase|UseCase))\s+struct\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .go
+  - id: gorm_model_struct
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: GORM model
+    pattern: \btype\s+([A-Z][A-Za-z0-9_]*)\s+struct\s*\{[^}]*\bgorm\.(?:Model|DeletedAt)\b
+    flags: gs
+    name_group: 1
+    files:
+      extensions:
+        - .go
+  - id: gorm_tablename_method
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: GORM TableName model
+    pattern: func\s+\(\s*[A-Za-z0-9_*]+\s+([A-Z][A-Za-z0-9_]*)\s*\)\s+TableName\s*\(
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .go
+  - id: ent_schema_fields
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: ent schema
+    pattern: func\s+\(([A-Z][A-Za-z0-9_]*)\)\s+Fields\s*\(\s*\)\s*\[\]ent\.Field
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .go

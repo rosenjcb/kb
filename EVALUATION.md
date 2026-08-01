@@ -98,6 +98,19 @@ pnpm run eval -- --all-suites --per-suite-server    # legacy: one kb-server per 
 | `pnpm run eval -- --suite generic --repo <git-url>` | Any repo (requires explicit `--repo`) |
 | `pnpm run eval -- --suites a,b,c` | Multi-suite batch; **parallel by default** |
 | `pnpm run eval -- --all-suites` | All 10 benchmark suites (parallel by default) |
+| `pnpm run eval:entities -- --suite kb` | Dump harvested ontology entities for `eval-kb` (no query) |
+| `pnpm run eval:entities -- --all-suites` | Entity totals / kind breakdown for every suite id |
+
+**Entity harvest report.** After index or scan, report what the entity-index cycle harvested — not only query scores. Read `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases`) with `scripts/eval-entities.mjs`:
+
+```bash
+pnpm run eval:entities -- --base eval-kb
+pnpm run eval:entities -- --suite raylib --samples 8
+pnpm run eval:entities -- --all-suites --json
+pnpm run eval:entities -- --list-suites
+```
+
+Output: entity total, alias count, counts by ontology kind, and optional sample canonical names. There is no `--skip-query` on `eval-run`; for harvest-only inspection, reindex with `scripts/eval-index.ts`, then run `eval:entities` (skip full query/control).
 
 **Before/after across binaries (`KB_EVAL_BIN`).** The harness defaults to this checkout's
 `dist/bin/kb.js`, but `KB_EVAL_BIN=/path/to/other/dist/bin/kb.js` points it at any other build.

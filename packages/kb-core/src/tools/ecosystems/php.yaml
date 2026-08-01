@@ -1,0 +1,260 @@
+# PHP / Composer ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a PHP harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity candidate per composer.json (root + path-repo
+# members / nested composer.json trees).
+# Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
+
+id: php
+display_name: PHP / Composer
+status: implemented
+
+# Manifest atoms. Primary identity is composer.json; lock is companion only.
+package_manifests:
+  - path: composer.json
+    format: composer_json
+    role: package # harvest atom — `name` = canonical (vendor/package)
+  - path: composer.lock
+    format: composer_lock
+    role: lock # pinned require graph; never an entity
+
+# Identity / gloss:
+#   canonicalName ← composer.json `name` (vendor/package)
+#   aliases       ← package segment after `/`; basename of containing dir
+#   gloss         ← `description`; else README
+#
+# Kind signals from the same file:
+#   `type` ∈ {library, project, …}  — library vs app skeleton
+#   `bin`                           — executable list → cli
+#   `require` / `require-dev`       — framework dependency groups
+#   root `artisan` file             — Laravel artisan CLI signal (not always in bin)
+
+# Composer has no first-class workspace table. Monorepos use path repositories
+# (`repositories[].type: path`) and/or nested composer.json trees. Path URLs
+# point at member package roots — treat those like workspace members.
+workspace:
+  sources:
+    - path: composer.json
+      repositories_key: repositories
+      path_repo_type: path # only type:path entries; ignore vcs/composer/artifact
+
+# Named dependency groups — Packagist names matched in require / require-dev.
+# `symfony/*` listed as concrete packages the loader can exact-match; research
+# note documents optional vendor-prefix matching for broader Symfony detect.
+frameworks:
+  server:
+    - laravel/framework
+    - laravel/lumen-framework
+    - slim/slim
+    - mezzio/mezzio
+    - codeigniter4/framework
+    - symfony/framework-bundle
+    - symfony/http-kernel
+    - symfony/http-foundation # weak/legacy detect when no fuller Symfony stack
+  frontend:
+    # UI surfaces commonly paired with Laravel (still useful as surface signal)
+    - livewire/livewire
+    - inertiajs/inertia-laravel
+  cli:
+    - symfony/console
+
+# First matching rule wins. Confidence drops when the signal is weak.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.65
+    match:
+      composer_type: project
+      without_bin: true
+  - kind: cli
+    confidence: 0.85
+    match:
+      has_bin: true # composer.json `bin` array
+  - kind: cli
+    confidence: 0.8
+    match:
+      has_artisan: true # root `artisan` PHP script (Laravel)
+  - kind: cli
+    confidence: 0.7
+    match:
+      any_dependency_group: cli
+      without_dependency_group: server
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: frontend
+  - kind: library
+    confidence: 0.8
+    match:
+      composer_type: library
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback — any composer.json with no stronger signal
+
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
+symbols:
+  status: partial
+  note: >
+    Best-effort: *Controller/*Service classes → module; Eloquent Model /
+    Doctrine ORM\\Entity → model kind. Other symbols stay in tree-sitter.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Best-effort Laravel Route::get/post/…/resource, Symfony #[Route]/@Route
+    and config/routes*.yaml `path:` entries, plus Slim $app->get/map.
+    Confidence ~0.5; capped.
+  planned_frameworks:
+    - laravel # routes/web.php, routes/api.php, routes/*.php
+    - symfony # attribute + YAML
+    - slim/slim
+
+app_classes:
+  status: partial
+  note: '*Controller/*Service/*Handler/*Repository classes → module.'
+
+models:
+  status: partial
+  note: Eloquent Model / Doctrine ORM Entity → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: laravel_route_facade
+    kind: api
+    gloss: Laravel Route facade
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: rails_resources_crud
+    join_style: laravel
+    files:
+      extensions:
+        - .php
+  - id: symfony_route_attr
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Symfony Route attribute
+    pattern: '#\[Route\s*\(\s*[''"]([^''"]+)[''"]'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .php
+  - id: symfony_route_annotation
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Symfony Route annotation
+    pattern: '@Route\s*\(\s*[''"]([^''"]+)[''"]'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .php
+  - id: slim_verb_methods
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Slim route
+    pattern: \$\w+->(get|post|put|patch|delete|options|any)\s*\(\s*['"]([^'"]+)['"]
+    flags: gi
+    name_template: '{1|slim_verb} {2}'
+    files:
+      extensions:
+        - .php
+  - id: slim_map_methods
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Slim map
+    pattern: \$\w+->map\s*\(\s*\[([^\]]+)\]\s*,\s*['"]([^'"]+)['"]
+    flags: g
+    name_template: '{map_verbs} {2}'
+    map_verbs_group: 1
+    path_group: 2
+    files:
+      extensions:
+        - .php
+  - id: symfony_yaml_routes
+    kind: api
+    gloss: Symfony YAML route
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: symfony_yaml_routes
+    files:
+      extensions:
+        - .yaml
+        - .yml
+  - id: php_app_suffix
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: PHP application class
+    pattern: \bclass\s+([A-Z][A-Za-z0-9_]*(?:Controller|Service|Handler|Repository|Action|Job))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .php
+  - id: eloquent_model
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Eloquent model
+    pattern: \bclass\s+([A-Z][A-Za-z0-9_]*)\s+extends\s+(?:Model|Authenticatable)\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .php
+  - id: doctrine_entity_class
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Doctrine entity
+    pattern: (?:#\[ORM\\Entity\b|@ORM\\Entity\b)[\s\S]{0,400}?\bclass\s+([A-Z][A-Za-z0-9_]*)\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .php
+  - id: doctrine_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Doctrine table
+    pattern: '#\[ORM\\Table\s*\(\s*name:\s*[''"]([^''"]+)[''"]'
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .php
+  - id: eloquent_table_prop
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Eloquent $table
+    pattern: protected\s+\$table\s*=\s*['"]([^'"]+)['"]
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .php

@@ -1,5 +1,13 @@
 # @kb/client
 
+## 1.3.21
+
+### Patch Changes
+
+- Organizational Ontology Index (issue #167): entity registry + harvest cycle across ecosystems (TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra, OpenAPI/protobuf, tier-4 routes and app-layer `module`/`model` capture). Exhaustive Prisma schema harvest (`model`/`enum`/`view`/composite `type` + block-level `@@map` aliases; skip generator/datasource/field `@map`/client call-sites) and TypeORM `@Entity({ name|tableName })`. Capture-first denser ontology for later query use — inspect with `kb entities`.
+- Updated dependencies
+  - @kb/core@1.6.0
+
 ## 1.3.20
 
 ### Patch Changes

@@ -1,0 +1,78 @@
+# Language-agnostic deploy/infra harvester coverage.
+# Runs for every repo alongside per-language ecosystem YAMLs.
+
+id: infra
+display_name: Deploy / infra manifests
+status: implemented
+
+compose:
+  files:
+    - docker-compose.yml
+    - docker-compose.yaml
+    - compose.yaml
+  services_key: services
+  kind: service
+  confidence: 0.85
+
+fly:
+  file: fly.toml
+  # Captures `app = "name"` (TOML string form used by Fly).
+  app_pattern: '^app\s*=\s*["'']([^"'']+)["'']'
+  kind: service
+  confidence: 0.85
+
+backstage:
+  file: catalog-info.yaml
+  kind_map:
+    API: api
+    Domain: domain
+    default: service
+  confidence: 0.95
+  # Edge: component → spec.domain or spec.system
+  belongs_to_keys: [domain, system]
+
+kubernetes:
+  dirs:
+    - k8s
+    - deploy
+    - manifests
+    - kubernetes
+  # Also any *.yaml/*.yml under the scan root (skip node_modules/.git/…).
+  kinds:
+    - Deployment
+    - Service
+    - StatefulSet
+    - DaemonSet
+    - Ingress
+  # Ingress → api; other listed kinds → service.
+  kind_map:
+    Ingress: api
+    default: service
+  confidence: 0.85
+  # Skip Helm-templated manifests (contain `{{`).
+  skip_template_marker: '{{'
+
+helm:
+  file: Chart.yaml
+  name_key: name
+  kind: service
+  confidence: 0.85
+
+procfile:
+  file: Procfile
+  # Process type names (web, worker, …) become aliases of the repo basename.
+  kind: service
+  confidence: 0.7
+
+# Declared for future inference — not harvested yet.
+planned:
+  terraform:
+    note: Low signal for app entities — module names only if clearly app-scoped.
+
+symbols:
+  status: not_applicable
+  note: Infra manifests declare deployable names, not code symbols.
+
+routes:
+  status: not_applicable
+  note: No route extraction from compose/fly/Backstage/k8s/Helm/Procfile.

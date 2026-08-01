@@ -1,0 +1,276 @@
+# C# / .NET ecosystem harvester coverage (reviewable scope).
+# Inference: harvestCsharpEcosystem in ecosystem-harvesters.ts.
+#
+# Emits: one entity candidate per *.csproj / *.fsproj (solution
+# members via .sln, or every project file under the repo).
+# Does not emit: HTTP routes, controllers, or in-code symbols (see symbols/ / routes/).
+#
+# Research: ./research/csharp.md
+
+id: csharp
+display_name: C# / .NET
+status: implemented
+
+# Manifest atoms. Project files are the harvest unit; .sln enumerates members;
+# Directory.Build.props merges shared MSBuild properties (not an entity).
+package_manifests:
+  - path: "*.csproj"
+    format: csproj
+    role: package # harvest atom — AssemblyName / PackageId / filename stem
+  - path: "*.fsproj"
+    format: fsproj
+    role: package # F# — same MSBuild + PackageReference shape as csproj
+  - path: "*.sln"
+    format: sln
+    role: workspace # Project("{…}") = "Name" → "path.csproj" lines
+  - path: "*.slnx"
+    format: slnx
+    role: workspace # .NET 9+ XML solution — same role as .sln when present
+  - path: Directory.Build.props
+    format: msbuild_props
+    role: shared_props # imported by projects; never a solo entity
+  - path: Directory.Build.targets
+    format: msbuild_targets
+    role: shared_props # late imports; same non-entity role
+  - path: Directory.Packages.props
+    format: msbuild_props
+    role: central_versions # CPM Version overrides; PackageReference still on project
+
+# Dependency / framework signals come from MSBuild items and attributes:
+#   PackageReference Include="…"
+#   FrameworkReference Include="Microsoft.AspNetCore.App"
+#   Project Sdk="Microsoft.NET.Sdk.Web" | .Worker | .Maui | .BlazorWebAssembly | .Razor
+#   PropertyGroup: OutputType, UseWPF, UseWindowsForms, UseMaui, UsingMicrosoftNETSdkWeb
+#
+# Identity / gloss (no description field in csproj by default):
+#   canonicalName ← AssemblyName | PackageId | project file stem
+#   aliases       ← RootNamespace, product name, sln project title
+#   gloss         ← README near project / solution; else none
+
+# Named dependency groups — referenced by kind_rules.match.any_dependency_group.
+# Entries are NuGet package IDs (PackageReference Include=) or FrameworkReference IDs.
+# ASP.NET Core apps using Sdk.Web often have NO PackageReference for the shared
+# framework — match via sdk / use_aspnetcore instead (see kind_rules).
+frameworks:
+  server:
+    # Shared-framework / hosting (also detected via Sdk.Web — see kind_rules)
+    - Microsoft.AspNetCore.App # FrameworkReference
+    - Microsoft.AspNetCore # legacy / trimmed package refs
+    - Microsoft.Extensions.Hosting # Worker / generic host (weak alone)
+    # gRPC on ASP.NET Core
+    - Grpc.AspNetCore
+    - Grpc.AspNetCore.Server
+    # Orleans silo / server
+    - Microsoft.Orleans.Server
+    - Microsoft.Orleans.Sdk
+    # Minimal APIs are ASP.NET Core — no separate package ID
+  frontend:
+    # Blazor (server + WASM components)
+    - Microsoft.AspNetCore.Components.Web
+    - Microsoft.AspNetCore.Components.WebAssembly
+    - Microsoft.AspNetCore.Components.WebAssembly.Server
+    # MAUI
+    - Microsoft.Maui
+    - Microsoft.Maui.Controls
+    # Desktop (also UseWPF / UseWindowsForms properties — see kind_rules)
+    - Microsoft.WindowsDesktop.App # FrameworkReference when present
+  cli:
+    - System.CommandLine
+    - Spectre.Console
+    - Spectre.Console.Cli
+
+# Sdk attribute values that imply kind without a PackageReference.
+sdks:
+  service:
+    - Microsoft.NET.Sdk.Web
+    - Microsoft.NET.Sdk.Worker
+  surface:
+    - Microsoft.NET.Sdk.BlazorWebAssembly
+    - Microsoft.NET.Sdk.Maui
+  # Microsoft.NET.Sdk / Microsoft.NET.Sdk.Razor — kind from OutputType + deps
+
+# Avoid listing as primary (do not add to frameworks.*):
+#   Nancy, OWIN/Katana-only stacks, ServiceStack (niche) as default kind signals
+#   packages.config-era ASP.NET System.Web (Framework, not Core) — out of scope
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals even if the .NET harvester is not wired.
+kind_rules:
+  - kind: service
+    confidence: 0.95
+    match:
+      any_sdk: [Microsoft.NET.Sdk.Web]
+  - kind: service
+    confidence: 0.9
+    match:
+      use_aspnetcore: true # FrameworkReference Microsoft.AspNetCore.App / UsingMicrosoftNETSdkWeb
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.85
+    match:
+      any_sdk: [Microsoft.NET.Sdk.Worker]
+  - kind: surface
+    confidence: 0.9
+    match:
+      any_sdk: [Microsoft.NET.Sdk.BlazorWebAssembly, Microsoft.NET.Sdk.Maui]
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_dependency_group: frontend
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_msbuild_property_true: [UseWPF, UseWindowsForms, UseMaui]
+  - kind: cli
+    confidence: 0.85
+    match:
+      any_dependency_group: cli
+  - kind: cli
+    confidence: 0.7
+    match:
+      output_type: Exe
+      without_dependency_group: server
+      without_sdk: [Microsoft.NET.Sdk.Web, Microsoft.NET.Sdk.Worker]
+  - kind: surface
+    confidence: 0.7
+    match:
+      output_type: WinExe # WPF / WinForms / desktop default
+  - kind: library
+    confidence: 0.8
+    match:
+      output_type: Library
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
+symbols:
+  status: partial
+  note: >
+    Best-effort: *Service/*Controller classes and [ApiController] → module;
+    EF Core [Table]/DbSet<> → model kind. F# (.fs) out of band.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Best-effort regex for [Route]/[HttpGet]/Minimal API MapGet/MapPost/….
+    Confidence ~0.5; capped. Never load-bearing for entity identity.
+  planned_frameworks:
+    - aspnetcore-minimal # MapGet / MapPost / MapPut / MapDelete / MapMethods / MapGroup
+    - aspnetcore-controllers # [Route] / [HttpGet] / MapControllers
+
+app_classes:
+  status: partial
+  note: '[ApiController] / *Service/*Controller classes → module.'
+
+models:
+  status: partial
+  note: EF Core [Table] / DbSet<> → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: aspnet_route_attr
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Route
+    pattern: \[Route\s*\(\s*"([^"]+)"\s*\)\]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_http_verb_attr
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Http* attribute
+    pattern: \[Http(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*"([^"]+)"\s*\)\]
+    flags: g
+    name_template: '{1|upper} {2}'
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_map_verbs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: ASP.NET Map*
+    pattern: \.Map(Get|Post|Put|Patch|Delete|Methods|Group)\s*\(\s*"([^"]+)"
+    flags: g
+    name_template: '{1|map_verb} {2}'
+    files:
+      extensions:
+        - .cs
+  - id: aspnet_controller_class
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: ASP.NET controller
+    pattern: (?:\[ApiController\]|\[Route\b)[\s\S]{0,200}?class\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: dotnet_app_suffix
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: .NET application class
+    pattern: \b(?:class|record)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_table_attr
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core entity
+    pattern: \[Table\s*\(\s*"([^"]+)"\s*\)\][\s\S]{0,120}?(?:class|record)\s+([A-Z][A-Za-z0-9_]*)
+    flags: g
+    name_group: 2
+    alias_groups:
+      - 2
+      - 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_dbset
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core DbSet
+    pattern: \bDbSet<\s*([A-Z][A-Za-z0-9_]*)\s*>
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .cs
+  - id: ef_totable
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: EF Core ToTable
+    pattern: \.ToTable\s*\(\s*"([^"]+)"\s*\)
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .cs

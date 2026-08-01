@@ -31,6 +31,19 @@ export async function copyCliRuntimeAssets(projectRoot, binDir) {
       }
     }
   }
+
+  // Ecosystem harvester YAML (one file per language/infra tier). Bundled binaries
+  // resolve these next to dist/bin via ecosystem-config.ts import.meta.url.
+  const ecosystemsSrc = path.join(projectRoot, 'packages', 'kb-core', 'src', 'tools', 'ecosystems')
+  if (existsSync(ecosystemsSrc)) {
+    const ecosystemsDest = path.join(binDir, 'ecosystems')
+    await mkdir(ecosystemsDest, { recursive: true })
+    for (const file of await readdir(ecosystemsSrc)) {
+      if (file.endsWith('.yaml') || file.endsWith('.yml')) {
+        await copyFile(path.join(ecosystemsSrc, file), path.join(ecosystemsDest, file))
+      }
+    }
+  }
 }
 
 /** Bash launcher: pinned Node major, NODE_PATH for @kb/core native deps. */

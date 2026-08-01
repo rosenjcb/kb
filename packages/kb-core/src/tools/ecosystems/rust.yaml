@@ -1,0 +1,231 @@
+# Rust ecosystem harvester coverage (reviewable scope).
+# Inference not wired yet — status: planned. Do not load from TypeScript until
+# a Rust harvester entry exists in ecosystem-harvesters.ts.
+#
+# Emits (intended): one entity candidate per Cargo package (workspace members
+# via [workspace].members, or the root [package] when solo).
+# Does not emit: HTTP/gRPC routes or in-code symbols (see symbols/ / routes/).
+# Edges (intended): workspace member → workspace root via part_of.
+
+id: rust
+display_name: Rust
+status: implemented
+
+# Manifest atoms. Primary identity is Cargo.toml [package].name.
+package_manifests:
+  - path: Cargo.toml
+    format: cargo_toml
+    role: package # harvest atom when [package] present
+  - path: Cargo.toml
+    format: cargo_toml
+    role: workspace # same file may be virtual workspace root ([workspace] only)
+  - path: Cargo.lock
+    format: cargo_lock
+    role: lock # companion only; never an entity
+
+# Identity / gloss:
+#   canonicalName ← [package].name (crates.io form; hyphens)
+#   aliases       ← package name; underscore form; [[bin]].name; path basename
+#   gloss         ← [package].description; else README / crate-level //! docs
+
+workspace:
+  # Globs in members: exact paths and `dir/*` (Cargo also allows deeper globs).
+  # Negations / exclude handled separately. Virtual root has no [package].
+  sources:
+    - path: Cargo.toml
+      members_key: workspace.members
+      exclude_key: workspace.exclude
+      default_members_key: workspace.default-members
+  # part_of: each member package → workspace root identity
+  #   root with [package] → that package name
+  #   virtual workspace → directory basename (or workspace.package.name if set)
+
+# Named dependency groups — crates.io names as they appear in [dependencies]
+# (and [workspace.dependencies] inherited via `{ workspace = true }`).
+# Match against direct deps only; ignore transitive (hyper is often transitive
+# of axum — still list for crates that depend on hyper directly).
+frameworks:
+  server:
+    - axum
+    - actix-web
+    - rocket
+    - warp
+    - tonic # gRPC; see kind_rules api row
+    - hyper # low-level HTTP; weak alone
+    - poem
+  frontend:
+    # WASM / reactive UI + immediate-mode desktop
+    - leptos
+    - yew
+    - dioxus
+    - egui
+  cli:
+    - clap # dominant (structopt merged into clap 3+)
+    - argh
+    - structopt # legacy — detect only
+
+# Avoid as primary (do not add): iron, nickel, gotham (abandoned / niche);
+# iced as default surface (desktop GUI exists but rare as “app surface” signal).
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended signals for the future Rust harvester.
+#
+# Target discovery (Cargo Book — cargo-targets):
+#   has_lib_target  ← [lib] present OR src/lib.rs (unless autolib = false)
+#   has_bin_target  ← [[bin]] present OR src/main.rs OR src/bin/*.rs
+#                     (unless autobins = false)
+# A package may have both lib + bin; server/cli deps still win over targets.
+kind_rules:
+  # gRPC-first → api (before broad server→service so tonic lands as api)
+  - kind: api
+    confidence: 0.85
+    match:
+      any_dependency: [tonic]
+      without_dependency_group: frontend
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: frontend
+  - kind: cli
+    confidence: 0.85
+    match:
+      has_bin_target: true
+      without_dependency_group: server
+  - kind: cli
+    confidence: 0.8
+    match:
+      any_dependency_group: cli
+  - kind: library
+    confidence: 0.8
+    match:
+      has_lib_target: true
+      without_bin_target: true
+  - kind: library
+    confidence: 0.55
+    match:
+      has_lib_target: true # lib+bin with no stronger dep signal
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+# Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
+symbols:
+  status: partial
+  note: >
+    Best-effort: *Service/*Handler structs → module; SeaORM EntityModel /
+    Diesel table! → model kind. Other symbols stay in tree-sitter.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Best-effort axum .route("/…", get|post|…) and actix/rocket
+    #[get]/#[post] macros. Confidence ~0.5; capped. Prefer axum Router::route /
+    method routers and actix-web #[get]/#[post]/web::resource macros; Rocket route
+    attributes similar. tonic service methods are contract-tier (proto), not
+    HTTP route strings.
+  planned_frameworks:
+    - axum
+    - actix-web
+    - rocket
+
+app_classes:
+  status: partial
+  note: '*Service/*Handler/*Controller/*Repository structs → module.'
+
+models:
+  status: partial
+  note: SeaORM EntityModel / Diesel table! → model.
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: rocket_verb_attrs
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Rocket route
+    pattern: '#\[(?:get|post|put|patch|delete|head|options)\s*\(\s*"([^"]+)"'
+    flags: gi
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: axum_route
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Axum route
+    pattern: \.route\s*\(\s*"([^"]+)"\s*,\s*(?:get|post|put|patch|delete|any)\b
+    flags: gi
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: actix_resource
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Actix resource
+    pattern: web::resource\s*\(\s*"([^"]+)"\s*\)
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: rust_app_structs
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Rust application struct
+    pattern: \bstruct\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repo|Repository|UseCase))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: seaorm_entity
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: SeaORM entity
+    pattern: '#\[derive\([^\]]*EntityModel[^\]]*\)\][\s\S]{0,80}?struct\s+([A-Z][A-Za-z0-9_]*)'
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: diesel_table
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Diesel table
+    pattern: \btable!\s*\{\s*([a-z][a-z0-9_]*)\s*\(
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .rs
+  - id: seaorm_table_name
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: SeaORM table_name
+    pattern: '#\[sea_orm\(table_name\s*=\s*"([^"]+)"\)\]'
+    flags: g
+    name_group: 1
+    alias_groups:
+      - 1
+    files:
+      extensions:
+        - .rs

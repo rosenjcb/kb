@@ -104,6 +104,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     'Core commands:',
     '  base        Manage KB bases (use, delete)',
     '  graph       Inspect or edit the knowledge graph',
+    '  entities    Inspect harvested entities (services, surfaces) and name collisions',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
     '  publish     Publish KB docs',

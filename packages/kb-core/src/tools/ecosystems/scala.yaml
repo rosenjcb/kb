@@ -1,0 +1,233 @@
+# Scala ecosystem harvester coverage.
+# Inference: harvestScalaEcosystem in ecosystem-harvesters.ts (build.sbt name :=).
+#
+# Emits: one entity per sbt/Mill/Maven/Gradle Scala module (sbt wired first).
+# Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
+
+id: scala
+display_name: Scala
+status: implemented
+
+# Primary → secondary. Prefer sbt/Mill when present; Maven/Gradle only when
+# the module is clearly Scala (scala-maven-plugin / scala plugin + .scala src).
+package_manifests:
+  - path: build.sbt
+    format: sbt
+    role: primary
+    identity: name / organization settings; lazy val Project keys
+  - path: project/build.properties
+    format: properties
+    role: meta
+    note: sbt version pin; not an entity by itself
+  - path: project/plugins.sbt
+    format: sbt
+    role: meta
+    note: EnablePlugins signals (PlayScala, ScalaJSPlugin, etc.)
+  - path: project/*.scala
+    format: scala
+    role: meta
+    note: Common Dependencies.scala / CommonSettings.scala for libraryDependencies
+  - path: build.sc
+    format: mill
+    role: primary
+    identity: object names extending ScalaModule / ScalaJSModule
+  - path: build.mill
+    format: mill
+    role: primary
+    note: Newer Mill preferred filename; same role as build.sc
+  - path: package.mill
+    format: mill
+    role: member
+    note: Per-folder Mill module config in multi-file builds
+  - path: WORKSPACE
+    format: bazel
+    role: rare
+    note: rules_scala / scala_library — only when .scala targets dominate
+  - path: BUILD
+    format: bazel
+    role: rare
+  - path: pom.xml
+    format: maven
+    role: secondary
+    when: scala-maven-plugin or similar + src/main/scala
+  - path: build.gradle
+    format: gradle
+    role: secondary
+    when: scala plugin / scala-* deps + Scala sources
+  - path: build.gradle.kts
+    format: gradle
+    role: secondary
+    when: same as build.gradle
+
+workspace:
+  sources:
+    - path: build.sbt
+      members: lazy_val_project # lazy val foo = (project in file("foo"))
+      aggregate: .aggregate / .dependsOn
+    - path: build.sc
+      members: object_scala_module # object foo extends ScalaModule
+      nest: nested objects → part_of parent module
+    - path: build.mill
+      members: object_scala_module
+    - path: settings.gradle
+      members: include # only when paired with Scala Gradle modules
+      note: Prefer java.yaml when the build is Java-first; dual-claim OK
+
+# Named dependency / plugin groups — referenced by kind_rules.match.
+# Strings are recognizable sbt/Maven artifact or plugin tokens (%% stripped).
+frameworks:
+  server:
+    - play # org.playframework / com.typesafe.play; EnablePlugins(PlayScala)
+    - akka-http # com.typesafe.akka %% akka-http (BSL-era Akka)
+    - pekko-http # org.apache.pekko %% pekko-http (OSS Akka fork — prefer for new OSS)
+    - http4s-core # org.http4s %% http4s-*
+    - http4s-ember-server
+    - http4s-blaze-server # older http4s server backend
+    - zio-http # dev.zio %% zio-http
+    - tapir-core # com.softwaremill.sttp.tapir %% tapir-* (endpoint DSL; often + http4s/zio)
+    - tapir-http4s-server
+    - finatra-http # com.twitter %% finatra-http — legacy/niche (see research)
+  cli:
+    - decline # com.monovore %% decline
+    - scopt # com.github.scopt %% scopt
+    - case-app # com.github.alexarchambault %% case-app
+  surface:
+    - scalajs-library # org.scala-js; EnablePlugins(ScalaJSPlugin) / ScalaJSModule
+    - laminar # com.raquo %%% laminar — primary Scala.js UI signal
+    # slinky / scalajs-react / tyrian exist; Laminar is the strongest modern signal
+
+# First matching rule wins. Confidence drops when the signal is weak.
+# Match keys document intended inference — not wired until status → implemented.
+kind_rules:
+  - kind: service
+    confidence: 0.9
+    match:
+      any_dependency_group: server
+  - kind: service
+    confidence: 0.9
+    match:
+      any_enable_plugin: [PlayScala, PlayJava]
+  - kind: service
+    confidence: 0.7
+    match:
+      has_conf_routes: true # Play conf/routes present
+  - kind: surface
+    confidence: 0.85
+    match:
+      any_enable_plugin: [ScalaJSPlugin]
+  - kind: surface
+    confidence: 0.8
+    match:
+      mill_extends: [ScalaJSModule]
+  - kind: surface
+    confidence: 0.75
+    match:
+      any_dependency_group: surface
+  - kind: cli
+    confidence: 0.8
+    match:
+      any_dependency_group: cli
+      has_main_class: true
+  - kind: cli
+    confidence: 0.65
+    match:
+      any_dependency_group: cli
+  - kind: service
+    confidence: 0.55
+    match:
+      has_main_class: true
+      without_cli_deps: true
+      note: Runnable JVM main without server/cli libs — weak; often a tool or demo
+  - kind: library
+    confidence: 0.75
+    match:
+      publishable: true # sbt publish / Mill publish; no mainClass
+  - kind: library
+    confidence: 0.4
+    match: {} # fallback
+
+symbols:
+  status: partial
+  note: >
+    Best-effort: *Service/*Controller classes → module; Entity-deriving
+    case classes → model kind. Other symbols stay in tree-sitter.
+  planned: []
+
+routes:
+  status: partial
+  note: >
+    Best-effort Play conf/routes verb+path lines and http4s HttpRoutes
+    path literals. Confidence ~0.5; capped. Tapir endpoint DSLs still open.
+  planned_frameworks:
+    - tapir
+
+app_classes:
+  status: partial
+  note: '*Service/*Controller/*Handler/*Repository classes → module.'
+
+models:
+  status: partial
+  note: Entity-deriving case classes → model (best-effort).
+
+# Executable tier-4 harvest rules (pattern-engine). Status/note above are summaries.
+source_patterns:
+  - id: http4s_router_paths
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: http4s route
+    pattern: \b(?:HttpRoutes\.of|Router)\([^)]*["'](\/[^"']+)["']
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: tapir_in_segment
+    kind: api
+    confidence: 0.5
+    filter: plausible_http_route
+    strategy: regex
+    gloss: Tapir .in segment
+    pattern: \.in\s*\(\s*"([A-Za-z0-9_-]+)"\s*\)
+    flags: g
+    name_template: /{1}
+    files:
+      extensions:
+        - .scala
+  - id: scala_app_types
+    kind: module
+    confidence: 0.55
+    filter: plausible_type_name
+    strategy: regex
+    gloss: Scala application type
+    pattern: \b(?:class|object)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|Dao|DAO))\b
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: scala_entity
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Scala entity
+    pattern: \b(?:class|case class)\s+([A-Z][A-Za-z0-9_]*)\s*\([^\)]*\)\s*(?:extends|derives).*Entity
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
+  - id: slick_table_query
+    kind: model
+    confidence: 0.55
+    filter: plausible_model_name
+    strategy: regex
+    gloss: Slick TableQuery
+    pattern: TableQuery\[\s*([A-Z][A-Za-z0-9_]*)\s*\]
+    flags: g
+    name_group: 1
+    files:
+      extensions:
+        - .scala
