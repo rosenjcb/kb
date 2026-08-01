@@ -4,9 +4,9 @@
 
 ### Patch Changes
 
-- Organizational Ontology Index, indexing only (issue #167): entity registry tables (entities, aliases, edges, fact links), deterministic ecosystem harvesters (TS workspaces, compose, fly.toml, Backstage catalog) wired into init/scan as an `entity-index` cycle with a `KB_ENTITY_INDEX=false` kill switch, deterministic name-collision detection, and a `kb entities` CLI (list, show, collisions). Retrieval is unchanged — nothing in the query path reads these tables yet.
-- Move ecosystem harvester coverage (frameworks, kind rubric, infra manifests, declared symbol/route gaps) into reviewable per-ecosystem YAML under tools/ecosystems/.
-- Expand ecosystem YAML coverage to every tree-sitter language (go/python/rust/ruby/java/csharp/php/scala/haskell/cpp + css/html/bash N/A) and wire Go/Python/Rust/PHP harvest inference alongside TypeScript + infra.
+- Organizational Ontology Index (issue #167): entity registry + harvest cycle. Ecosystem harvesters cover TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra (compose/fly/Backstage/k8s/Helm/Procfile), OpenAPI/protobuf contracts, tier-4 routes across those ecosystems (Nest/Express/FastAPI/Flask/Django/Go/Spring/JAX-RS/Ktor/Next.js/Rails/ASP.NET/Laravel/axum/Play/Servant/Crow), and tier-4 app-layer capture (`module` service/controller classes + `model` ORM/SQL tables) with path/name filters. **Capture-first** denser ontology for later query consumption — registry inspectable via `kb entities`.
+- Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
+- Expand ecosystem YAML + inference to every tree-sitter language; wire remaining package ecosystems and tier-3/4 harvest.
 
 ## 1.5.11
 

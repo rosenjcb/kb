@@ -1,19 +1,16 @@
 /**
  * Organizational Ontology Index — entity registry store.
  *
- * Canonical named things (services, surfaces, domains, repos, …) with aliases,
+ * Canonical named things (services, surfaces, domains, repos, models, …) with aliases,
  * typed edges, and fact↔entity links, per NOMENCLATURE_INDEX_PLAN.md §3.
  *
- * This is an **indexing-only** layer today: it records what things are called
- * and how they nest, and `entity_links` partitions the fact pool by entity.
- * Nothing in the query path reads it yet — consuming these signals during
- * retrieval (scope inference, partition rule-out) is deliberately a separate
- * change, because how a scope verdict should affect results is a policy
- * decision with real blast radius.
+ * The registry partitions the fact pool via `entity_links` so query-time scope
+ * inference (`src/query/scope-inference.ts`) can land in the right partition
+ * and rule out provably-wrong ones (`KB_ENTITY_SCOPE=false` kills the gate).
  *
  * Alias matching is exact/longest-match over normalized text — never fuzzy —
- * because entity resolution must be higher-precision than any fuzzy retrieval
- * channel that eventually consumes it.
+ * because entity resolution must be higher-precision than the fuzzy retrieval
+ * channels it disambiguates.
  */
 
 import { createHash } from 'node:crypto'
@@ -30,13 +27,10 @@ export type EntityKind =
   | 'api'
   | 'library'
   | 'cli'
+  /** ORM model / table / schema atom (not a deployable service). */
+  | 'model'
 
-export type EntityEdgeType =
-  | 'belongs_to'
-  | 'owned_by'
-  | 'part_of'
-  | 'depends_on'
-  | 'distinct_from'
+export type EntityEdgeType = 'belongs_to' | 'owned_by' | 'part_of' | 'depends_on' | 'distinct_from'
 
 export interface EntityRow {
   id: string
@@ -194,7 +188,12 @@ export class EntityRegistry {
       .run(fromEntityId, toEntityId, edgeType, gloss ?? null, weight, nowIso())
   }
 
-  linkFact(factId: string, entityId: string, role: 'subject' | 'object' | 'mention', confidence = 0.8): void {
+  linkFact(
+    factId: string,
+    entityId: string,
+    role: 'subject' | 'object' | 'mention',
+    confidence = 0.8
+  ): void {
     this.db
       .prepare(
         `INSERT INTO entity_links (fact_id, entity_id, role, confidence) VALUES (?, ?, ?, ?)

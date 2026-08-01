@@ -114,21 +114,29 @@ kind_rules:
 
 # Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols (pub fn/struct/trait/mod) stay in the tree-sitter code-index
-    cycle (.rs). This harvester does not promote symbols to entity candidates.
+    Best-effort: *Service/*Handler structs → module; SeaORM EntityModel /
+    Diesel table! → model kind. Other symbols stay in tree-sitter.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional AST enrichment for route registration is planned (tier-4); missing
-    parsers only lose endpoint granularity. Prefer axum Router::route / method
-    routers and actix-web #[get]/#[post]/web::resource macros; Rocket route
+    Best-effort axum .route("/…", get|post|…) and actix/rocket
+    #[get]/#[post] macros. Confidence ~0.5; capped. Prefer axum Router::route /
+    method routers and actix-web #[get]/#[post]/web::resource macros; Rocket route
     attributes similar. tonic service methods are contract-tier (proto), not
     HTTP route strings.
   planned_frameworks:
     - axum
     - actix-web
     - rocket
+
+app_classes:
+  status: partial
+  note: '*Service/*Handler/*Controller/*Repository structs → module.'
+
+models:
+  status: partial
+  note: SeaORM EntityModel / Diesel table! → model.

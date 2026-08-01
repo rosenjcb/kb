@@ -107,23 +107,25 @@ kind_rules:
 
 # Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols (funcs, types, methods) stay in the tree-sitter code-index
-    cycle. This harvester does not promote symbols to entity candidates.
+    Best-effort: *Service/*Handler/*Controller/*Repository structs → module;
+    GORM Model / TableName → model kind. Other symbols stay in tree-sitter.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional AST enrichment for route registration is planned; frameworks we
-    cannot parse simply lose endpoint granularity. Prefer chi/gin patterns
-    (r.Get/POST, router.Handle) and Go 1.22+ ServeMux method+path patterns;
-    Fiber/Echo similar. gRPC/Connect service methods are contract-tier (proto),
-    not HTTP route strings.
+    Best-effort regex for gin/chi/echo/fiber-style r.GET/POST and
+    http.HandleFunc("/path"). Confidence ~0.5; capped. Go 1.22+ ServeMux
+    method+path still open. gRPC/Connect stay contract-tier (proto).
   planned_frameworks:
-    - github.com/go-chi/chi/v5
-    - github.com/gin-gonic/gin
-    - github.com/labstack/echo/v4
-    - github.com/gofiber/fiber/v2
     - net/http # ServeMux Go 1.22+ patterns
+
+app_classes:
+  status: partial
+  note: '*Service/*Handler/*Controller/*Repository structs → module.'
+
+models:
+  status: partial
+  note: GORM Model / TableName methods → model.

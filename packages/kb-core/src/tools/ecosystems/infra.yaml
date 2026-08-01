@@ -31,17 +31,41 @@ backstage:
   # Edge: component → spec.domain or spec.system
   belongs_to_keys: [domain, system]
 
+kubernetes:
+  dirs:
+    - k8s
+    - deploy
+    - manifests
+    - kubernetes
+  # Also any *.yaml/*.yml under the scan root (skip node_modules/.git/…).
+  kinds:
+    - Deployment
+    - Service
+    - StatefulSet
+    - DaemonSet
+    - Ingress
+  # Ingress → api; other listed kinds → service.
+  kind_map:
+    Ingress: api
+    default: service
+  confidence: 0.85
+  # Skip Helm-templated manifests (contain `{{`).
+  skip_template_marker: '{{'
+
+helm:
+  file: Chart.yaml
+  name_key: name
+  kind: service
+  confidence: 0.85
+
+procfile:
+  file: Procfile
+  # Process type names (web, worker, …) become aliases of the repo basename.
+  kind: service
+  confidence: 0.7
+
 # Declared for future inference — not harvested yet.
 planned:
-  kubernetes:
-    note: Harvest metadata.name from Deployment/Service/Ingress and kustomization.yaml.
-    kinds: [Deployment, Service, Ingress, StatefulSet, DaemonSet]
-  helm:
-    note: Chart.yaml name → service candidate.
-    file: Chart.yaml
-  procfile:
-    note: Procfile process type names (web, worker) as service aliases.
-    file: Procfile
   terraform:
     note: Low signal for app entities — module names only if clearly app-scoped.
 
@@ -51,4 +75,4 @@ symbols:
 
 routes:
   status: not_applicable
-  note: No route extraction from compose/fly/Backstage.
+  note: No route extraction from compose/fly/Backstage/k8s/Helm/Procfile.

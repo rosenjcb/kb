@@ -1,22 +1,31 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  loadInfraEcosystemConfig,
   listEcosystemIds,
+  loadInfraEcosystemConfig,
   loadTypescriptEcosystemConfig,
 } from '@kb/core/tools/ecosystem-config.js'
 import {
   classifyPackageKind,
+  harvestAppConcepts,
+  harvestContractManifests,
+  harvestCppEcosystem,
+  harvestCsharpEcosystem,
   harvestGoEcosystem,
+  harvestHaskellEcosystem,
   harvestInfraManifests,
+  harvestJavaEcosystem,
   harvestPhpEcosystem,
   harvestPythonEcosystem,
   harvestRepoEntities,
+  harvestRouteDecorators,
+  harvestRubyEcosystem,
   harvestRustEcosystem,
+  harvestScalaEcosystem,
   harvestTypeScriptEcosystem,
 } from '@kb/core/tools/ecosystem-harvesters.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 let scanDir: string
 
@@ -41,22 +50,26 @@ describe('ecosystem YAML configs', () => {
     expect(ts.frameworks.frontend).toContain('react')
     expect(ts.frameworks.cli).toContain('commander')
     expect(ts.kind_rules.length).toBeGreaterThanOrEqual(5)
-    expect(ts.symbols.status).toBe('not_implemented')
-    expect(ts.routes.status).toBe('not_implemented')
+    expect(ts.symbols.status).toBe('partial')
+    expect(ts.routes.status).toBe('partial')
   })
 
-  it('[TC-2] Given infra.yaml, when loaded, then compose, fly, and Backstage paths are configured', () => {
+  it('[TC-2] Given infra.yaml, when loaded, then compose, fly, Backstage, k8s, helm, procfile configured', () => {
     const infra = loadInfraEcosystemConfig()
     expect(infra.id).toBe('infra')
     expect(infra.compose.files).toContain('docker-compose.yml')
     expect(infra.fly.file).toBe('fly.toml')
     expect(infra.backstage.file).toBe('catalog-info.yaml')
+    expect(infra.kubernetes.dirs).toContain('k8s')
+    expect(infra.kubernetes.kinds).toContain('Deployment')
+    expect(infra.helm.file).toBe('Chart.yaml')
+    expect(infra.procfile.file).toBe('Procfile')
   })
 
-  it('[TC-9] Given typescript coverage sections, when inspected, then symbols and routes are not_implemented', () => {
+  it('[TC-9] Given typescript coverage sections, when inspected, then symbols and routes are partial', () => {
     const ts = loadTypescriptEcosystemConfig()
-    expect(ts.symbols.status).toBe('not_implemented')
-    expect(ts.routes.status).toBe('not_implemented')
+    expect(ts.symbols.status).toBe('partial')
+    expect(ts.routes.status).toBe('partial')
   })
 
   it('[TC-10] Given all LANG ecosystems, when listed, then YAML coverage files exist for each', () => {
@@ -87,6 +100,9 @@ describe('classifyPackageKind', () => {
   it('[TC-3] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
     expect(classifyPackageKind({ dependencies: { express: '4' } }).kind).toBe('service')
     expect(classifyPackageKind({ bin: { kb: './bin/kb' } }).kind).toBe('cli')
+    expect(
+      classifyPackageKind({ name: '@kb/server', bin: { 'kb-server': './dist/bin/kb-server' } }).kind
+    ).toBe('service')
     expect(classifyPackageKind({ dependencies: { react: '18' } }).kind).toBe('surface')
     expect(classifyPackageKind({ main: 'index.js' }).kind).toBe('library')
     expect(classifyPackageKind({}).confidence).toBeLessThan(0.5)
@@ -152,7 +168,13 @@ describe('harvestInfraManifests', () => {
   it('[TC-6] Given compose, fly, and Backstage manifests, when harvested, then service/app/catalog candidates and belongs_to', async () => {
     await writeFile(
       path.join(scanDir, 'docker-compose.yml'),
-      ['services:', '  payments-svc:', '    image: acme/payments', '  internal:', '    image: acme/internal'].join('\n')
+      [
+        'services:',
+        '  payments-svc:',
+        '    image: acme/payments',
+        '  internal:',
+        '    image: acme/internal',
+      ].join('\n')
     )
     await writeFile(path.join(scanDir, 'fly.toml'), 'app = "acme-edge"\n[env]\n')
     await writeFile(
@@ -173,13 +195,349 @@ describe('harvestInfraManifests', () => {
     const names = result.candidates.map(c => c.canonicalName).sort()
     expect(names).toEqual(['acme-edge', 'internal', 'payments', 'payments-svc'])
     expect(result.candidates.every(c => c.sourceKind === 'manifest')).toBe(true)
-    expect(result.edges).toContainEqual({ fromName: 'payments', toName: 'commerce', edgeType: 'belongs_to' })
+    expect(result.edges).toContainEqual({
+      fromName: 'payments',
+      toName: 'commerce',
+      edgeType: 'belongs_to',
+    })
   })
 
   it('[TC-7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
     await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
     const result = await harvestInfraManifests(scanDir)
     expect(result.candidates).toHaveLength(0)
+  })
+
+  it('[TC-21] Given k8s Deployment/Ingress, Helm Chart, Procfile, when harvested, then service/api candidates', async () => {
+    await mkdir(path.join(scanDir, 'k8s'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'k8s', 'deploy.yaml'),
+      [
+        'apiVersion: apps/v1',
+        'kind: Deployment',
+        'metadata:',
+        '  name: payments-api',
+        'spec:',
+        '  replicas: 2',
+        '---',
+        'apiVersion: v1',
+        'kind: Service',
+        'metadata:',
+        '  name: payments-api',
+        '---',
+        'apiVersion: networking.k8s.io/v1',
+        'kind: Ingress',
+        'metadata:',
+        '  name: payments-ingress',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'k8s', 'templated.yaml'),
+      ['kind: Deployment', 'metadata:', '  name: {{ .Values.name }}'].join('\n')
+    )
+    await mkdir(path.join(scanDir, 'charts', 'billing'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'charts', 'billing', 'Chart.yaml'),
+      ['apiVersion: v2', 'name: billing-chart', 'version: 0.1.0'].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'Procfile'),
+      ['web: node server.js', 'worker: node worker.js', '# comment'].join('\n')
+    )
+
+    const result = await harvestInfraManifests(scanDir)
+    const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
+
+    expect(byName.get('payments-api')?.kind).toBe('service')
+    expect(byName.get('payments-ingress')?.kind).toBe('api')
+    expect(byName.get('billing-chart')?.kind).toBe('service')
+    expect(byName.has('{{ .Values.name }}')).toBe(false)
+
+    const proc = byName.get(path.basename(scanDir))
+    expect(proc?.kind).toBe('service')
+    expect(proc?.aliases).toEqual(expect.arrayContaining(['web', 'worker']))
+  })
+})
+
+describe('harvestContractManifests', () => {
+  it('[TC-22] Given OpenAPI + protobuf service, when harvested, then api candidates', async () => {
+    await writeFile(
+      path.join(scanDir, 'openapi.yaml'),
+      ['openapi: 3.0.3', 'info:', '  title: Payments API', '  version: 1.0.0', 'paths: {}'].join(
+        '\n'
+      )
+    )
+    await mkdir(path.join(scanDir, 'proto'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'proto', 'billing.proto'),
+      [
+        'syntax = "proto3";',
+        'package acme.billing;',
+        'service BillingService {',
+        '  rpc Charge (ChargeRequest) returns (ChargeReply);',
+        '}',
+      ].join('\n')
+    )
+
+    const result = await harvestContractManifests(scanDir)
+    const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
+    expect(byName.get('Payments API')?.kind).toBe('api')
+    expect(byName.get('Payments API')?.confidence).toBeGreaterThanOrEqual(0.85)
+    expect(byName.get('acme.billing.BillingService')?.kind).toBe('api')
+    expect(byName.get('acme.billing.BillingService')?.aliases).toContain('BillingService')
+  })
+})
+
+describe('harvestRouteDecorators', () => {
+  it('[TC-23] Given multi-language routes, when harvested, then api/surface candidates; noise skipped', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'payments.controller.ts'),
+      [
+        "import { Controller, Get } from '@nestjs/common'",
+        "@Controller('payments')",
+        'export class PaymentsController {}',
+        "app.get('/health', handler)",
+        "router.post('/v1/charge', charge)",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'main.py'),
+      [
+        'from fastapi import FastAPI',
+        'app = FastAPI()',
+        '@app.get("/items")',
+        'def list_items(): ...',
+        '@bp.route("/flask-health")',
+        'urlpatterns = [path("admin/", admin.site.urls)]',
+        'path("mitmproxy/data/foo.pem")', // false-positive shape — filter out
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'server.go'),
+      [
+        'package main',
+        'func main() {',
+        '  r.GET("/ping", ping)',
+        '  http.HandleFunc("/ready", ready)',
+        '}',
+      ].join('\n')
+    )
+    await mkdir(path.join(scanDir, 'src', 'main', 'java', 'com', 'acme'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'main', 'java', 'com', 'acme', 'BillingController.java'),
+      [
+        'package com.acme;',
+        '@RestController',
+        '@RequestMapping("/api/billing")',
+        'class BillingController {',
+        '  @GetMapping("/invoices")',
+        '  Invoice list() { return null; }',
+        '  @PostMapping(path = "/invoices")',
+        '  Invoice create() { return null; }',
+        '  @RequestMapping(method = RequestMethod.DELETE, value = "/invoices/{id}")',
+        '  void delete() {}',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'Program.cs'),
+      [
+        '[Route("api/[controller]")]',
+        'public class OrdersController {',
+        '  [HttpGet("open")] public void Open() {}',
+        '}',
+        'app.MapGet("/dotnet-health", () => "ok");',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'web.php'),
+      [
+        "Route::get('/laravel-up', fn () => 'ok');",
+        "#[Route('/symfony-ping')]",
+        'class Ping {}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'routes.rs'),
+      [
+        'fn routes() { Router::new().route("/axum-up", get(handler)); }',
+        '#[get("/rocket-up")]',
+        'async fn rocket_up() {}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'Api.hs'),
+      'type API = "users" :> Get \'[JSON] [User]\n'
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'server.cpp'),
+      'CROW_ROUTE(app, "/crow-up")([](){ return "ok"; });\n'
+    )
+    await mkdir(path.join(scanDir, 'conf'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'conf', 'routes'),
+      'GET /play-up controllers.HealthController.up\n'
+    )
+    await mkdir(path.join(scanDir, 'app', 'api', 'hello'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'app', 'api', 'hello', 'route.ts'),
+      'export async function GET() {}'
+    )
+    await mkdir(path.join(scanDir, 'app', '(marketing)', 'about'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'app', '(marketing)', 'about', 'page.tsx'),
+      'export default function About() {}'
+    )
+    await mkdir(path.join(scanDir, 'pages', 'api'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'pages', 'api', 'health.ts'),
+      'export default function handler() {}'
+    )
+    await mkdir(path.join(scanDir, 'config'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'config', 'routes.rb'),
+      [
+        'Rails.application.routes.draw do',
+        "  get 'uptime'",
+        "  post '/webhooks/stripe'",
+        '  resources :invoices',
+        'end',
+      ].join('\n')
+    )
+    // Should be skipped
+    await mkdir(path.join(scanDir, 'node_modules', 'lib'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'node_modules', 'lib', 'skip.ts'),
+      "app.get('/should-not-appear', x)"
+    )
+
+    const result = await harvestRouteDecorators(scanDir)
+    const names = result.candidates.map(c => c.canonicalName)
+    const about = result.candidates.find(c => c.canonicalName === '/about')
+    expect(names).toContain('payments')
+    expect(names).toContain('GET /health')
+    expect(names).toContain('POST /v1/charge')
+    expect(names).toContain('GET /items')
+    expect(names).toContain('/flask-health')
+    expect(names).toContain('admin/')
+    expect(names).toContain('GET /ping')
+    expect(names).toContain('/ready')
+    expect(names).toContain('/api/billing')
+    expect(names).toContain('GET /invoices')
+    expect(names).toContain('POST /invoices')
+    expect(names).toContain('DELETE /invoices/{id}')
+    expect(names).toContain('api/[controller]')
+    expect(names).toContain('GET open')
+    expect(names).toContain('GET /dotnet-health')
+    expect(names).toContain('GET /laravel-up')
+    expect(names).toContain('/symfony-ping')
+    expect(names).toContain('/axum-up')
+    expect(names).toContain('/rocket-up')
+    expect(names).toContain('GET /users')
+    expect(names).toContain('/crow-up')
+    expect(names).toContain('GET /play-up')
+    expect(names).toContain('/api/hello')
+    expect(names).toContain('/about')
+    expect(about?.kind).toBe('surface')
+    expect(names).toContain('/api/health')
+    expect(names).toContain('/uptime')
+    expect(names).toContain('/webhooks/stripe')
+    expect(names).toContain('/invoices')
+    expect(names).not.toContain('GET /should-not-appear')
+    expect(names).not.toContain('mitmproxy/data/foo.pem')
+    expect(result.candidates.every(c => c.kind === 'api' || c.kind === 'surface')).toBe(true)
+    expect(result.candidates.every(c => c.confidence === 0.5)).toBe(true)
+  })
+})
+
+describe('harvestAppConcepts', () => {
+  it('[TC-24] Given Spring/Nest/Django/Prisma/.NET/Rails app + DB types, when harvested, then module and model kinds', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'BillingService.java'),
+      [
+        'package com.acme;',
+        '@Service',
+        'public class BillingService {}',
+        '@Entity',
+        'public class Invoice {}',
+        '@Table(name = "invoices")',
+        'class Ignored {}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'users.service.ts'),
+      [
+        "import { Injectable } from '@nestjs/common'",
+        '@Injectable()',
+        'export class UsersService {}',
+        '@Entity("accounts")',
+        'export class Account {}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'models.py'),
+      [
+        'from django.db import models',
+        'class Customer(models.Model):',
+        '    pass',
+        'class OrderService:',
+        '    pass',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'schema.prisma'),
+      ['model User {', '  id Int @id', '}', 'model Post {', '  id Int @id', '}'].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'PaymentsController.cs'),
+      [
+        '[ApiController]',
+        '[Route("api/[controller]")]',
+        'public class PaymentsController {}',
+        'public class LedgerService {}',
+        'public class AppDbContext {',
+        '  public DbSet<LedgerEntry> Entries { get; set; }',
+        '}',
+      ].join('\n')
+    )
+    await mkdir(path.join(scanDir, 'app', 'models'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'app', 'models', 'user.rb'),
+      'class User < ApplicationRecord\nend\n'
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'schema.sql'),
+      'CREATE TABLE IF NOT EXISTS payment_events (\n  id SERIAL PRIMARY KEY\n);\n'
+    )
+
+    const result = await harvestAppConcepts(scanDir)
+    const byKind = (k: string) =>
+      result.candidates.filter(c => c.kind === k).map(c => c.canonicalName)
+    expect(byKind('module')).toEqual(
+      expect.arrayContaining([
+        'BillingService',
+        'UsersService',
+        'OrderService',
+        'PaymentsController',
+        'LedgerService',
+      ])
+    )
+    expect(byKind('model')).toEqual(
+      expect.arrayContaining([
+        'Invoice',
+        'invoices',
+        'Account',
+        'Customer',
+        'User',
+        'Post',
+        'LedgerEntry',
+        'payment_events',
+      ])
+    )
+    expect(result.candidates.every(c => c.kind === 'module' || c.kind === 'model')).toBe(true)
+    expect(result.candidates.every(c => c.kind !== 'service')).toBe(true)
   })
 })
 
@@ -197,7 +555,12 @@ describe('multi-language package harvest', () => {
   it('[TC-11] Given go.mod with gin, when harvested, then module is a service', async () => {
     await writeFile(
       path.join(scanDir, 'go.mod'),
-      ['module github.com/acme/payments', 'go 1.22', '', 'require github.com/gin-gonic/gin v1.9.1'].join('\n')
+      [
+        'module github.com/acme/payments',
+        'go 1.22',
+        '',
+        'require github.com/gin-gonic/gin v1.9.1',
+      ].join('\n')
     )
     const result = await harvestGoEcosystem(scanDir)
     expect(result.candidates).toHaveLength(1)
@@ -252,6 +615,138 @@ describe('multi-language package harvest', () => {
     )
     const result = await harvestPhpEcosystem(scanDir)
     expect(result.candidates[0]?.canonicalName).toBe('acme/storefront')
+    expect(result.candidates[0]?.kind).toBe('service')
+  })
+
+  it('[TC-15] Given Gemfile with rails, when harvested, then Gemfile-only app is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'Gemfile'),
+      ['source "https://rubygems.org"', 'gem "rails", "~> 7.1"', 'gem "pg"'].join('\n')
+    )
+    const result = await harvestRubyEcosystem(scanDir)
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0]?.canonicalName).toBe(path.basename(scanDir))
+    expect(result.candidates[0]?.kind).toBe('service')
+    expect(result.candidates[0]?.sourceFile).toBe('Gemfile')
+  })
+
+  it('[TC-16] Given multi-module pom.xml, when harvested, then modules get identity and part_of', async () => {
+    await writeFile(
+      path.join(scanDir, 'pom.xml'),
+      [
+        '<project>',
+        '  <artifactId>acme-parent</artifactId>',
+        '  <packaging>pom</packaging>',
+        '  <modules>',
+        '    <module>payments</module>',
+        '  </modules>',
+        '</project>',
+      ].join('\n')
+    )
+    await mkdir(path.join(scanDir, 'payments'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'payments', 'pom.xml'),
+      [
+        '<project>',
+        '  <groupId>com.acme</groupId>',
+        '  <artifactId>payments</artifactId>',
+        '  <description>Payments API</description>',
+        '  <dependencies>',
+        '    <dependency>',
+        '      <groupId>org.springframework.boot</groupId>',
+        '      <artifactId>spring-boot-starter-web</artifactId>',
+        '    </dependency>',
+        '  </dependencies>',
+        '</project>',
+      ].join('\n')
+    )
+    const result = await harvestJavaEcosystem(scanDir)
+    const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
+    expect(byName.get('acme-parent')).toBeTruthy()
+    expect(byName.get('payments')?.kind).toBe('service')
+    expect(byName.get('payments')?.aliases).toContain('com.acme:payments')
+    expect(result.edges).toContainEqual({
+      fromName: 'payments',
+      toName: 'acme-parent',
+      edgeType: 'part_of',
+    })
+  })
+
+  it('[TC-17] Given *.cabal with servant, when harvested, then package is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'billing.cabal'),
+      [
+        'name:                billing-api',
+        'version:             0.1.0.0',
+        'library',
+        '  build-depends:       base, servant, servant-server',
+        'executable billing',
+        '  build-depends:       base, billing-api',
+      ].join('\n')
+    )
+    const result = await harvestHaskellEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('billing-api')
+    expect(result.candidates[0]?.kind).toBe('service')
+  })
+
+  it('[TC-18] Given CMakeLists.txt project(), when harvested, then low-confidence library candidate', async () => {
+    await writeFile(
+      path.join(scanDir, 'CMakeLists.txt'),
+      [
+        'cmake_minimum_required(VERSION 3.16)',
+        'project(raylib)',
+        'add_library(raylib STATIC src.c)',
+      ].join('\n')
+    )
+    const result = await harvestCppEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('raylib')
+    expect(result.candidates[0]?.kind).toBe('library')
+    expect(result.candidates[0]?.confidence).toBeLessThanOrEqual(0.45)
+  })
+
+  it('[TC-19] Given *.csproj Sdk.Web, when harvested, then project is a service with sln part_of', async () => {
+    await writeFile(
+      path.join(scanDir, 'Acme.sln'),
+      [
+        'Microsoft Visual Studio Solution File, Format Version 12.00',
+        'Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payments", "Payments\\Payments.csproj", "{11111111-1111-1111-1111-111111111111}"',
+        'EndProject',
+      ].join('\n')
+    )
+    await mkdir(path.join(scanDir, 'Payments'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'Payments', 'Payments.csproj'),
+      [
+        '<Project Sdk="Microsoft.NET.Sdk.Web">',
+        '  <PropertyGroup>',
+        '    <TargetFramework>net8.0</TargetFramework>',
+        '    <RootNamespace>Acme.Payments</RootNamespace>',
+        '    <AssemblyName>Acme.Payments</AssemblyName>',
+        '  </PropertyGroup>',
+        '</Project>',
+      ].join('\n')
+    )
+    const result = await harvestCsharpEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('Acme.Payments')
+    expect(result.candidates[0]?.kind).toBe('service')
+    expect(result.candidates[0]?.aliases).toContain('Acme.Payments')
+    expect(result.edges).toContainEqual({
+      fromName: 'Acme.Payments',
+      toName: 'Acme',
+      edgeType: 'part_of',
+    })
+  })
+
+  it('[TC-20] Given build.sbt with play, when harvested, then project is a service', async () => {
+    await writeFile(
+      path.join(scanDir, 'build.sbt'),
+      [
+        'name := "storefront"',
+        'libraryDependencies += "org.playframework" %% "play" % "3.0.0"',
+      ].join('\n')
+    )
+    const result = await harvestScalaEcosystem(scanDir)
+    expect(result.candidates[0]?.canonicalName).toBe('storefront')
     expect(result.candidates[0]?.kind).toBe('service')
   })
 })

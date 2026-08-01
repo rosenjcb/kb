@@ -9,16 +9,15 @@ timestamp: 2026-07-27T00:00:00Z
 
 # Organizational Ontology Index — nomenclature & disambiguation
 
-**Status:** Phases 1–2 implemented (indexing only) · **Motivating issue:** [#167 — KB conflates issues](https://github.com/rosenjcb/kb/issues/167)
+**Status:** Phases 1–3 implemented · **Motivating issue:** [#167 — KB conflates issues](https://github.com/rosenjcb/kb/issues/167)
 
-> **Implementation status.** The **indexing** half of this plan has shipped:
-> registry tables, ecosystem harvesters, the `entity-index` scan cycle, collision
-> detection, and `kb entities`. **Retrieval is untouched** — nothing in the query
-> path reads these tables. Everything from §5 onward (scope inference, confidence
-> gates, partition rule-out, ambiguity lanes) is a **separate ticket**, on purpose:
-> the index is inert data, while how a scope verdict should change which results
-> come back is a policy decision with real blast radius and several viable answers.
-> Build the signal first, decide how to spend it second.
+> **Implementation status.** Indexing (registry, harvesters, `entity-index`,
+> collisions, `kb entities`) and **stage-0 scope inference** (§5) have shipped:
+> deterministic alias resolution + optional LLM classifier, hard-prune of
+> `distinct_from` siblings via `excludeIds`, entity-guarded expansion, empty-result
+> un-pruning, synthesis disclosure, kill switch `KB_ENTITY_SCOPE=false`.
+> Phases 4–6 (ambiguity lanes, ontology assembly, conflation-rate eval) remain
+> follow-ups.
 
 ## TL;DR
 
@@ -376,7 +375,7 @@ is honest — today they'd raid each other's facts and both look plausible.
 |---|---|---|
 | **1 — entity spine** ✅ | Migration (4 tables), `entity-index` + `entity-link` cycles, backfill on scan | none (data only) |
 | **2 — nomenclature audit** ✅ | Collision detection, `distinct_from` + glosses, `kb entities` CLI | none — but operators can already *see* the #167 collisions |
-| **3 — scope inference + guarded retrieval** | `resolveQueryMentions()`, LLM scope classifier over the entity catalog, multiclass confidence gates, entity-guarded expansion, entity-scoped landing, partition rule-out + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
+| **3 — scope inference + guarded retrieval** ✅ | `resolveQueryMentions()` / `inferQueryScope()`, LLM classifier over the entity catalog, multiclass confidence gates, entity-guarded expansion, partition rule-out + un-pruning, interpretation named in answers | conflation drops on resolvable queries; walks stop spending budget in ruled-out partitions |
 | **4 — ambiguity lanes** | Per-candidate lanes on collisions, chat clarifying turns, entity-aware curator, `entityMatchScore` | collisions handled explicitly, never silently |
 | **5 — ontology assembly** | LLM consolidation, domain grouping, per-entity "card" rollup facts, publish disambiguation pages | domain-level questions get first-class answers |
 | **6 — eval axis** | Nomenclature-collision eval suite: fixtures with seeded confusable names ("internal" vs "Internal Services"), a **conflation-rate** metric (answers mixing facts across `distinct_from` pairs), entity-on vs entity-off baseline comparison enforcing the additivity contract (§8a), label-calibration checks (seeded off-scope queries must land `unsure`, not `certainly_incorrect`), wired into the harness + dogfood | regression guard on all of the above |

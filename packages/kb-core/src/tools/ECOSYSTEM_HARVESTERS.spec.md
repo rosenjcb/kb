@@ -7,83 +7,122 @@ sources:
   - ./ecosystems/
 tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
-description: Manifest-driven entity harvest — YAML coverage per ecosystem, deterministic inference
+description: >-
+  Ecosystem harvesters read package and infra manifests. They emit entity
+  candidates. YAML files state coverage per ecosystem.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-07-28T18:40:00Z
+timestamp: 2026-08-01T20:00:00Z
 ---
 
 ### Intro
 
-Ecosystem harvesters answer “what deployable things does this repo declare?” from
-manifest-class files — no LLM, no network. Coverage (frameworks, kind rubric,
-infra files, declared gaps for symbols/routes) lives in reviewable YAML under
-`ecosystems/` (one file per ecosystem). Inference code loads that YAML and emits
-entity candidates for the `entity-index` scan cycle. Plan context:
+An ecosystem harvester finds named things that a repository declares. It reads
+manifest files and selected source patterns. It does not call an LLM. It does
+not use the network.
+
+Coverage data is in YAML files under `ecosystems/`. There is one YAML file for
+each ecosystem. Each file lists frameworks, kind rules, and coverage for
+symbols, routes, app classes, and models. The harvester code loads that YAML.
+It emits entity candidates for the `entity-index` scan cycle. See
 [NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md) §4a.
+
+Tier-4 harvest writes registry rows for later use. Those rows can have kind
+`api`, `module`, `model`, or `surface`. Tier-4 harvest does not control query
+results today. You can inspect the registry with `kb entities`.
 
 ### Definitions
 
-- **Ecosystem YAML**: `ecosystems/<id>.yaml` — frameworks, kind rules, workspace
-  sources, and `symbols` / `routes` coverage status.
-- **Entity candidate**: `{ kind, canonicalName, aliases, gloss?, sourceFile,
-  sourceKind: manifest, confidence, contentHash }` produced by a harvester.
-- **Kind rubric**: ordered `kind_rules` in the TypeScript YAML; first match wins.
-- **Infra tier**: language-agnostic compose / `fly.toml` / Backstage harvest
-  (`ecosystems/infra.yaml`).
+- **Ecosystem YAML**: A file at `ecosystems/<id>.yaml`. It lists frameworks,
+  kind rules, workspace sources, and coverage for `symbols` and `routes`. It
+  can also list coverage for `app_classes` and `models`.
+- **Entity candidate**: A record that a harvester emits. Fields: `kind`,
+  `canonicalName`, `aliases`, optional `gloss`, `sourceFile`,
+  `sourceKind: manifest`, `confidence`, `contentHash`.
+- **Kind rubric**: The ordered `kind_rules` list in the ecosystem YAML. The
+  first matching rule sets the kind.
+- **Infra tier**: Harvest from compose, `fly.toml`, and Backstage files. This
+  tier is not tied to one language. See `ecosystems/infra.yaml`.
+- **`model` kind**: An ORM model, table, or schema name. It is not a
+  deployable service.
+- **App-layer `module`**: A service, controller, or handler class in code. Do
+  not use kind `service` for these. Kind `service` is for deployable units.
 
 ### Scope
 
 ## In Scope
-- Loading and validating ecosystem YAML
-- TypeScript/JavaScript package harvest (workspace + root)
-- Deterministic package kind classification from YAML rules
-- Infra manifest harvest (compose, Fly, Backstage)
-- Merging ecosystem + infra candidate lists
+- Load and validate ecosystem YAML
+- Harvest TypeScript and JavaScript packages (workspace and root)
+- Harvest Go, Python, Rust, PHP, Ruby, Java, Haskell, C++, C#, and Scala packages
+- Classify package kind from YAML rules
+- Harvest infra manifests (compose, Fly, Backstage, Kubernetes, Helm, Procfile)
+- Harvest OpenAPI and protobuf contracts (tier-3)
+- Harvest HTTP routes with regular expressions (tier-4; `routes.status: partial`)
+- Harvest app classes and ORM models (tier-4; kinds `module` and `model`)
+- Merge candidate lists from package, infra, contract, route, and app harvest
 
 ## Out of Scope
-- Entity registry upsert, fact linking, collisions — `entity-index-cycle.ts`
-- Query-time scope inference / retrieval pruning
-- HTTP routes and in-code symbols as entities (YAML marks `not_implemented`)
-- Non-TS language ecosystems not yet shipping a YAML file
+- Entity registry upsert, fact links, and collisions (`entity-index-cycle.ts`)
+- Ambiguity lanes and ontology assembly (plan phases 4–6)
+- Query rules that use new route and model entities (follow-up work)
+- Full Gradle, Mill, vcpkg, and Conan identity (Maven, CMake, and sbt first)
 
 ### Functional Requirements
 
 | ID   | Requirement |
 |------|-------------|
-| FR-1 | Load per-ecosystem YAML with frameworks, kind rules, and declared `symbols` / `routes` coverage |
-| FR-2 | Classify a package’s entity kind from YAML `kind_rules` (first match wins; weaker signals lower confidence) |
-| FR-3 | Harvest workspace packages with identity, aliases, gloss, and `part_of` edges to the root package |
-| FR-4 | Fall back to the root `package.json` when no workspace members exist; emit nothing when no package manifest is present |
-| FR-5 | Harvest compose service keys, Fly app names, and Backstage catalog entries per `infra.yaml` |
-| FR-6 | Emit no candidates from malformed infra manifests |
-| FR-7 | Merge TypeScript and infra harvest results (duplicate names may appear once per source for registry merge) |
-| FR-8 | Declare routes and in-code symbols as not harvested (`not_implemented` in YAML) |
-| FR-9 | Provide reviewable YAML coverage for every tree-sitter language ecosystem plus infra |
-| FR-10 | Harvest Go modules from `go.mod` with YAML kind rubric |
-| FR-11 | Harvest Python projects from `pyproject.toml` with YAML kind rubric |
-| FR-12 | Harvest Rust packages from `Cargo.toml` with YAML kind rubric |
-| FR-13 | Harvest PHP packages from `composer.json` with YAML kind rubric |
+| FR-1 | Load each ecosystem YAML. Keep frameworks, kind rules, and `symbols` / `routes` coverage. |
+| FR-2 | Set package kind from YAML `kind_rules`. Use the first match. Give lower confidence to weaker signals. |
+| FR-3 | Harvest workspace packages. Keep identity, aliases, gloss, and `part_of` edges to the root package. |
+| FR-4 | If there are no workspace members, harvest the root `package.json`. If there is no package manifest, emit no candidates. |
+| FR-5 | Harvest compose service keys, Fly app names, and Backstage catalog entries as set in `infra.yaml`. |
+| FR-6 | If an infra manifest is not valid, emit no candidates from that file. |
+| FR-7 | Merge TypeScript and infra harvest results. The same name can appear once per source before registry merge. |
+| FR-8 | Mark route and app-layer coverage as `partial` when the harvester supports that ecosystem. Reject false path and name matches. |
+| FR-9 | Keep one YAML coverage file for each tree-sitter language ecosystem and for infra. |
+| FR-10 | Harvest Go modules from `go.mod` with the YAML kind rubric. |
+| FR-11 | Harvest Python projects from `pyproject.toml` with the YAML kind rubric. |
+| FR-12 | Harvest Rust packages from `Cargo.toml` with the YAML kind rubric. |
+| FR-13 | Harvest PHP packages from `composer.json` with the YAML kind rubric. |
+| FR-14 | Harvest Ruby packages from `*.gemspec` or Gemfile with the YAML kind rubric. |
+| FR-15 | Harvest Java Maven modules from `pom.xml` with the YAML kind rubric. Gradle settings include is optional. |
+| FR-16 | Harvest Haskell packages from `*.cabal` or `package.yaml` with the YAML kind rubric. |
+| FR-17 | Harvest C/C++ projects from `CMakeLists.txt` `project()` with the YAML kind rubric. |
+| FR-18 | Harvest C# projects from `*.csproj` with the YAML kind rubric. A `.sln` `part_of` edge is optional. |
+| FR-19 | Harvest Scala projects from `build.sbt` `name :=` with the YAML kind rubric. |
+| FR-20 | Harvest Kubernetes, Helm, Procfile, OpenAPI, and protobuf candidates as `service` or `api`. |
+| FR-21 | Harvest tier-4 HTTP routes as low-confidence `api` entities. Harvest Next.js pages as `surface`. Reject file-path false matches. |
+| FR-22 | Harvest tier-4 app classes as `module`. Harvest ORM and SQL models as `model`. Do not emit kind `service` for those atoms. |
 
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|----------|------------------|
-| TC-1 | FR-1 | Load `typescript.yaml` | Frameworks include express/react/commander; kind_rules present; symbols/routes `not_implemented` |
-| TC-2 | FR-1 | Load `infra.yaml` | Compose files, `fly.toml`, and `catalog-info.yaml` configured |
-| TC-3 | FR-2 | express deps / bin / react / main / empty package | Kinds: service, cli, surface, library; empty confidence below 0.5 |
-| TC-4 | FR-3 | pnpm workspace with client (bin), server (express), core (main) | cli / service / library candidates; aliases; `part_of` → root |
-| TC-5 | FR-4 | Solo package with fastify; empty directory | One service candidate; empty dir → zero candidates |
-| TC-6 | FR-5 | compose + fly + Backstage present | Candidates for service keys, app name, catalog name; `belongs_to` edge |
-| TC-7 | FR-6 | Malformed `docker-compose.yml` | Zero candidates |
-| TC-8 | FR-7 | Same name in package.json and fly.toml | Two candidates with that canonical name |
-| TC-9 | FR-8 | Inspect typescript coverage sections | `symbols.status` and `routes.status` are `not_implemented` |
-| TC-10 | FR-9 | List ecosystem YAML ids | Includes go/python/rust/ruby/java/csharp/php/scala/haskell/cpp/css/html/bash/infra/typescript |
-| TC-11 | FR-10 | go.mod requiring gin | Candidate kind `service`, canonical module path |
-| TC-12 | FR-11 | pyproject.toml with fastapi | Candidate kind `service` |
-| TC-13 | FR-12 | Cargo.toml with clap + [[bin]] | Candidate kind `cli` |
-| TC-14 | FR-13 | composer.json requiring laravel/framework | Candidate kind `service` |
+| TC-1 | FR-1 | Load `typescript.yaml` | Frameworks include express, react, and commander. Kind rules are present. Symbols and routes status is `partial`. |
+| TC-2 | FR-1 | Load `infra.yaml` | Compose files, `fly.toml`, and `catalog-info.yaml` are configured. |
+| TC-3 | FR-2 | Package with express, bin, react, main, or empty fields | Kinds are service, cli, surface, or library. Empty package confidence is below 0.5. |
+| TC-4 | FR-3 | pnpm workspace with client (bin), server (express), and core (main) | Candidates are cli, service, and library. Aliases exist. `part_of` points to root. |
+| TC-5 | FR-4 | Solo package with fastify; empty directory | One service candidate for the package. Empty directory yields zero candidates. |
+| TC-6 | FR-5 | Compose, fly, and Backstage files are present | Candidates exist for service keys, app name, and catalog name. A `belongs_to` edge exists. |
+| TC-7 | FR-6 | Malformed `docker-compose.yml` | Zero candidates. |
+| TC-8 | FR-7 | Same name in `package.json` and `fly.toml` | Two candidates share that canonical name. |
+| TC-9 | FR-8 | Inspect TypeScript coverage sections | `symbols.status` and `routes.status` are `partial`. |
+| TC-10 | FR-9 | List ecosystem YAML ids | List includes go, python, rust, ruby, java, csharp, php, scala, haskell, cpp, css, html, bash, infra, and typescript. |
+| TC-11 | FR-10 | `go.mod` that requires gin | Candidate kind is `service`. Canonical name is the module path. |
+| TC-12 | FR-11 | `pyproject.toml` with fastapi | Candidate kind is `service`. |
+| TC-13 | FR-12 | `Cargo.toml` with clap and `[[bin]]` | Candidate kind is `cli`. |
+| TC-14 | FR-13 | `composer.json` that requires laravel/framework | Candidate kind is `service`. |
+| TC-15 | FR-14 | Gemfile with rails and no gemspec | Candidate kind is `service`. Name is the scan directory basename. |
+| TC-16 | FR-15 | Multi-module pom with a spring-boot-starter-web member | Parent and payments candidates exist. Payments kind is `service`. A `part_of` edge exists. |
+| TC-17 | FR-16 | `billing.cabal` with servant | Candidate kind is `service`. |
+| TC-18 | FR-17 | `CMakeLists.txt` with `project(raylib)` | Candidate kind is `library`. Confidence is low. |
+| TC-19 | FR-18 | Sdk.Web csproj and `.sln` | Candidate kind is `service`. A `part_of` edge points to the solution name. |
+| TC-20 | FR-19 | `build.sbt` with name storefront and play | Candidate kind is `service`. |
+| TC-21 | FR-20 | Kubernetes Deployment or Ingress, Helm Chart, and Procfile | Candidates have kind `service` or `api`. |
+| TC-22 | FR-20 | OpenAPI file and protobuf `service` | Candidates have kind `api`. |
+| TC-23 | FR-21 | Nest, Express, FastAPI, Go, Spring, Next, and Rails routes plus a junk path | API routes are harvested. Next pages have kind `surface`. Junk paths are skipped. |
+| TC-24 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
 
 ### Related docs
 
 - [NOMENCLATURE_INDEX_PLAN.md](../../../../NOMENCLATURE_INDEX_PLAN.md)
-- [TREE_SITTER_INDEXER.spec.md](./TREE_SITTER_INDEXER.spec.md) — code symbols stay in code-index
+- [TREE_SITTER_INDEXER.spec.md](./TREE_SITTER_INDEXER.spec.md) — Code symbols stay in the code-index.

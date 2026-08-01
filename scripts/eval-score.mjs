@@ -358,7 +358,7 @@ export async function callOpenAIJudgeJson({ apiKey, model, systemInstruction, us
 // ---------------------------------------------------------------------------
 
 /** Max questions per judge call — larger batches truncate JSON when notes are verbose. */
-export const SCORE_BATCH_SIZE = 8
+export const SCORE_BATCH_SIZE = 4
 
 /**
  * Score a contiguous slice of questions from `workdir/q{n}.json`.

@@ -1,8 +1,7 @@
 # Ruby ecosystem harvester coverage (reviewable scope).
-# Inference not wired yet — status: planned. Do not load from TypeScript until
-# a Ruby harvester entry exists in ecosystem-harvesters.ts.
+# Inference: harvestRubyEcosystem in ecosystem-harvesters.ts.
 #
-# Emits (intended): one entity per installable unit — *.gemspec packages and
+# Emits: one entity per installable unit — *.gemspec packages and
 # app roots that have a Gemfile (Rails apps often have Gemfile, no gemspec).
 # Rails engines are gemspec packages with engine.rb / railtie signals.
 # Does not emit: HTTP routes, in-code symbols, or Homebrew formulae.
@@ -11,7 +10,7 @@
 
 id: ruby
 display_name: Ruby
-status: planned
+status: implemented
 
 # Manifest atoms. Prefer gemspec for identity; Gemfile declares deps + path members.
 package_manifests:
@@ -125,21 +124,28 @@ kind_rules:
 
 # Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols (classes, modules, methods) stay in the tree-sitter code-index
-    cycle (.rb). This harvester does not promote symbols to entity candidates.
+    Best-effort: Rails *Controller / *Service classes → module;
+    ApplicationRecord / ActiveRecord::Base → model kind. Other symbols
+    stay in tree-sitter.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional enrichment for route tables is planned (tier-4); missing parsers
-    only lose endpoint granularity. Prefer Rails config/routes.rb
-    (get/post/resources/mount), then Sinatra verb DSL and Grape API routes.
-    Never load-bearing for entity identity.
+    Best-effort Rails config/routes.rb get/post/put/patch/delete/match
+    string paths plus `resources :x` → /x (confidence ~0.5). Sinatra verb
+    DSL and Grape API routes still open.
   planned_frameworks:
-    - rails # config/routes.rb
     - sinatra
     - grape
-    - hanami # routes DSL when present
+    - hanami
+
+app_classes:
+  status: partial
+  note: 'Rails *Controller / *Service / *Interactor → module.'
+
+models:
+  status: partial
+  note: ApplicationRecord / ActiveRecord::Base → model.

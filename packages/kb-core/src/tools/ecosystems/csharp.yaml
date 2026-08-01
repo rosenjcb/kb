@@ -1,8 +1,7 @@
 # C# / .NET ecosystem harvester coverage (reviewable scope).
-# Inference not wired yet — status: planned. Do not load from TypeScript until
-# a .NET harvester entry exists in ecosystem-harvesters.ts.
+# Inference: harvestCsharpEcosystem in ecosystem-harvesters.ts.
 #
-# Emits (intended): one entity candidate per *.csproj / *.fsproj (solution
+# Emits: one entity candidate per *.csproj / *.fsproj (solution
 # members via .sln, or every project file under the repo).
 # Does not emit: HTTP routes, controllers, or in-code symbols (see symbols/ / routes/).
 #
@@ -10,7 +9,7 @@
 
 id: csharp
 display_name: C# / .NET
-status: planned
+status: implemented
 
 # Manifest atoms. Project files are the harvest unit; .sln enumerates members;
 # Directory.Build.props merges shared MSBuild properties (not an entity).
@@ -149,19 +148,25 @@ kind_rules:
 
 # Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols (types, methods) stay in the tree-sitter code-index cycle
-    (.cs). This harvester does not promote symbols to entity candidates.
-    F# (.fs) grammar is out of band.
+    Best-effort: *Service/*Controller classes and [ApiController] → module;
+    EF Core [Table]/DbSet<> → model kind. F# (.fs) out of band.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional AST enrichment for Minimal API Map* and MVC/API controllers is
-    planned; frameworks we cannot parse simply lose endpoint granularity.
-    Never load-bearing for entity identity.
+    Best-effort regex for [Route]/[HttpGet]/Minimal API MapGet/MapPost/….
+    Confidence ~0.5; capped. Never load-bearing for entity identity.
   planned_frameworks:
     - aspnetcore-minimal # MapGet / MapPost / MapPut / MapDelete / MapMethods / MapGroup
     - aspnetcore-controllers # [Route] / [HttpGet] / MapControllers
+
+app_classes:
+  status: partial
+  note: '[ApiController] / *Service/*Controller classes → module.'
+
+models:
+  status: partial
+  note: EF Core [Table] / DbSet<> → model.

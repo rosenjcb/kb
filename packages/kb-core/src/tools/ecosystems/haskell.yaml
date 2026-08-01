@@ -1,12 +1,12 @@
 # Haskell ecosystem harvester coverage.
-# Inference not wired yet — coverage is reviewable scope only (`status: planned`).
+# Inference: harvestHaskellEcosystem in ecosystem-harvesters.ts.
 #
 # Entity atom: one Cabal package (*.cabal, or package.yaml via hpack).
 # Workspace: cabal.project packages: preferred; stack.yaml packages: fallback.
 
 id: haskell
 display_name: Haskell
-status: planned
+status: implemented
 
 package_manifests:
   - path: "*.cabal"
@@ -65,17 +65,17 @@ kind_rules:
   - kind: cli
     confidence: 0.9
     match:
-      has_executable: true
+      has_executable_stanza: true
       any_dependency_group: cli
   - kind: cli
     confidence: 0.75
     match:
-      has_executable: true
-      without_library: true # executable-only package
+      has_executable_stanza: true
+      has_library_stanza: false # executable-only package
   - kind: library
     confidence: 0.85
     match:
-      has_library: true
+      has_library_stanza: true
   - kind: library
     confidence: 0.4
     match: {} # fallback — named package with no clear stanza/deps signal
@@ -84,13 +84,21 @@ symbols:
   status: not_implemented
   note: >
     Haskell symbols stay in the tree-sitter-haskell code-index cycle
-    (.hs / .lhs). This harvester does not promote symbols to entity candidates.
+    (.hs / .lhs). Persistent/Esqueleto models are Template-Haskell heavy —
+    not harvested as entity candidates yet.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Servant type-level API definitions (e.g. type API = "users" :> Get '[JSON] [User])
-    are the primary planned route signal. Yesod/IHP route DSLs are secondary.
-    Absent parsers only lose endpoint granularity.
-  planned_frameworks: [servant, yesod, ihp, scotty]
+    Best-effort Servant path segments: "users" :> Get/Post/…. Confidence
+    ~0.5; capped. Yesod/IHP/Scotty DSLs still open.
+  planned_frameworks: [yesod, ihp, scotty]
+
+app_classes:
+  status: not_implemented
+  note: No stable app-class convention harvested yet.
+
+models:
+  status: not_implemented
+  note: Persistent/Esqueleto models are Template-Haskell heavy — not harvested.

@@ -5,13 +5,18 @@
  * - bundled CLI/server: `dist/bin/ecosystems/*.yaml` (copied by copyCliRuntimeAssets)
  */
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load as loadYaml } from 'js-yaml'
 import type { EntityKind } from './entity-registry.js'
 
-export type CoverageStatus = 'implemented' | 'not_implemented' | 'not_applicable' | 'planned'
+export type CoverageStatus =
+  | 'implemented'
+  | 'partial'
+  | 'not_implemented'
+  | 'not_applicable'
+  | 'planned'
 
 export interface KindRuleMatch {
   any_dependency_group?: string
@@ -29,6 +34,12 @@ export interface KindRuleMatch {
   output_type?: string
   has_executable_stanza?: boolean
   has_library_stanza?: boolean
+  /** Project Sdk attribute values (C# / .NET). */
+  any_sdk?: string[]
+  /** Unscoped package name ends with this suffix (e.g. `-server`, `server`). */
+  name_ends_with?: string
+  /** Any bin key ends with this suffix (e.g. `-server`). */
+  bin_name_ends_with?: string
 }
 
 export interface KindRule {
@@ -53,6 +64,10 @@ export interface PackageEcosystemConfig {
   kind_rules: KindRule[]
   symbols: CoverageSection
   routes: CoverageSection
+  /** App-layer classes (Spring @Service, Nest Injectable, …) → `module`. */
+  app_classes?: CoverageSection
+  /** ORM / schema models → `model`. */
+  models?: CoverageSection
   /** TypeScript-only convenience (root package.json name). */
   package_manifest?: string
   workspace?: {
@@ -91,6 +106,24 @@ export interface InfraEcosystemConfig {
     confidence: number
     belongs_to_keys: string[]
   }
+  kubernetes: {
+    dirs: string[]
+    kinds: string[]
+    kind_map: Record<string, EntityKind | string> & { default: EntityKind | string }
+    confidence: number
+    skip_template_marker: string
+  }
+  helm: {
+    file: string
+    name_key: string
+    kind: EntityKind
+    confidence: number
+  }
+  procfile: {
+    file: string
+    kind: EntityKind
+    confidence: number
+  }
   symbols: CoverageSection
   routes: CoverageSection
 }
@@ -105,6 +138,7 @@ const ENTITY_KINDS = new Set<EntityKind>([
   'api',
   'library',
   'cli',
+  'model',
 ])
 
 /** Ecosystems with harvest inference wired in ecosystem-harvesters.ts. */
@@ -114,6 +148,12 @@ export const IMPLEMENTED_PACKAGE_ECOSYSTEMS = [
   'python',
   'rust',
   'php',
+  'ruby',
+  'java',
+  'haskell',
+  'cpp',
+  'csharp',
+  'scala',
 ] as const
 
 const ecosystemsRootDir = join(dirname(fileURLToPath(import.meta.url)), 'ecosystems')
@@ -150,6 +190,7 @@ function asCoverage(raw: unknown, context: string): CoverageSection {
   const status = obj.status
   if (
     status !== 'implemented' &&
+    status !== 'partial' &&
     status !== 'not_implemented' &&
     status !== 'not_applicable' &&
     status !== 'planned'
@@ -169,6 +210,7 @@ function asCoverage(raw: unknown, context: string): CoverageSection {
 function asCoverageStatus(value: unknown, fallback: CoverageStatus = 'planned'): CoverageStatus {
   if (
     value === 'implemented' ||
+    value === 'partial' ||
     value === 'not_implemented' ||
     value === 'not_applicable' ||
     value === 'planned'
@@ -222,6 +264,10 @@ export function loadPackageEcosystemConfig(id: string): PackageEcosystemConfig {
       })
     : []
 
+  const defaultGap: CoverageSection = {
+    status: 'not_implemented',
+    note: 'Not declared in ecosystem YAML.',
+  }
   const config: PackageEcosystemConfig = {
     id,
     display_name: String(raw.display_name ?? id),
@@ -230,9 +276,9 @@ export function loadPackageEcosystemConfig(id: string): PackageEcosystemConfig {
     kind_rules,
     symbols: asCoverage(raw.symbols, `${id}.symbols`),
     routes: asCoverage(raw.routes, `${id}.routes`),
-    ...(typeof raw.package_manifest === 'string'
-      ? { package_manifest: raw.package_manifest }
-      : {}),
+    app_classes: raw.app_classes ? asCoverage(raw.app_classes, `${id}.app_classes`) : defaultGap,
+    models: raw.models ? asCoverage(raw.models, `${id}.models`) : defaultGap,
+    ...(typeof raw.package_manifest === 'string' ? { package_manifest: raw.package_manifest } : {}),
     ...(raw.workspace ? { workspace: raw.workspace as PackageEcosystemConfig['workspace'] } : {}),
   }
   packageCache.set(id, config)
@@ -257,8 +303,14 @@ export function loadInfraEcosystemConfig(): InfraEcosystemConfig {
   const compose = raw.compose as InfraEcosystemConfig['compose']
   const fly = raw.fly as InfraEcosystemConfig['fly']
   const backstage = raw.backstage as InfraEcosystemConfig['backstage']
+  const kubernetes = raw.kubernetes as InfraEcosystemConfig['kubernetes']
+  const helm = raw.helm as InfraEcosystemConfig['helm']
+  const procfile = raw.procfile as InfraEcosystemConfig['procfile']
   if (!compose?.files?.length || !fly?.file || !backstage?.file) {
     throw new Error('infra.yaml missing compose/fly/backstage sections')
+  }
+  if (!kubernetes?.dirs?.length || !kubernetes.kinds?.length || !helm?.file || !procfile?.file) {
+    throw new Error('infra.yaml missing kubernetes/helm/procfile sections')
   }
 
   infraCache = {
@@ -281,6 +333,26 @@ export function loadInfraEcosystemConfig(): InfraEcosystemConfig {
         ...backstage.kind_map,
         default: asKind(backstage.kind_map.default, 'infra.backstage.kind_map.default'),
       },
+    },
+    kubernetes: {
+      ...kubernetes,
+      confidence: Number(kubernetes.confidence),
+      skip_template_marker: String(kubernetes.skip_template_marker ?? '{{'),
+      kind_map: {
+        ...kubernetes.kind_map,
+        default: asKind(kubernetes.kind_map.default, 'infra.kubernetes.kind_map.default'),
+      },
+    },
+    helm: {
+      ...helm,
+      name_key: String(helm.name_key ?? 'name'),
+      kind: asKind(helm.kind, 'infra.helm.kind'),
+      confidence: Number(helm.confidence),
+    },
+    procfile: {
+      ...procfile,
+      kind: asKind(procfile.kind, 'infra.procfile.kind'),
+      confidence: Number(procfile.confidence),
     },
     symbols: asCoverage(raw.symbols, 'infra.symbols'),
     routes: asCoverage(raw.routes, 'infra.routes'),

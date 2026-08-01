@@ -1,20 +1,20 @@
 # JVM (Java / Kotlin) ecosystem harvester coverage (reviewable scope).
-# Inference not wired yet — status: planned. Do not load from TypeScript until
-# a Java harvester entry exists in ecosystem-harvesters.ts.
+# Inference: harvestJavaEcosystem in ecosystem-harvesters.ts (Maven first;
+# settings.gradle include as optional fallback).
 #
 # Kotlin shares Maven/Gradle manifests — harvested under this id (not a
 # separate ecosystem). Scala-first Maven/Gradle modules may dual-claim with
 # scala.yaml; prefer scala.yaml when Scala plugin + .scala sources dominate.
 #
-# Emits (intended): one entity candidate per Maven module (pom.xml) or Gradle
+# Emits: one entity candidate per Maven module (pom.xml) or Gradle
 # project (build.gradle / build.gradle.kts), enumerated via settings.gradle(.kts)
 # `include` when present.
 # Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
-# Edges (intended): multi-module member → root/reactor via part_of.
+# Edges: multi-module member → root/reactor via part_of.
 
 id: java
 display_name: Java / Kotlin (JVM)
-status: planned
+status: implemented
 
 # Manifest atoms. Maven and Gradle are peers — either may be the sole build.
 # libs.versions.toml is catalog-only (never an entity).
@@ -166,24 +166,27 @@ kind_rules:
     match: {} # fallback
 
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols stay in the tree-sitter code-index cycle (.java). Kotlin
-    grammar is native-only (no WASM) — .kt/.kts are not AST-indexed today.
-    This harvester does not promote symbols to entity candidates.
+    Best-effort: Spring @Service/@RestController/@Controller/@Repository
+    classes → module; JPA @Entity/@Table → model kind. Other symbols stay
+    in tree-sitter (.java). Kotlin .kt/.kts included in regex harvest only.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional tier-4 AST enrichment for HTTP mappings is planned; missing
-    parsers only lose endpoint granularity. Prefer Spring MVC
-    @RequestMapping / @GetMapping / @PostMapping (and WebFlux
-    RouterFunction) first; then Quarkus/Micronaut JAX-RS-style and Ktor
-    routing DSL. Never promote route strings to deployable entities.
+    Best-effort regex for Spring @RequestMapping/@GetMapping/@PostMapping/…,
+    JAX-RS @Path, and Ktor get("/path") with leading slash. Confidence ~0.5;
+    capped. RouterFunction builders still not covered.
   planned_frameworks:
-    - spring-boot # Spring MVC request mappings
-    - spring-webflux # RouterFunction / annotated controllers
-    - quarkus
-    - micronaut
     - ktor
+    - spring-webflux # RouterFunction DSL
+
+app_classes:
+  status: partial
+  note: Spring @Service/@RestController/@Controller/@Repository classes → module.
+
+models:
+  status: partial
+  note: JPA @Entity/@Table → model kind.

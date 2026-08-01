@@ -13,7 +13,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import { EntityRegistry, type EntityKind } from '@kb/core/tools/entity-registry.js'
+import { type EntityKind, EntityRegistry } from '@kb/core/tools/entity-registry.js'
 
 export interface EntitiesCommandOptions {
   subcommand?: 'collisions'
@@ -41,6 +41,7 @@ const KNOWN_KINDS: EntityKind[] = [
   'api',
   'library',
   'cli',
+  'model',
 ]
 
 export function printEntitiesHelp(mode: CmdMode = 'cli'): string {
@@ -63,7 +64,10 @@ export function printEntitiesHelp(mode: CmdMode = 'cli'): string {
   ].join('\n')
 }
 
-export function parseEntitiesCommand(args: string[], mode: CmdMode = 'cli'): EntitiesCommandOptions {
+export function parseEntitiesCommand(
+  args: string[],
+  mode: CmdMode = 'cli'
+): EntitiesCommandOptions {
   if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
     throw new EntitiesCommandError(printEntitiesHelp(mode), 0)
   }
@@ -75,7 +79,9 @@ export function parseEntitiesCommand(args: string[], mode: CmdMode = 'cli'): Ent
   if (kindIndex !== -1 && args[kindIndex + 1]) {
     const kind = args[kindIndex + 1] as EntityKind
     if (!KNOWN_KINDS.includes(kind)) {
-      throw new EntitiesCommandError(`Unknown entity kind: ${kind}. Kinds: ${KNOWN_KINDS.join(', ')}`)
+      throw new EntitiesCommandError(
+        `Unknown entity kind: ${kind}. Kinds: ${KNOWN_KINDS.join(', ')}`
+      )
     }
     opts.kind = kind
   }
@@ -115,7 +121,9 @@ export async function runEntitiesCommand(
       }
       const lines = [`Nomenclature audit — ${collisions.length} confusable pair(s):`, '']
       for (const c of collisions) {
-        lines.push(`  ${c.fromEntity.canonicalName} (${c.fromEntity.kind})  ×  ${c.toEntity.canonicalName} (${c.toEntity.kind})`)
+        lines.push(
+          `  ${c.fromEntity.canonicalName} (${c.fromEntity.kind})  ×  ${c.toEntity.canonicalName} (${c.toEntity.kind})`
+        )
         if (c.gloss) lines.push(`    ${c.gloss}`)
       }
       out.log(lines.join('\n'))

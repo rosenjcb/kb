@@ -1,18 +1,17 @@
 # C / C++ ecosystem harvester coverage (reviewable scope).
-# Inference not wired yet — status: planned. Do not load from TypeScript until
-# a C/C++ harvester entry exists in ecosystem-harvesters.ts.
+# Inference: harvestCppEcosystem in ecosystem-harvesters.ts (CMake project() first).
 #
 # Package identity is inherently weak vs npm/Cargo/go.mod. Prefer named
 # project()/vcpkg/conan/xmake atoms when present; Makefile and compile_commands
 # are not strong identity. Many repos are libraries (raylib-style) → low-confidence
 # library fallback is the common case, not a failure.
 #
-# Emits (intended): one entity candidate per discoverable project/package atom.
+# Emits: one entity candidate per discoverable project/package atom.
 # Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
 
 id: cpp
 display_name: C / C++
-status: planned
+status: implemented
 
 # Manifest atoms, strongest → weakest. Multiple may coexist; prefer the
 # strongest identity present (vcpkg/conan name > CMake project() > meson
@@ -113,15 +112,21 @@ symbols:
   status: not_implemented
   note: >
     C/C++ symbols (funcs, types, macros) stay in the tree-sitter code-index
-    cycle (.c/.h/.cpp/.cc/.hpp). This harvester does not promote symbols to
-    entity candidates.
+    cycle (.c/.h/.cpp/.cc/.hpp). No common ORM/service-class convention
+    harvested as entities yet.
   planned: []
 
 routes:
-  status: not_applicable
+  status: partial
   note: >
-    No standard in-repo HTTP route table for C/C++ servers. Frameworks register
-    handlers in code (Crow CROW_ROUTE, Drogon METHOD, etc.) — that is AST/symbol
-    work, not a manifest harvest. Marked not_applicable rather than
-    not_implemented: there is nothing manifesto-class to parse later.
-  planned_frameworks: []
+    Best-effort Crow CROW_ROUTE(app, "/path") macros. Confidence ~0.5;
+    capped. Drogon/other frameworks still open.
+  planned_frameworks: [drogon]
+
+app_classes:
+  status: not_implemented
+  note: No common service-class convention harvested as entities.
+
+models:
+  status: not_implemented
+  note: No common C/C++ ORM model harvest yet.

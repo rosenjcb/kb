@@ -97,19 +97,26 @@ kind_rules:
 
 # Declared coverage gaps — not harvested yet (tier-4 in NOMENCLATURE_INDEX_PLAN §4a).
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols stay in the tree-sitter code-index cycle (.php). This
-    harvester does not promote symbols to entity candidates.
+    Best-effort: *Controller/*Service classes → module; Eloquent Model /
+    Doctrine ORM\\Entity → model kind. Other symbols stay in tree-sitter.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional route-file / attribute enrichment is planned; frameworks we
-    cannot parse simply lose endpoint granularity. Laravel `routes/*` is the
-    primary target; Symfony attribute / YAML routes and Slim route maps follow.
+    Best-effort Laravel Route::get/post/… and Symfony #[Route]/@Route.
+    Confidence ~0.5; capped. Slim route maps and YAML routes still open.
   planned_frameworks:
     - laravel # routes/web.php, routes/api.php, routes/*.php
     - symfony # config/routes*.yaml + Route attributes
     - slim/slim
+
+app_classes:
+  status: partial
+  note: '*Controller/*Service/*Handler/*Repository classes → module.'
+
+models:
+  status: partial
+  note: Eloquent Model / Doctrine ORM Entity → model.

@@ -1,13 +1,12 @@
 # Scala ecosystem harvester coverage.
-# Inference not wired yet — this file is the reviewable scope for a future
-# Scala harvester (same role as typescript.yaml today).
+# Inference: harvestScalaEcosystem in ecosystem-harvesters.ts (build.sbt name :=).
 #
-# Emits (planned): one entity per sbt/Mill/Maven/Gradle Scala module.
+# Emits: one entity per sbt/Mill/Maven/Gradle Scala module (sbt wired first).
 # Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
 
 id: scala
 display_name: Scala
-status: planned
+status: implemented
 
 # Primary → secondary. Prefer sbt/Mill when present; Maven/Gradle only when
 # the module is clearly Scala (scala-maven-plugin / scala plugin + .scala src).
@@ -148,19 +147,24 @@ kind_rules:
     match: {} # fallback
 
 symbols:
-  status: not_implemented
+  status: partial
   note: >
-    Code symbols (class/trait/object/def) stay in the tree-sitter code-index
-    cycle. This harvester does not promote symbols to entity candidates.
+    Best-effort: *Service/*Controller classes → module; Entity-deriving
+    case classes → model kind. Other symbols stay in tree-sitter.
   planned: []
 
 routes:
-  status: not_implemented
+  status: partial
   note: >
-    Optional tier-4 enrichment from Play conf/routes and http4s/Tapir route
-    DSLs is planned; absent parsers simply lose endpoint granularity. Do not
-    treat route files as deployable entities.
+    Best-effort Play conf/routes verb+path lines and http4s HttpRoutes
+    path literals. Confidence ~0.5; capped. Tapir endpoint DSLs still open.
   planned_frameworks:
-    - play # conf/routes + reverse router
-    - http4s # HttpRoutes / HttpApp combinators
-    # tapir endpoints (OpenAPI-adjacent) are a later enrichment target
+    - tapir
+
+app_classes:
+  status: partial
+  note: '*Service/*Controller/*Handler/*Repository classes → module.'
+
+models:
+  status: partial
+  note: Entity-deriving case classes → model (best-effort).

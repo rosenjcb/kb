@@ -94,7 +94,7 @@ describe('parseJsonObjectFromLLM', () => {
 })
 
 describe('runAutoScoreFile batching', () => {
-  it('[TC-46] scores >8 questions in multiple judge batches', async () => {
+  it('[TC-46] scores many questions in multiple judge batches', async () => {
     const fs = await import('node:fs')
     const os = await import('node:os')
     const path = await import('node:path')
@@ -147,7 +147,7 @@ describe('runAutoScoreFile batching', () => {
         scoreRuns: 1,
       })
       expect(normalized).toHaveLength(12)
-      expect(judgeCalls).toHaveBeenCalledTimes(2)
+      expect(judgeCalls).toHaveBeenCalledTimes(Math.ceil(12 / SCORE_BATCH_SIZE))
     } finally {
       vi.unstubAllGlobals()
       if (prev === undefined) delete process.env.GEMINI_API_KEY

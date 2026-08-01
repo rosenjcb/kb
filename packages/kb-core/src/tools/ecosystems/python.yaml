@@ -67,11 +67,24 @@ kind_rules:
     match: {}
 
 symbols:
-  status: not_implemented
-  note: Python symbols stay in tree-sitter code-index.
+  status: partial
+  note: >
+    Best-effort: *Service/*Controller classes → module; Django models.Model /
+    SQLAlchemy Base / SQLModel / __tablename__ → model kind. Other symbols
+    stay in tree-sitter code-index.
   planned: []
 
 routes:
-  status: not_implemented
-  note: FastAPI/Django URLConf route tables are tier-4 — not harvested yet.
-  planned_frameworks: [fastapi, django, flask]
+  status: partial
+  note: >
+    Best-effort regex harvest for FastAPI @app.get/post/…, Flask
+    @app.route/@bp.route, and Django path(). Confidence ~0.5; capped.
+  planned_frameworks: []
+
+app_classes:
+  status: partial
+  note: '*Service/*Controller/*Handler/*UseCase classes → module.'
+
+models:
+  status: partial
+  note: Django models.Model, SQLAlchemy Base/SQLModel, __tablename__ → model.
