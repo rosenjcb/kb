@@ -11,7 +11,7 @@ description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML files state coverage per ecosystem.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-08-01T22:00:00Z
+timestamp: 2026-08-01T23:30:00Z
 ---
 
 ### Intro
@@ -94,6 +94,7 @@ results today. You can inspect the registry with `kb entities`.
 | FR-22 | Harvest tier-4 app classes as `module`. Harvest ORM and SQL models as `model`. Do not emit kind `service` for those atoms. |
 | FR-23 | Harvest extra route and model patterns: Nest method verbs, Hono, Go 1.22 ServeMux, Sinatra/Grape, Tapir `.in`, Drogon, GraphQL roots/types, Drizzle/Mongoose/Sequelize, EF `ToTable`, Exposed, Persistent lines. |
 | FR-24 | Join Spring and Nest class/controller prefixes with method paths. Expand Rails `resources` to CRUD verbs. Harvest Symfony YAML routes, Slim maps, Flask MethodView `add_url_rule`, Django `include()` prefixes, tRPC procedures, OpenAPI path items, Room `tableName`, Hibernate XML, and Persistent TH blocks. |
+| FR-25 | Harvest raw Node `url`/`pathname` route checks, embedded `CREATE TABLE` in source, Nest `setGlobalPrefix`, FastAPI `APIRouter(prefix=)`, Gin/chi `Group` joins, Rails `namespace`/`scope` stacks, Django `app_name`, Micronaut/JAX-RS path joins, ASGI `Route`/`Mount`, and same-document OpenAPI `$ref` path items. Capture `*Store`/`*Indexer` classes as modules. |
 
 ### QA Test Cases
 
@@ -125,6 +126,7 @@ results today. You can inspect the registry with `kb entities`.
 | TC-24 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
 | TC-25 | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. Nest joins controller + method (`GET /orders/:id`). |
 | TC-26 | FR-24 | Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH | Joined routes, CRUD expansions, and ORM models are harvested. |
+| TC-27 | FR-25 | Raw Node HTTP, embedded SQL DDL, Nest global prefix, FastAPI router prefix, Gin Group, Rails namespace, Django app_name, Micronaut/JAX-RS join, ASGI Route, OpenAPI `$ref`, Store/Indexer classes | kb-like api/model/module candidates and Round-4 route joins are harvested. |
 
 ### Related docs
 

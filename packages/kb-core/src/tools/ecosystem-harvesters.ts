@@ -713,6 +713,7 @@ export async function harvestContractManifests(scanDir: string): Promise<Harvest
       })
     }
     // Path items (and per-verb operations) — denser than title alone.
+    // Same-document `$ref` path items are expanded when feasible.
     const paths = parsed?.paths
     if (paths && typeof paths === 'object') {
       for (const [routePath, item] of Object.entries(paths)) {
@@ -727,9 +728,18 @@ export async function harvestContractManifests(scanDir: string): Promise<Harvest
           confidence: OPENAPI_PATH_CONFIDENCE,
           contentHash: hash,
         })
-        if (!item || typeof item !== 'object') continue
+        let resolved: unknown = item
+        if (
+          item &&
+          typeof item === 'object' &&
+          '$ref' in item &&
+          typeof (item as { $ref?: unknown }).$ref === 'string'
+        ) {
+          resolved = resolveOpenApiRef(parsed, (item as { $ref: string }).$ref)
+        }
+        if (!resolved || typeof resolved !== 'object') continue
         for (const verb of ['get', 'post', 'put', 'patch', 'delete', 'options', 'head']) {
-          if (!(verb in item)) continue
+          if (!(verb in (resolved as Record<string, unknown>))) continue
           const name = `${verb.toUpperCase()} ${routePath}`
           if (!isPlausibleHttpRoute(name)) continue
           push({
@@ -1119,6 +1129,402 @@ function nestJoinedRoutes(raw: string): Array<{ name: string; alias?: string }> 
   return found
 }
 
+/**
+ * Raw Node.js `http` dispatch: `method === 'POST' && url === '/v1/query'`,
+ * `pathname === '/healthz'`, `url.startsWith('/v1/facts')`, `URLPattern`.
+ * Captures framework-free servers (kb-server style).
+ */
+export function rawNodeHttpRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  const pathExpr = '(?:url|pathname|path|req\\.url|request\\.url)'
+  const verb = '(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)'
+
+  // Same line: method === 'GET' && (url === '/healthz' || url === '/health')
+  for (const line of raw.split('\n')) {
+    const verbMatch = line.match(new RegExp(`\\bmethod\\s*===\\s*['"]${verb}['"]`, 'i'))
+    if (verbMatch?.[1]) {
+      const method = verbMatch[1].toUpperCase()
+      const pathRe = new RegExp(`\\b${pathExpr}\\s*(?:===|==)\\s*['"](\\/[^'"]+)['"]`, 'g')
+      for (const pm of line.matchAll(pathRe)) {
+        if (pm[1]) push(`${method} ${pm[1]}`)
+      }
+    }
+    // pathname === '/x' && method === 'POST' on one line
+    const pathVerb = line.match(
+      new RegExp(
+        `\\b${pathExpr}\\s*(?:===|==)\\s*['"](\\/[^'"]+)['"]\\s*&&\\s*method\\s*===\\s*['"]${verb}['"]`,
+        'i'
+      )
+    )
+    if (pathVerb?.[1] && pathVerb[2]) {
+      push(`${pathVerb[2].toUpperCase()} ${pathVerb[1]}`)
+    }
+  }
+  // Bare equality / startsWith (path without verb — still an API surface)
+  const barePath = new RegExp(
+    `\\b${pathExpr}\\s*(?:===|==)\\s*['"](\\/[^'"]+)['"]`,
+    'g'
+  )
+  for (const m of raw.matchAll(barePath)) {
+    if (m[1]) push(m[1])
+  }
+  const startsWith = new RegExp(
+    `\\b${pathExpr}\\s*\\.startsWith\\s*\\(\\s*['"](\\/[^'"]+)['"]`,
+    'g'
+  )
+  for (const m of raw.matchAll(startsWith)) {
+    if (m[1]) push(m[1])
+  }
+  // new URLPattern({ pathname: '/users/:id' }) | new URLPattern('/users/:id')
+  for (const m of raw.matchAll(
+    /new\s+URLPattern\s*\(\s*(?:\{[^}]*\bpathname\s*:\s*['"]([^'"]+)['"]|['"]([^'"]+)['"])/g
+  )) {
+    const p = m[1] ?? m[2]
+    if (p?.startsWith('/')) push(p)
+  }
+  return found
+}
+
+/** Nest `setGlobalPrefix('api')` joined with same-file `@Controller` routes. */
+function nestGlobalPrefixRoutes(raw: string): Array<{ name: string; alias?: string }> {
+  const found: Array<{ name: string; alias?: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string, alias?: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push(alias ? { name, alias } : { name })
+  }
+  const prefixes: string[] = []
+  for (const m of raw.matchAll(/\.setGlobalPrefix\s*\(\s*['"]([^'"]+)['"]/g)) {
+    if (m[1]) prefixes.push(m[1].replace(/^\/+|\/+$/g, ''))
+  }
+  // RouterModule.register([{ path: 'admin', module: … }])
+  if (/\bRouterModule\b/.test(raw)) {
+    for (const m of raw.matchAll(
+      /\bpath\s*:\s*['"]([A-Za-z][A-Za-z0-9_-]*)['"]\s*,\s*module\s*:/g
+    )) {
+      if (m[1]) push(`/${m[1]}`, m[1])
+    }
+  }
+  if (prefixes.length === 0) return found
+  const nested = nestJoinedRoutes(raw)
+  for (const prefix of prefixes) {
+    push(`/${prefix}`, prefix)
+    for (const hit of nested) {
+      const methodMatch = hit.name.match(/^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|ANY)\s+(.+)$/i)
+      if (methodMatch?.[1] && methodMatch[2]) {
+        push(`${methodMatch[1].toUpperCase()} ${joinHttpPaths(prefix, methodMatch[2])}`)
+      } else {
+        push(joinHttpPaths(prefix, hit.name))
+      }
+    }
+  }
+  return found
+}
+
+/**
+ * FastAPI `APIRouter(prefix="/v1")` + `@router.get("/users")` same-file join;
+ * also `include_router(..., prefix=)`.
+ */
+function fastapiRouterPrefixRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+
+  // var = APIRouter(prefix="/v1")
+  const varPrefixes = new Map<string, string>()
+  for (const m of raw.matchAll(
+    /\b([A-Za-z_][\w]*)\s*=\s*APIRouter\s*\([^)]*prefix\s*=\s*['"]([^'"]+)['"]/g
+  )) {
+    if (m[1] && m[2]) varPrefixes.set(m[1], m[2])
+  }
+  // Bare APIRouter(prefix=) without assignment — treat as default router
+  const barePrefixes: string[] = []
+  for (const m of raw.matchAll(/APIRouter\s*\([^)]*prefix\s*=\s*['"]([^'"]+)['"]/g)) {
+    if (m[1]) barePrefixes.push(m[1])
+  }
+  for (const m of raw.matchAll(
+    /\.include_router\s*\([^,)]+,\s*prefix\s*=\s*['"]([^'"]+)['"]/g
+  )) {
+    if (m[1]) barePrefixes.push(m[1])
+  }
+
+  for (const [varName, prefix] of varPrefixes) {
+    const deco = new RegExp(
+      `@${varName}\\.(get|post|put|patch|delete|options|head)\\s*\\(\\s*['"]([^'"]+)['"]`,
+      'gi'
+    )
+    for (const hm of raw.matchAll(deco)) {
+      if (hm[1] && hm[2]) {
+        push(`${hm[1].toUpperCase()} ${joinHttpPaths(prefix, hm[2])}`)
+      }
+    }
+  }
+  // @router.get when a single bare prefix exists
+  if (barePrefixes.length === 1) {
+    const prefix = barePrefixes[0] ?? ''
+    for (const hm of raw.matchAll(
+      /@(?:router|api_router|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*['"]([^'"]+)['"]/gi
+    )) {
+      if (hm[1] && hm[2]) {
+        push(`${hm[1].toUpperCase()} ${joinHttpPaths(prefix, hm[2])}`)
+      }
+    }
+  }
+  for (const p of barePrefixes) {
+    if (p) push(p.startsWith('/') ? p : `/${p}`)
+  }
+  return found
+}
+
+/** Gin/chi `x := r.Group("/v1")` + `x.GET("/users", …)` same-file join. */
+function goGroupPrefixRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  for (const m of raw.matchAll(
+    /\b([A-Za-z_]\w*)\s*(?::?=)\s*\w+\.Group\s*\(\s*"(\/[^"]*)"/g
+  )) {
+    const varName = m[1]
+    const prefix = m[2]
+    if (!varName || !prefix) continue
+    push(prefix)
+    const verbRe = new RegExp(
+      `\\b${varName}\\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Handle|Get|Post|Put|Patch|Delete)\\s*\\(\\s*"([^"]+)"`,
+      'g'
+    )
+    for (const hm of raw.matchAll(verbRe)) {
+      const verb = (hm[1] ?? 'GET').toUpperCase()
+      const method = verb === 'ANY' || verb === 'HANDLE' ? 'ANY' : verb
+      const seg = hm[2]
+      if (seg) push(`${method} ${joinHttpPaths(prefix, seg)}`)
+    }
+  }
+  // Unassigned Group("/api") / chi Route already partially covered — emit prefix
+  for (const m of raw.matchAll(/\b\w+\.Group\s*\(\s*"(\/[^"]*)"/g)) {
+    if (m[1]) push(m[1])
+  }
+  return found
+}
+
+/**
+ * Rails `namespace` / `scope` stack joined with nested `resources` / verb routes
+ * (indentation-light `do`/`end` scan of routes.rb).
+ */
+export function railsNestedRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  const stack: string[] = []
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    const ns = trimmed.match(/^namespace\s+:([a-z][a-z0-9_]*)/)
+    const scopeStr = trimmed.match(/^scope\s+['"]([^'"]+)['"]/)
+    const scopeSym = trimmed.match(/^scope\s+:([a-z][a-z0-9_]*)/)
+    const pathPrefix = trimmed.match(/^scope\s+path:\s*['"]([^'"]+)['"]/)
+
+    let pushed = false
+    if (ns?.[1]) {
+      stack.push(`/${ns[1]}`)
+      pushed = true
+      push(`/${ns[1]}`)
+    } else if (scopeStr?.[1]) {
+      const seg = scopeStr[1].startsWith('/') ? scopeStr[1] : `/${scopeStr[1]}`
+      stack.push(seg)
+      pushed = true
+      push(seg)
+    } else if (scopeSym?.[1]) {
+      stack.push(`/${scopeSym[1]}`)
+      pushed = true
+      push(`/${scopeSym[1]}`)
+    } else if (pathPrefix?.[1]) {
+      const seg = pathPrefix[1].startsWith('/') ? pathPrefix[1] : `/${pathPrefix[1]}`
+      stack.push(seg)
+      pushed = true
+      push(seg)
+    }
+
+    const prefix = stack.length ? stack.join('').replace(/\/+/g, '/') : ''
+
+    for (const m of trimmed.matchAll(/\bresources\s+:([a-z][a-z0-9_]*)/g)) {
+      if (!m[1]) continue
+      const base = prefix ? joinHttpPaths(prefix, m[1]) : `/${m[1]}`
+      for (const r of expandRailsResourceRoutes(base.replace(/^\//, ''))) push(r)
+    }
+    for (const m of trimmed.matchAll(/\bresource\s+:([a-z][a-z0-9_]*)/g)) {
+      if (!m[1]) continue
+      const base = prefix ? joinHttpPaths(prefix, m[1]) : `/${m[1]}`
+      push(base)
+      push(`GET ${base}`)
+      push(`POST ${base}`)
+      push(`PUT ${base}`)
+      push(`PATCH ${base}`)
+      push(`DELETE ${base}`)
+    }
+    for (const m of trimmed.matchAll(
+      /\b(get|post|put|patch|delete|match)\s+['"]([^'"]+)['"]/g
+    )) {
+      if (!m[2]) continue
+      const seg = m[2].startsWith('/') ? m[2] : `/${m[2]}`
+      const joined = prefix ? joinHttpPaths(prefix, seg) : seg
+      const verb = (m[1] ?? 'get').toUpperCase()
+      if (verb === 'MATCH') push(joined)
+      else push(`${verb} ${joined}`)
+    }
+
+    // Pop stack on `end` that closes a namespace/scope block we pushed
+    if (/^end\b/.test(trimmed) && stack.length > 0 && !pushed) {
+      stack.pop()
+    }
+  }
+  return found
+}
+
+/** Micronaut `@Controller("/api")` + `@Get("/users")` join. */
+function micronautJoinedRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  type Ctrl = { prefix: string; bodyStart: number; bodyEnd: number }
+  const ctrls: Ctrl[] = []
+  const ctrlRe =
+    /@Controller\s*\(\s*['"]([^'"]*)['"]\s*\)[\s\S]{0,200}?(?:public\s+|internal\s+|open\s+)?(?:class|object)\s+[A-Z][A-Za-z0-9_]*/g
+  for (const m of raw.matchAll(ctrlRe)) {
+    const prefix = m[1] ?? ''
+    const declEnd = (m.index ?? 0) + m[0].length
+    const brace = raw.indexOf('{', declEnd)
+    if (brace < 0) continue
+    ctrls.push({ prefix, bodyStart: brace + 1, bodyEnd: raw.length })
+  }
+  for (let i = 0; i < ctrls.length; i++) {
+    const c = ctrls[i]
+    if (!c) continue
+    const next = ctrls[i + 1]
+    c.bodyEnd = next ? next.bodyStart - 1 : raw.length
+    if (c.prefix) push(c.prefix.startsWith('/') ? c.prefix : `/${c.prefix}`)
+    const body = raw.slice(c.bodyStart, c.bodyEnd)
+    for (const hm of body.matchAll(
+      /@(Get|Post|Put|Patch|Delete|Head|Options|Trace)\s*(?:\(\s*(?:(?:uri|value)\s*=\s*)?['"]([^'"]*)['"]\s*\))?/g
+    )) {
+      const method = (hm[1] ?? 'GET').toUpperCase()
+      const seg = hm[2] ?? ''
+      const joined = joinHttpPaths(c.prefix, seg)
+      push(`${method} ${joined}`)
+    }
+  }
+  return found
+}
+
+/** JAX-RS / Quarkus `@Path` on class joined with method `@GET` + `@Path`. */
+function jaxrsJoinedRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  type Res = { prefix: string; bodyStart: number; bodyEnd: number }
+  const resources: Res[] = []
+  const classRe =
+    /@Path\s*\(\s*['"]([^'"]*)['"]\s*\)[\s\S]{0,300}?(?:public\s+|protected\s+)?(?:class|interface)\s+[A-Z][A-Za-z0-9_]*/g
+  for (const m of raw.matchAll(classRe)) {
+    const prefix = m[1] ?? ''
+    const declEnd = (m.index ?? 0) + m[0].length
+    const brace = raw.indexOf('{', declEnd)
+    if (brace < 0) continue
+    resources.push({ prefix, bodyStart: brace + 1, bodyEnd: raw.length })
+  }
+  for (let i = 0; i < resources.length; i++) {
+    const res = resources[i]
+    if (!res) continue
+    const next = resources[i + 1]
+    res.bodyEnd = next ? next.bodyStart - 1 : raw.length
+    if (res.prefix) push(res.prefix.startsWith('/') ? res.prefix : `/${res.prefix}`)
+    const body = raw.slice(res.bodyStart, res.bodyEnd)
+    // Split on method annotations roughly: @GET ... @Path("/x") or @Path then @GET
+    for (const hm of body.matchAll(
+      /@(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[\s\S]{0,120}?@Path\s*\(\s*['"]([^'"]*)['"]\s*\)/g
+    )) {
+      if (hm[1] && hm[2] !== undefined) {
+        push(`${hm[1]} ${joinHttpPaths(res.prefix, hm[2])}`)
+      }
+    }
+    for (const hm of body.matchAll(
+      /@Path\s*\(\s*['"]([^'"]*)['"]\s*\)[\s\S]{0,80}?@(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g
+    )) {
+      if (hm[1] !== undefined && hm[2]) {
+        push(`${hm[2]} ${joinHttpPaths(res.prefix, hm[1])}`)
+      }
+    }
+  }
+  return found
+}
+
+/** Starlette/ASGI/Datasette-style `Route` / `Mount` / `add_route`. */
+function asgiStyleRoutes(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+  for (const m of raw.matchAll(
+    /\b(?:Route|Mount|WebSocketRoute)\s*\(\s*['"](\/[^'"]+)['"]/g
+  )) {
+    if (m[1]) push(m[1])
+  }
+  for (const m of raw.matchAll(/\.add_route\s*\(\s*['"](\/[^'"]+)['"]/g)) {
+    if (m[1]) push(m[1])
+  }
+  for (const m of raw.matchAll(
+    /\badd_api_route\s*\(\s*['"](\/[^'"]+)['"]/g
+  )) {
+    if (m[1]) push(m[1])
+  }
+  return found
+}
+
+/** Resolve a same-document OpenAPI JSON Pointer (`#/components/...`). */
+function resolveOpenApiRef(doc: unknown, ref: string): unknown {
+  if (!ref.startsWith('#/')) return null
+  const parts = ref
+    .slice(2)
+    .split('/')
+    .map(p => p.replace(/~1/g, '/').replace(/~0/g, '~'))
+  let cur: unknown = doc
+  for (const part of parts) {
+    if (!cur || typeof cur !== 'object') return null
+    cur = (cur as Record<string, unknown>)[part]
+  }
+  return cur ?? null
+}
+
 function pushUniqueCandidate(
   candidates: EntityCandidate[],
   seen: Set<string>,
@@ -1247,9 +1653,12 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     const hash = sha256(raw)
     const found: Array<{ name: string; alias?: string }> = []
 
-    // NestJS: join @Controller('payments') + @Get/@Post('…')
+    // NestJS: join @Controller('payments') + @Get/@Post('…') + setGlobalPrefix
     if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
       found.push(...nestJoinedRoutes(raw))
+      found.push(...nestGlobalPrefixRoutes(raw))
+      // Raw node:http dispatch (kb-server style) + URLPattern
+      found.push(...rawNodeHttpRoutes(raw))
       // tRPC procedure names on routers
       for (const m of raw.matchAll(
         /\b([a-z][A-Za-z0-9_]*)\s*:\s*(?:publicProcedure|protectedProcedure|privateProcedure|procedure)\b/g
@@ -1280,6 +1689,8 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     }
     // Flask: @app.route / @bp.route / @blueprint.route + MethodView add_url_rule
     if (ext === '.py') {
+      found.push(...fastapiRouterPrefixRoutes(raw))
+      found.push(...asgiStyleRoutes(raw))
       for (const m of raw.matchAll(/@(?:app|bp|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]/gi)) {
         if (m[1]) found.push({ name: m[1] })
       }
@@ -1324,8 +1735,15 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
           }
         }
       }
+      // Django app_name — reverse-URL namespace (emit as coarse API surface)
+      for (const m of raw.matchAll(/\bapp_name\s*=\s*['"]([a-z][a-z0-9_]*)['"]/g)) {
+        if (m[1]) found.push({ name: `django-app/${m[1]}`, alias: m[1] })
+      }
     }
     // Go gin/chi/echo/fiber + Go 1.22 ServeMux method patterns
+    if (ext === '.go') {
+      found.push(...goGroupPrefixRoutes(raw))
+    }
     for (const m of raw.matchAll(
       /\b(?:r|router|mux|e|app)\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Handle|Get|Post|Put|Patch|Delete)\s*\(\s*"([^"]+)"/g
     )) {
@@ -1351,6 +1769,8 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     // Spring MVC / WebFlux + JAX-RS + Micronaut + Ktor
     if (ext === '.java' || ext === '.kt' || ext === '.kts') {
       found.push(...springMappingPaths(raw))
+      found.push(...micronautJoinedRoutes(raw))
+      found.push(...jaxrsJoinedRoutes(raw))
       for (const m of raw.matchAll(/@Path\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
         if (m[1]) found.push({ name: m[1] })
       }
@@ -1524,30 +1944,8 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     // Rails + Sinatra/Grape (routes.rb and *.rb)
     if (ext === '.rb') {
       if (relPosix.endsWith('routes.rb')) {
-        for (const m of raw.matchAll(/\b(?:get|post|put|patch|delete|match)\s+['"]([^'"]+)['"]/g)) {
-          if (m[1]) found.push({ name: m[1].startsWith('/') ? m[1] : `/${m[1]}` })
-        }
-        // resources :x → full CRUD; resource :x → singular member routes
-        for (const m of raw.matchAll(/\bresources\s+:([a-z][a-z0-9_]*)/g)) {
-          if (m[1]) {
-            for (const r of expandRailsResourceRoutes(m[1])) found.push({ name: r })
-          }
-        }
-        for (const m of raw.matchAll(/\bresource\s+:([a-z][a-z0-9_]*)/g)) {
-          if (!m[1]) continue
-          const base = `/${m[1]}`
-          found.push(
-            { name: base },
-            { name: `GET ${base}` },
-            { name: `POST ${base}` },
-            { name: `PUT ${base}` },
-            { name: `PATCH ${base}` },
-            { name: `DELETE ${base}` }
-          )
-        }
-        for (const m of raw.matchAll(/\bnamespace\s+:([a-z][a-z0-9_]*)/g)) {
-          if (m[1]) found.push({ name: `/${m[1]}` })
-        }
+        // Nested namespace/scope + resources/verbs (covers flat resources too)
+        found.push(...railsNestedRoutes(raw))
       }
       // Sinatra
       for (const m of raw.matchAll(
@@ -1686,9 +2084,15 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
         if (m[1]) pushModule(m[1], rel, hash, 'NestJS application class')
       }
       for (const m of raw.matchAll(
-        /export\s+class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase|Interactor|Resolver|Gateway))\b/g
+        /export\s+class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase|Interactor|Resolver|Gateway|Store|Indexer|Registry|Pipeline|Orchestrator))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Application layer class')
+      }
+      // Embedded SQL DDL in TS/JS source (node:sqlite migrations, etc.)
+      for (const m of raw.matchAll(
+        /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`]?[A-Za-z_][\w]*["`]?\.)?["`]?([A-Za-z_][A-Za-z0-9_]*)["`]?/gi
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'SQL table (embedded)')
       }
       for (const m of raw.matchAll(
         /@Entity\s*\(\s*(?:['"]([^'"]+)['"])?\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
@@ -1978,12 +2382,24 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       }
     }
 
-    // SQL DDL
+    // SQL DDL (.sql files; TS/JS embedded DDL handled above)
     if (ext === '.sql') {
       for (const m of raw.matchAll(
         /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`]?[A-Za-z_][\w]*["`]?\.)?["`]?([A-Za-z_][A-Za-z0-9_]*)["`]?/gi
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'SQL table')
+      }
+    }
+
+    // Embedded CREATE TABLE in other languages (Go embed, Python strings, etc.)
+    if (
+      ['.py', '.go', '.java', '.kt', '.kts', '.rb', '.cs', '.php', '.rs'].includes(ext) &&
+      /\bCREATE\s+TABLE\b/i.test(raw)
+    ) {
+      for (const m of raw.matchAll(
+        /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`]?[A-Za-z_][\w]*["`]?\.)?["`]?([A-Za-z_][A-Za-z0-9_]*)["`]?/gi
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'SQL table (embedded)')
       }
     }
   }

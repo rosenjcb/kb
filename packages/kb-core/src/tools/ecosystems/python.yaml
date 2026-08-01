@@ -77,10 +77,11 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort regex harvest for FastAPI @app.get/post/…, Flask
-    @app.route/@bp.route, Flask MethodView add_url_rule, and Django path()
-    with include() prefix join (same-file nested lists and cross-file
-    include('pkg.urls')). Confidence ~0.5; capped.
+    Best-effort regex harvest for FastAPI @app.get/post/…,
+    APIRouter(prefix=) join, include_router prefix, Starlette/ASGI
+    Route/Mount/add_route, Flask @app.route/@bp.route, Flask MethodView
+    add_url_rule, Django path() with include() prefix join and app_name.
+    Confidence ~0.5; capped.
   planned_frameworks: []
 
 app_classes:

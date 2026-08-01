@@ -116,8 +116,9 @@ symbols:
 routes:
   status: partial
   note: >
-    gin/chi/echo/fiber verbs, http.HandleFunc, Go 1.22 ServeMux
-    Handle("GET /path"), chi Mount/Route. gRPC stays contract-tier (proto).
+    gin/chi/echo/fiber verbs, Group("/v1") + member GET/POST join,
+    http.HandleFunc, Go 1.22 ServeMux Handle("GET /path"), chi
+    Mount/Route. gRPC stays contract-tier (proto).
   planned_frameworks: []
 
 app_classes:

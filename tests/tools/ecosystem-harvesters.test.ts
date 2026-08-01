@@ -775,6 +775,154 @@ describe('harvestAppConcepts', () => {
       ])
     )
   })
+
+  it('[TC-27] Given Round-4 raw Node HTTP, embedded DDL, Nest global prefix, FastAPI/Gin/Rails/Django/Micronaut/JAX-RS/ASGI/OpenAPI $ref, Store/Indexer, when harvested, then kb-like api/model/module expand', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await mkdir(path.join(scanDir, 'config'), { recursive: true })
+    await mkdir(path.join(scanDir, 'polls'), { recursive: true })
+
+    await writeFile(
+      path.join(scanDir, 'src', 'http-server.ts'),
+      [
+        "if (method === 'GET' && (url === '/healthz' || url === '/health')) {}",
+        "if (method === 'POST' && url === '/v1/query') {}",
+        "if (pathname === '/v1/facts/search') {}",
+        "const protectedRoute = url.startsWith('/v1/admin')",
+        "new URLPattern({ pathname: '/v1/docs/:id' })",
+        'export class QueryFeedbackStore {}',
+        'export class SqliteKbIndexer {}',
+        'db.exec(`CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY)`)',
+        'db.exec(`CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY)`)',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'main.ts'),
+      [
+        "app.setGlobalPrefix('api')",
+        "@Controller('orders')",
+        'export class OrdersController {',
+        "  @Get(':id')",
+        '  getOne() {}',
+        '}',
+        "RouterModule.register([{ path: 'admin', module: AdminModule }])",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'api.py'),
+      [
+        'from fastapi import APIRouter',
+        'from starlette.routing import Route, Mount',
+        'router = APIRouter(prefix="/v1")',
+        '@router.get("/users")',
+        'def list_users(): ...',
+        'routes = [Route("/asgi-up", endpoint=ok), Mount("/static", app=static)]',
+        'datasette.add_route("/-/metadata", view)',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'server.go'),
+      [
+        'package main',
+        'func main() {',
+        '  v1 := r.Group("/v1")',
+        '  v1.GET("/ready", h)',
+        '  v1.POST("/charge", h)',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'config', 'routes.rb'),
+      [
+        'Rails.application.routes.draw do',
+        '  namespace :api do',
+        '    namespace :v1 do',
+        '      resources :widgets',
+        '    end',
+        '  end',
+        'end',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'polls', 'urls.py'),
+      ["app_name = 'polls'", "urlpatterns = [path('list/', views.index)]"].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'WidgetController.java'),
+      [
+        'package com.acme;',
+        '@Controller("/api")',
+        'class WidgetController {',
+        '  @Get("/widgets")',
+        '  List list() { return null; }',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'OrdersResource.java'),
+      [
+        'package com.acme;',
+        '@Path("/orders")',
+        'public class OrdersResource {',
+        '  @GET',
+        '  @Path("/{id}")',
+        '  public Order get() { return null; }',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'openapi.yaml'),
+      [
+        'openapi: 3.1.0',
+        'info:',
+        '  title: Ref API',
+        'paths:',
+        '  /ref-users:',
+        '    $ref: "#/components/pathItems/Users"',
+        'components:',
+        '  pathItems:',
+        '    Users:',
+        '      get:',
+        '        summary: List users',
+        '      post:',
+        '        summary: Create user',
+      ].join('\n')
+    )
+
+    const routes = await harvestRouteDecorators(scanDir)
+    const names = routes.candidates.map(c => c.canonicalName)
+    expect(names).toContain('GET /healthz')
+    expect(names).toContain('/health')
+    expect(names).toContain('POST /v1/query')
+    expect(names).toContain('/v1/facts/search')
+    expect(names).toContain('/v1/admin')
+    expect(names).toContain('/v1/docs/:id')
+    expect(names).toContain('GET /api/orders/:id')
+    expect(names).toContain('/admin')
+    expect(names).toContain('GET /v1/users')
+    expect(names).toContain('/asgi-up')
+    expect(names).toContain('/static')
+    expect(names).toContain('/-/metadata')
+    expect(names).toContain('GET /v1/ready')
+    expect(names).toContain('POST /v1/charge')
+    expect(names).toContain('GET /api/v1/widgets')
+    expect(names).toContain('django-app/polls')
+    expect(names).toContain('GET /api/widgets')
+    expect(names).toContain('GET /orders/{id}')
+
+    const contracts = await harvestContractManifests(scanDir)
+    const contractNames = contracts.candidates.map(c => c.canonicalName)
+    expect(contractNames).toContain('/ref-users')
+    expect(contractNames).toContain('GET /ref-users')
+    expect(contractNames).toContain('POST /ref-users')
+
+    const concepts = await harvestAppConcepts(scanDir)
+    const modules = concepts.candidates.filter(c => c.kind === 'module').map(c => c.canonicalName)
+    const models = concepts.candidates.filter(c => c.kind === 'model').map(c => c.canonicalName)
+    expect(modules).toEqual(
+      expect.arrayContaining(['QueryFeedbackStore', 'SqliteKbIndexer', 'OrdersController'])
+    )
+    expect(models).toEqual(expect.arrayContaining(['facts', 'entities']))
+  })
 })
 
 describe('harvestRepoEntities', () => {

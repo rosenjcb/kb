@@ -134,10 +134,10 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort Rails config/routes.rb get/post/put/patch/delete/match
-    string paths plus `resources :x` → full CRUD (GET/POST /x and
-    GET/PUT/PATCH/DELETE /x/:id) and singular `resource :x` member routes
-    (confidence ~0.5). Sinatra verb DSL and Grape API routes also matched.
+    Best-effort Rails config/routes.rb with namespace/scope stacks joined to
+    nested resources/verbs, `resources :x` → full CRUD, singular
+    `resource :x` member routes (confidence ~0.5). Sinatra verb DSL and
+    Grape API routes also matched.
   planned_frameworks:
     - hanami
 

@@ -178,8 +178,9 @@ routes:
   note: >
     Best-effort regex for Spring class-level @RequestMapping joined to
     method-level @GetMapping/@PostMapping/… (`/api` + `/users` → `/api/users`),
-    JAX-RS @Path, and Ktor get("/path") with leading slash. Confidence ~0.5;
-    capped. RouterFunction builders still not covered.
+    Micronaut @Controller + @Get join, JAX-RS/Quarkus class @Path + method
+    @GET/@Path join, and Ktor get("/path") with leading slash. Confidence
+    ~0.5; capped. RouterFunction builders still not covered.
   planned_frameworks:
     - spring-webflux # RouterFunction DSL
 

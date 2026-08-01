@@ -86,27 +86,33 @@ symbols:
   status: partial
   note: >
     Best-effort app-layer harvest: Nest @Injectable/@Controller classes and
-    *Service/*Controller suffix types → module; TypeORM @Entity / Prisma
-    model → model kind. Arbitrary symbols stay in tree-sitter code-index.
+    *Service/*Controller/*Store/*Indexer suffix types → module; TypeORM
+    @Entity / Prisma model / embedded CREATE TABLE → model kind. Arbitrary
+    symbols stay in tree-sitter code-index.
   planned: []
 
 routes:
   status: partial
   note: >
-    Nest @Controller joined to @Get/@Post/… (`orders` + `:id` →
-    GET /orders/:id), Express/Koa/Hono verbs, Next.js filesystem routes
-    (page → surface, route/api → api), GraphQL roots, and tRPC
-    publicProcedure/mutation keys as trpc/<name>. Confidence ~0.5; capped.
+    Nest @Controller joined to @Get/@Post/… plus setGlobalPrefix /
+    RouterModule path, raw node:http url/pathname equality and startsWith
+    (kb-server style), URLPattern, Express/Koa/Hono verbs, Next.js
+    filesystem routes (page → surface, route/api → api), GraphQL roots,
+    and tRPC publicProcedure/mutation keys as trpc/<name>. Confidence
+    ~0.5; capped.
   planned_frameworks: []
 
 app_classes:
   status: partial
-  note: 'Nest @Injectable/@Controller/@Resolver and *Service/*Handler classes → module.'
+  note: >
+    Nest @Injectable/@Controller/@Resolver and
+    *Service/*Handler/*Store/*Indexer/*Registry/*Pipeline classes → module.
 
 models:
   status: partial
   note: >
     TypeORM/MikroORM @Entity, Prisma model/enum, Sequelize define/Model,
     Mongoose model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object
-    types → model. OpenAPI path items harvested in contract tier.
+    types, and CREATE TABLE in .sql or embedded in TS/JS → model. OpenAPI
+    path items harvested in contract tier.
 
