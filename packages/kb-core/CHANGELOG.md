@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.5.13
+
+### Patch Changes
+
+- Expand tier-4 ecosystem harvest: Spring/Nest path join, Rails CRUD, Symfony YAML, Slim, Flask MethodView, Django include namespaces, tRPC, OpenAPI path items, Room, Hibernate XML, Persistent TH.
+
 ## 1.5.12
 
 ### Patch Changes

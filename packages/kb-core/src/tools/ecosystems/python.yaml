@@ -78,13 +78,17 @@ routes:
   status: partial
   note: >
     Best-effort regex harvest for FastAPI @app.get/post/…, Flask
-    @app.route/@bp.route, and Django path(). Confidence ~0.5; capped.
+    @app.route/@bp.route, Flask MethodView add_url_rule, and Django path()
+    with include() prefix join (same-file nested lists and cross-file
+    include('pkg.urls')). Confidence ~0.5; capped.
   planned_frameworks: []
 
 app_classes:
   status: partial
-  note: '*Service/*Controller/*Handler/*UseCase classes → module.'
+  note: '*Service/*Controller/*Handler/*UseCase and Flask MethodView classes → module.'
 
 models:
   status: partial
-  note: Django models.Model, SQLAlchemy Base/SQLModel, __tablename__ → model.
+  note: >
+    Django models.Model, SQLAlchemy Base/SQLModel/__tablename__, Peewee
+    table_name, and Pydantic BaseModel → model.

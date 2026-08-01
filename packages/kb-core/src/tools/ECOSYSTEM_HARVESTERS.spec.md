@@ -11,7 +11,7 @@ description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML files state coverage per ecosystem.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-08-01T20:00:00Z
+timestamp: 2026-08-01T22:00:00Z
 ---
 
 ### Intro
@@ -93,6 +93,7 @@ results today. You can inspect the registry with `kb entities`.
 | FR-21 | Harvest tier-4 HTTP routes as low-confidence `api` entities. Harvest Next.js pages as `surface`. Reject file-path false matches. |
 | FR-22 | Harvest tier-4 app classes as `module`. Harvest ORM and SQL models as `model`. Do not emit kind `service` for those atoms. |
 | FR-23 | Harvest extra route and model patterns: Nest method verbs, Hono, Go 1.22 ServeMux, Sinatra/Grape, Tapir `.in`, Drogon, GraphQL roots/types, Drizzle/Mongoose/Sequelize, EF `ToTable`, Exposed, Persistent lines. |
+| FR-24 | Join Spring and Nest class/controller prefixes with method paths. Expand Rails `resources` to CRUD verbs. Harvest Symfony YAML routes, Slim maps, Flask MethodView `add_url_rule`, Django `include()` prefixes, tRPC procedures, OpenAPI path items, Room `tableName`, Hibernate XML, and Persistent TH blocks. |
 
 ### QA Test Cases
 
@@ -119,10 +120,11 @@ results today. You can inspect the registry with `kb entities`.
 | TC-19 | FR-18 | Sdk.Web csproj and `.sln` | Candidate kind is `service`. A `part_of` edge points to the solution name. |
 | TC-20 | FR-19 | `build.sbt` with name storefront and play | Candidate kind is `service`. |
 | TC-21 | FR-20 | Kubernetes Deployment or Ingress, Helm Chart, and Procfile | Candidates have kind `service` or `api`. |
-| TC-22 | FR-20 | OpenAPI file and protobuf `service` | Candidates have kind `api`. |
+| TC-22 | FR-20 | OpenAPI file (title + path items) and protobuf `service` | Candidates have kind `api` for title, paths, and operations. |
 | TC-23 | FR-21 | Nest, Express, FastAPI, Go, Spring, Next, and Rails routes plus a junk path | API routes are harvested. Next pages have kind `surface`. Junk paths are skipped. |
 | TC-24 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
-| TC-25 | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. |
+| TC-25 | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. Nest joins controller + method (`GET /orders/:id`). |
+| TC-26 | FR-24 | Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH | Joined routes, CRUD expansions, and ORM models are harvested. |
 
 ### Related docs
 

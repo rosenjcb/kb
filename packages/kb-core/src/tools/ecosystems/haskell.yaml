@@ -81,11 +81,11 @@ kind_rules:
     match: {} # fallback — named package with no clear stanza/deps signal
 
 symbols:
-  status: not_implemented
+  status: partial
   note: >
     Haskell symbols stay in the tree-sitter-haskell code-index cycle
-    (.hs / .lhs). Persistent/Esqueleto models are Template-Haskell heavy —
-    not harvested as entity candidates yet.
+    (.hs / .lhs). Persistent TH model names are harvested as model kind
+    (see models). Other symbols stay in tree-sitter.
   planned: []
 
 routes:
@@ -100,5 +100,7 @@ app_classes:
   note: No stable app-class convention harvested yet.
 
 models:
-  status: not_implemented
-  note: Persistent/Esqueleto models are Template-Haskell heavy — not harvested.
+  status: partial
+  note: >
+    Persistent TH blocks ([persistLowerCase|…|], persistUpperCase) and
+    `ModelName json` quasi-quote lines → model. Esqueleto still open.

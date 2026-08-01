@@ -135,11 +135,10 @@ routes:
   status: partial
   note: >
     Best-effort Rails config/routes.rb get/post/put/patch/delete/match
-    string paths plus `resources :x` → /x (confidence ~0.5). Sinatra verb
-    DSL and Grape API routes still open.
+    string paths plus `resources :x` → full CRUD (GET/POST /x and
+    GET/PUT/PATCH/DELETE /x/:id) and singular `resource :x` member routes
+    (confidence ~0.5). Sinatra verb DSL and Grape API routes also matched.
   planned_frameworks:
-    - sinatra
-    - grape
     - hanami
 
 app_classes:

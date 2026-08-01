@@ -279,12 +279,36 @@ describe('harvestContractManifests', () => {
       ].join('\n')
     )
 
+    await writeFile(
+      path.join(scanDir, 'openapi-paths.yaml'),
+      [
+        'openapi: 3.0.3',
+        'info:',
+        '  title: Catalog API',
+        '  version: 1.0.0',
+        'paths:',
+        '  /v1/items:',
+        '    get:',
+        '      summary: List items',
+        '    post:',
+        '      summary: Create item',
+        '  /v1/items/{id}:',
+        '    delete:',
+        '      summary: Delete item',
+      ].join('\n')
+    )
+
     const result = await harvestContractManifests(scanDir)
     const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
     expect(byName.get('Payments API')?.kind).toBe('api')
     expect(byName.get('Payments API')?.confidence).toBeGreaterThanOrEqual(0.85)
     expect(byName.get('acme.billing.BillingService')?.kind).toBe('api')
     expect(byName.get('acme.billing.BillingService')?.aliases).toContain('BillingService')
+    expect(byName.get('Catalog API')?.kind).toBe('api')
+    expect(byName.get('/v1/items')?.kind).toBe('api')
+    expect(byName.get('GET /v1/items')?.kind).toBe('api')
+    expect(byName.get('POST /v1/items')?.kind).toBe('api')
+    expect(byName.get('DELETE /v1/items/{id}')?.kind).toBe('api')
   })
 })
 
@@ -424,9 +448,9 @@ describe('harvestRouteDecorators', () => {
     expect(names).toContain('GET /ping')
     expect(names).toContain('/ready')
     expect(names).toContain('/api/billing')
-    expect(names).toContain('GET /invoices')
-    expect(names).toContain('POST /invoices')
-    expect(names).toContain('DELETE /invoices/{id}')
+    expect(names).toContain('GET /api/billing/invoices')
+    expect(names).toContain('POST /api/billing/invoices')
+    expect(names).toContain('DELETE /api/billing/invoices/{id}')
     expect(names).toContain('api/[controller]')
     expect(names).toContain('GET open')
     expect(names).toContain('GET /dotnet-health')
@@ -444,6 +468,12 @@ describe('harvestRouteDecorators', () => {
     expect(names).toContain('/uptime')
     expect(names).toContain('/webhooks/stripe')
     expect(names).toContain('/invoices')
+    expect(names).toContain('GET /invoices')
+    expect(names).toContain('POST /invoices')
+    expect(names).toContain('GET /invoices/:id')
+    expect(names).toContain('PUT /invoices/:id')
+    expect(names).toContain('PATCH /invoices/:id')
+    expect(names).toContain('DELETE /invoices/:id')
     expect(names).not.toContain('GET /should-not-appear')
     expect(names).not.toContain('mitmproxy/data/foo.pem')
     expect(result.candidates.every(c => c.kind === 'api' || c.kind === 'surface')).toBe(true)
@@ -586,7 +616,8 @@ describe('harvestAppConcepts', () => {
     const routes = await harvestRouteDecorators(scanDir)
     const names = routes.candidates.map(c => c.canonicalName)
     expect(names).toContain('orders')
-    expect(names).toContain('GET :id')
+    expect(names).toContain('GET /orders/:id')
+    expect(names).toContain('POST /orders')
     expect(names).toContain('GET /hono-up')
     expect(names).toContain('GET /v2/ready')
     expect(names).toContain('POST /v2/charge')
@@ -597,6 +628,152 @@ describe('harvestAppConcepts', () => {
     const concepts = await harvestAppConcepts(scanDir)
     const models = concepts.candidates.filter(c => c.kind === 'model').map(c => c.canonicalName)
     expect(models).toEqual(expect.arrayContaining(['Widget', 'Gadget', 'users', 'orders', 'User']))
+  })
+
+  it('[TC-26] Given Round-3 Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH, when harvested, then routes and models expand', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await mkdir(path.join(scanDir, 'config', 'routes'), { recursive: true })
+    await mkdir(path.join(scanDir, 'users'), { recursive: true })
+    await mkdir(path.join(scanDir, 'resources'), { recursive: true })
+
+    await writeFile(
+      path.join(scanDir, 'src', 'ApiController.java'),
+      [
+        'package com.acme;',
+        '@RestController',
+        '@RequestMapping("/api")',
+        'class ApiController {',
+        '  @GetMapping("/users")',
+        '  Object users() { return null; }',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'config', 'routes.rb'),
+      ['Rails.application.routes.draw do', '  resources :accounts', '  resource :profile', 'end'].join(
+        '\n'
+      )
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'views.py'),
+      [
+        'from flask.views import MethodView',
+        'class UserAPI(MethodView):',
+        '    def get(self): ...',
+        "app.add_url_rule('/mv-users', view_func=UserAPI.as_view('users'))",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'config', 'urls.py'),
+      [
+        'from django.urls import path, include',
+        "urlpatterns = [path('api/', include('users.urls'))]",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'users', 'urls.py'),
+      [
+        'from django.urls import path',
+        'from . import views',
+        "urlpatterns = [path('users/', views.list_users)]",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'trpc.ts'),
+      [
+        'export const appRouter = router({',
+        '  getUser: publicProcedure.query(async () => null),',
+        '  createUser: publicProcedure.mutation(async () => null),',
+        '})',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'slim.php'),
+      [
+        "<?php",
+        "$app->get('/slim-up', $h);",
+        "$app->map(['GET', 'POST'], '/slim-items', $h);",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'config', 'routes', 'api.yaml'),
+      [
+        'api_users:',
+        '  path: /symfony/users',
+        '  controller: App\\Controller\\UserController',
+        '  methods: [GET, POST]',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'UserEntity.kt'),
+      [
+        '@Entity(tableName = "room_users")',
+        'data class RoomUser(',
+        '  @PrimaryKey val id: Int',
+        ')',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'resources', 'User.hbm.xml'),
+      [
+        '<?xml version="1.0"?>',
+        '<!DOCTYPE hibernate-mapping PUBLIC "-//Hibernate/Hibernate Mapping DTD//EN" "http://hibernate.org/dtd/hibernate-mapping.dtd">',
+        '<hibernate-mapping>',
+        '  <class name="com.acme.BillingAccount" table="billing_accounts">',
+        '  </class>',
+        '</hibernate-mapping>',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'Models.hs'),
+      [
+        'share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|',
+        'User',
+        '    name Text',
+        '    email Text',
+        '    deriving Show',
+        'BlogPost',
+        '    title String',
+        '    userId UserId',
+        '|]',
+      ].join('\n')
+    )
+
+    const routes = await harvestRouteDecorators(scanDir)
+    const names = routes.candidates.map(c => c.canonicalName)
+    expect(names).toContain('GET /api/users')
+    expect(names).toContain('/accounts')
+    expect(names).toContain('GET /accounts')
+    expect(names).toContain('POST /accounts')
+    expect(names).toContain('GET /accounts/:id')
+    expect(names).toContain('DELETE /accounts/:id')
+    expect(names).toContain('GET /profile')
+    expect(names).toContain('/mv-users')
+    expect(names).toContain('flask:UserAPI')
+    expect(names).toContain('api/')
+    expect(names).toContain('api/users/')
+    expect(names).toContain('trpc/getUser')
+    expect(names).toContain('trpc/createUser')
+    expect(names).toContain('GET /slim-up')
+    expect(names).toContain('GET /slim-items')
+    expect(names).toContain('POST /slim-items')
+    expect(names).toContain('GET /symfony/users')
+    expect(names).toContain('POST /symfony/users')
+
+    const concepts = await harvestAppConcepts(scanDir)
+    const modules = concepts.candidates.filter(c => c.kind === 'module').map(c => c.canonicalName)
+    const models = concepts.candidates.filter(c => c.kind === 'model').map(c => c.canonicalName)
+    expect(modules).toEqual(expect.arrayContaining(['UserAPI']))
+    expect(models).toEqual(
+      expect.arrayContaining([
+        'RoomUser',
+        'room_users',
+        'BillingAccount',
+        'billing_accounts',
+        'User',
+        'BlogPost',
+      ])
+    )
   })
 })
 

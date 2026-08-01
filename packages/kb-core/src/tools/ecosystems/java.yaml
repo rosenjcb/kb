@@ -176,11 +176,11 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort regex for Spring @RequestMapping/@GetMapping/@PostMapping/…,
+    Best-effort regex for Spring class-level @RequestMapping joined to
+    method-level @GetMapping/@PostMapping/… (`/api` + `/users` → `/api/users`),
     JAX-RS @Path, and Ktor get("/path") with leading slash. Confidence ~0.5;
     capped. RouterFunction builders still not covered.
   planned_frameworks:
-    - ktor
     - spring-webflux # RouterFunction DSL
 
 app_classes:
@@ -189,4 +189,6 @@ app_classes:
 
 models:
   status: partial
-  note: JPA @Entity/@Table → model kind.
+  note: >
+    JPA @Entity/@Table, Room @Entity(tableName=…), and Hibernate XML
+    class/table mappings → model kind.

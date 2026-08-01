@@ -644,7 +644,8 @@ async function harvestProcfile(
 const OPENAPI_CONFIDENCE = 0.9
 const PROTO_CONFIDENCE = 0.85
 const ROUTE_CONFIDENCE = 0.5
-const ROUTE_CAP = 100
+const ROUTE_CAP = 200
+const OPENAPI_PATH_CONFIDENCE = 0.75
 
 /**
  * Tier-3 interface contracts: OpenAPI/Swagger titles and protobuf `service`
@@ -678,38 +679,72 @@ export async function harvestContractManifests(scanDir: string): Promise<Harvest
     const looksOpenApi =
       openapiBasenames.has(base) || /^\s*openapi\s*:/m.test(raw) || /^\s*swagger\s*:/m.test(raw)
     if (!looksOpenApi) continue
-    let title: string | undefined
+    type OpenApiDoc = {
+      info?: { title?: string }
+      openapi?: string
+      swagger?: string
+      paths?: Record<string, Record<string, unknown> | undefined>
+    }
+    let parsed: OpenApiDoc | null = null
     try {
       if (base.endsWith('.json')) {
-        const parsed = JSON.parse(raw) as {
-          info?: { title?: string }
-          openapi?: string
-          swagger?: string
-        }
+        parsed = JSON.parse(raw) as OpenApiDoc
         if (!parsed.openapi && !parsed.swagger && !openapiBasenames.has(base)) continue
-        title = parsed.info?.title
       } else {
-        const parsed = loadYaml(raw) as {
-          info?: { title?: string }
-          openapi?: string
-          swagger?: string
-        } | null
+        parsed = loadYaml(raw) as OpenApiDoc | null
         if (!parsed?.openapi && !parsed?.swagger && !openapiBasenames.has(base)) continue
-        title = parsed?.info?.title
       }
     } catch {
       continue
     }
-    if (!title || typeof title !== 'string') continue
-    push({
-      kind: 'api',
-      canonicalName: title,
-      aliases: [title],
-      sourceFile: path.relative(scanDir, filePath),
-      sourceKind: 'manifest',
-      confidence: OPENAPI_CONFIDENCE,
-      contentHash: sha256(raw),
-    })
+    const rel = path.relative(scanDir, filePath)
+    const hash = sha256(raw)
+    const title = parsed?.info?.title
+    if (title && typeof title === 'string') {
+      push({
+        kind: 'api',
+        canonicalName: title,
+        aliases: [title],
+        gloss: 'OpenAPI info.title',
+        sourceFile: rel,
+        sourceKind: 'manifest',
+        confidence: OPENAPI_CONFIDENCE,
+        contentHash: hash,
+      })
+    }
+    // Path items (and per-verb operations) — denser than title alone.
+    const paths = parsed?.paths
+    if (paths && typeof paths === 'object') {
+      for (const [routePath, item] of Object.entries(paths)) {
+        if (!routePath.startsWith('/') || !isPlausibleHttpRoute(routePath)) continue
+        push({
+          kind: 'api',
+          canonicalName: routePath,
+          aliases: [routePath],
+          gloss: 'OpenAPI path item',
+          sourceFile: rel,
+          sourceKind: 'manifest',
+          confidence: OPENAPI_PATH_CONFIDENCE,
+          contentHash: hash,
+        })
+        if (!item || typeof item !== 'object') continue
+        for (const verb of ['get', 'post', 'put', 'patch', 'delete', 'options', 'head']) {
+          if (!(verb in item)) continue
+          const name = `${verb.toUpperCase()} ${routePath}`
+          if (!isPlausibleHttpRoute(name)) continue
+          push({
+            kind: 'api',
+            canonicalName: name,
+            aliases: [name],
+            gloss: 'OpenAPI operation',
+            sourceFile: rel,
+            sourceKind: 'manifest',
+            confidence: OPENAPI_PATH_CONFIDENCE,
+            contentHash: hash,
+          })
+        }
+      }
+    }
   }
 
   const protoFiles = await walkFiles(scanDir, { extensions: new Set(['.proto']), maxFiles: 300 })
@@ -765,16 +800,21 @@ const APP_SOURCE_EXT = new Set([
   '.sql',
   '.graphql',
   '.gql',
+  '.xml',
 ])
 
-const ROUTE_SOURCE_EXT = APP_SOURCE_EXT
+const ROUTE_SOURCE_EXT = new Set([
+  ...APP_SOURCE_EXT,
+  '.yaml',
+  '.yml',
+])
 
 const ROUTE_FILE_EXT_RE =
   /\.(pem|crt|key|py|ts|tsx|js|jsx|mjs|cjs|go|java|kt|rb|cs|php|rs|scala|hs|cpp|cc|h|hpp|prisma|sql|graphql|gql|md|json|mitm|ya?ml|toml|txt|png|jpg|svg)$/i
 
 const APP_CONCEPT_CONFIDENCE = 0.55
-const APP_CONCEPT_CAP = 120
-const MODEL_CAP = 120
+const APP_CONCEPT_CAP = 160
+const MODEL_CAP = 160
 
 const BANNED_TYPE_NAMES = new Set([
   'String',
@@ -883,35 +923,198 @@ export function nextRouteFromFile(relPosix: string): NextRouteHit | null {
   return null
 }
 
-function springMappingPaths(raw: string): Array<{ name: string }> {
-  const found: Array<{ name: string }> = []
+/** Join class/controller prefix with a method segment (`/api` + `users` → `/api/users`). */
+export function joinHttpPaths(base: string, segment: string): string {
+  const a = (base ?? '').trim()
+  const b = (segment ?? '').trim()
+  if (!a) return b.startsWith('/') || !b ? b || '/' : `/${b}`
+  if (!b || b === '/') {
+    return a.startsWith('/') ? a.replace(/\/+$/, '') || '/' : `/${a.replace(/\/+$/, '')}`
+  }
+  const left = a.replace(/\/+$/, '')
+  const right = b.replace(/^\/+/, '')
+  const joined = `${left}/${right}`
+  return joined.startsWith('/') ? joined : `/${joined}`
+}
+
+/** Rails `resources :x` → standard seven CRUD route shapes (collection + member). */
+export function expandRailsResourceRoutes(resource: string): string[] {
+  const base = resource.startsWith('/') ? resource : `/${resource}`
+  const member = `${base}/:id`
+  return [
+    base,
+    `GET ${base}`,
+    `POST ${base}`,
+    `GET ${member}`,
+    `PUT ${member}`,
+    `PATCH ${member}`,
+    `DELETE ${member}`,
+  ]
+}
+
+type SpringHit = { method: string | null; path: string }
+
+function springAnnoPath(annoBlock: string): string | null {
+  const m = annoBlock.match(
+    /@RequestMapping\s*\(\s*(?:(?:value|path)\s*=\s*)?['"]([^'"]+)['"]/
+  )
+  return m?.[1] ?? null
+}
+
+function springMethodHits(raw: string): SpringHit[] {
+  const found: SpringHit[] = []
   const methodByAnno: Record<string, string | null> = {
     GetMapping: 'GET',
     PostMapping: 'POST',
     PutMapping: 'PUT',
     PatchMapping: 'PATCH',
     DeleteMapping: 'DELETE',
-    RequestMapping: null,
   }
   for (const [anno, method] of Object.entries(methodByAnno)) {
-    // @GetMapping("/x") | @GetMapping(path = "/x") | @GetMapping(value = "/x")
     const re = new RegExp(`@${anno}\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?['"]([^'"]+)['"]`, 'g')
     for (const m of raw.matchAll(re)) {
-      const routePath = m[1]
-      if (!routePath) continue
-      found.push({ name: method ? `${method} ${routePath}` : routePath })
+      if (m[1]) found.push({ method, path: m[1] })
     }
   }
-  // @RequestMapping(method = RequestMethod.GET, value = "/x")
+  // @RequestMapping(method = RequestMethod.GET, value = "/x") on methods
   for (const m of raw.matchAll(
     /@RequestMapping\s*\([^)]*method\s*=\s*RequestMethod\.([A-Z]+)[^)]*(?:value|path)\s*=\s*['"]([^'"]+)['"]/g
   )) {
-    if (m[1] && m[2]) found.push({ name: `${m[1]} ${m[2]}` })
+    if (m[1] && m[2]) found.push({ method: m[1], path: m[2] })
   }
   for (const m of raw.matchAll(
     /@RequestMapping\s*\([^)]*(?:value|path)\s*=\s*['"]([^'"]+)['"][^)]*method\s*=\s*RequestMethod\.([A-Z]+)/g
   )) {
-    if (m[1] && m[2]) found.push({ name: `${m[2]} ${m[1]}` })
+    if (m[1] && m[2]) found.push({ method: m[2], path: m[1] })
+  }
+  // Path-only @RequestMapping("/x") used as method mapping (no RequestMethod)
+  for (const m of raw.matchAll(
+    /@RequestMapping\s*\(\s*(?:(?:value|path)\s*=\s*)?['"]([^'"]+)['"]\s*\)/g
+  )) {
+    if (m[1]) found.push({ method: null, path: m[1] })
+  }
+  return found
+}
+
+/**
+ * Spring MVC/WebFlux mappings with class-level `@RequestMapping` joined to
+ * method-level `@GetMapping` / `@PostMapping` / … (`/api` + `/users` → `/api/users`).
+ */
+function springMappingPaths(raw: string): Array<{ name: string }> {
+  const found: Array<{ name: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push({ name })
+  }
+
+  type ClassSpan = { prefix: string | null; bodyStart: number; bodyEnd: number }
+  const classes: ClassSpan[] = []
+  const classDeclRe =
+    /((?:^[ \t]*@[^\n]+\n)+)[ \t]*(?:public\s+|protected\s+|private\s+|internal\s+|open\s+)?(?:class|interface|object)\s+[A-Z][A-Za-z0-9_]*/gm
+  for (const m of raw.matchAll(classDeclRe)) {
+    const annos = m[1] ?? ''
+    const prefix = springAnnoPath(annos)
+    const declEnd = (m.index ?? 0) + m[0].length
+    const brace = raw.indexOf('{', declEnd)
+    if (brace < 0) continue
+    classes.push({ prefix, bodyStart: brace + 1, bodyEnd: raw.length })
+  }
+  for (let i = 0; i < classes.length; i++) {
+    const cls = classes[i]
+    if (!cls) continue
+    const next = classes[i + 1]
+    cls.bodyEnd = next ? (next.bodyStart - 1) : raw.length
+  }
+
+  if (classes.length === 0) {
+    for (const hit of springMethodHits(raw)) {
+      const path = hit.path || '/'
+      push(hit.method ? `${hit.method} ${path}` : path)
+    }
+    return found
+  }
+
+  for (const cls of classes) {
+    if (cls.prefix) push(cls.prefix)
+    const body = raw.slice(cls.bodyStart, cls.bodyEnd)
+    // Method hits only — exclude a leading class-level @RequestMapping re-scan by
+    // stripping path-only RequestMapping that equals the class prefix when joined.
+    for (const hit of springMethodHits(body)) {
+      // Skip class-prefix re-capture: path-only RequestMapping equal to prefix
+      if (
+        hit.method === null &&
+        cls.prefix &&
+        (hit.path === cls.prefix || joinHttpPaths(cls.prefix, '') === hit.path)
+      ) {
+        continue
+      }
+      // Skip path-only @RequestMapping that is clearly the class annotation echoed
+      // at the top of the body slice (should not happen — body starts after `{`).
+      const joined = cls.prefix ? joinHttpPaths(cls.prefix, hit.path || '') : hit.path || '/'
+      if (!joined || joined === '/') {
+        if (hit.method && cls.prefix) push(`${hit.method} ${cls.prefix}`)
+        continue
+      }
+      push(hit.method ? `${hit.method} ${joined}` : joined)
+    }
+  }
+  return found
+}
+
+/** NestJS `@Controller('x')` + `@Get('y')` → `GET /x/y`. */
+function nestJoinedRoutes(raw: string): Array<{ name: string; alias?: string }> {
+  const found: Array<{ name: string; alias?: string }> = []
+  const seen = new Set<string>()
+  const push = (name: string, alias?: string) => {
+    if (!name || seen.has(name)) return
+    seen.add(name)
+    found.push(alias ? { name, alias } : { name })
+  }
+
+  type Ctrl = { prefix: string; bodyStart: number; bodyEnd: number }
+  const ctrls: Ctrl[] = []
+  const ctrlRe =
+    /@Controller\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)[\s\S]{0,200}?export\s+class\s+[A-Z][A-Za-z0-9_]*/g
+  for (const m of raw.matchAll(ctrlRe)) {
+    const prefix = m[1] ?? ''
+    const declEnd = (m.index ?? 0) + m[0].length
+    const brace = raw.indexOf('{', declEnd)
+    if (brace < 0) continue
+    ctrls.push({ prefix, bodyStart: brace + 1, bodyEnd: raw.length })
+  }
+  for (let i = 0; i < ctrls.length; i++) {
+    const c = ctrls[i]
+    if (!c) continue
+    const nextCtrl = ctrls[i + 1]
+    c.bodyEnd = nextCtrl ? nextCtrl.bodyStart - 1 : raw.length
+    if (c.prefix) push(c.prefix, c.prefix)
+    const body = raw.slice(c.bodyStart, c.bodyEnd)
+    for (const hm of body.matchAll(
+      /@(Get|Post|Put|Patch|Delete|Options|Head|All)\s*(?:\(\s*(?:['"]([^'"]*)['"])?\s*\))?/g
+    )) {
+      const verbRaw = (hm[1] ?? 'GET').toUpperCase()
+      const method = verbRaw === 'ALL' ? 'ANY' : verbRaw
+      const seg = hm[2] ?? ''
+      const joined = joinHttpPaths(c.prefix, seg)
+      push(`${method} ${joined}`)
+    }
+  }
+
+  // Controllers without a matched class body still emit @Controller('x')
+  if (ctrls.length === 0) {
+    for (const m of raw.matchAll(/@Controller\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+      if (m[1]) push(m[1], m[1])
+    }
+    for (const m of raw.matchAll(
+      /@(Get|Post|Put|Patch|Delete|Options|Head|All)\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+    )) {
+      if (m[1] && m[2]) {
+        const method = m[1].toUpperCase() === 'ALL' ? 'ANY' : m[1].toUpperCase()
+        push(`${method} ${m[2]}`)
+      }
+    }
   }
   return found
 }
@@ -934,6 +1137,26 @@ function pushUniqueCandidate(
  * filesystem routes, low confidence, capped. Never load-bearing.
  * Next.js `page` files emit `surface`; API/route handlers emit `api`.
  */
+/** Django `path('api/', include('users.urls'))` → module key `users.urls`. */
+function djangoIncludeModuleKey(expr: string): string | null {
+  const m = expr.match(/^\s*['"]([A-Za-z_][A-Za-z0-9_.]*)['"]\s*$/)
+  return m?.[1] ?? null
+}
+
+/** Map a Django urls module (`users.urls`) to likely repo-relative file paths. */
+function djangoUrlsModuleFiles(module: string): string[] {
+  const parts = module.split('.')
+  if (parts.length === 0) return []
+  const base = parts.join('/')
+  return [`${base}.py`, `${base}/__init__.py`]
+}
+
+function djangoJoinPrefix(prefix: string, segment: string): string {
+  const p = prefix.endsWith('/') ? prefix : `${prefix}/`
+  const s = segment.replace(/^\//, '')
+  return `${p}${s}`
+}
+
 export async function harvestRouteDecorators(scanDir: string): Promise<HarvestResult> {
   const candidates: EntityCandidate[] = []
   const seen = new Set<string>()
@@ -943,6 +1166,24 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     const relPosix = path.relative(scanDir, f).replace(/\\/g, '/')
     if (relPosix === 'conf/routes' || relPosix.endsWith('/conf/routes')) {
       files.push(f)
+    }
+  }
+
+  // Django include() → child urls module prefixes (cross-file join).
+  const djangoModulePrefixes = new Map<string, string[]>()
+  for (const filePath of files) {
+    if (path.extname(filePath).toLowerCase() !== '.py') continue
+    const raw = await readText(filePath)
+    if (!raw || !raw.includes('include(')) continue
+    for (const m of raw.matchAll(
+      /\bpath\s*\(\s*['"]([^'"]+)['"]\s*,\s*include\s*\(\s*([^)]+?)\s*\)/g
+    )) {
+      const prefix = m[1]
+      const mod = m[2] ? djangoIncludeModuleKey(m[2]) : null
+      if (!prefix || !mod) continue
+      const list = djangoModulePrefixes.get(mod) ?? []
+      list.push(prefix)
+      djangoModulePrefixes.set(mod, list)
     }
   }
 
@@ -1006,16 +1247,19 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     const hash = sha256(raw)
     const found: Array<{ name: string; alias?: string }> = []
 
-    // NestJS: @Controller('payments') + @Get/@Post('…')
-    for (const m of raw.matchAll(/@Controller\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
-      if (m[1]) found.push({ name: m[1], alias: m[1] })
-    }
-    for (const m of raw.matchAll(
-      /@(Get|Post|Put|Patch|Delete|Options|Head|All)\s*\(\s*['"]([^'"]+)['"]\s*\)/g
-    )) {
-      if (m[1] && m[2]) {
-        const method = m[1].toUpperCase() === 'ALL' ? 'ANY' : m[1].toUpperCase()
-        found.push({ name: `${method} ${m[2]}` })
+    // NestJS: join @Controller('payments') + @Get/@Post('…')
+    if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
+      found.push(...nestJoinedRoutes(raw))
+      // tRPC procedure names on routers
+      for (const m of raw.matchAll(
+        /\b([a-z][A-Za-z0-9_]*)\s*:\s*(?:publicProcedure|protectedProcedure|privateProcedure|procedure)\b/g
+      )) {
+        if (m[1]) found.push({ name: `trpc/${m[1]}` })
+      }
+      for (const m of raw.matchAll(
+        /\b([a-z][A-Za-z0-9_]*)\s*:\s*\w*Procedure\s*\.(?:query|mutation|subscription)\b/g
+      )) {
+        if (m[1]) found.push({ name: `trpc/${m[1]}` })
       }
     }
     // Express / Koa / Hono: app.get('/path' | router.post("/path" | hono.get(
@@ -1034,13 +1278,52 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       const routePath = m[2]
       if (routePath) found.push({ name: `${method} ${routePath}` })
     }
-    // Flask: @app.route / @bp.route / @blueprint.route
-    for (const m of raw.matchAll(/@(?:app|bp|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]/gi)) {
-      if (m[1]) found.push({ name: m[1] })
-    }
-    // Django: path / re_path
-    for (const m of raw.matchAll(/\b(?:path|re_path)\s*\(\s*['"]([^'"]+)['"]/g)) {
-      if (m[1]) found.push({ name: m[1] })
+    // Flask: @app.route / @bp.route / @blueprint.route + MethodView add_url_rule
+    if (ext === '.py') {
+      for (const m of raw.matchAll(/@(?:app|bp|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]/gi)) {
+        if (m[1]) found.push({ name: m[1] })
+      }
+      for (const m of raw.matchAll(/\.add_url_rule\s*\(\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) found.push({ name: m[1].startsWith('/') ? m[1] : `/${m[1]}` })
+      }
+      for (const m of raw.matchAll(/^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*MethodView\s*\)/gm)) {
+        if (m[1]) found.push({ name: `flask:${m[1]}`, alias: m[1] })
+      }
+
+      // Django path / re_path + include() namespace join (same-file nested + cross-file)
+      for (const m of raw.matchAll(/\bpath\s*\(\s*['"]([^'"]+)['"]\s*,\s*include\s*\(/g)) {
+        if (m[1]) found.push({ name: m[1] })
+      }
+      for (const m of raw.matchAll(
+        /\bpath\s*\(\s*['"]([^'"]+)['"]\s*,\s*include\s*\(\s*\[([\s\S]*?)\]\s*\)/g
+      )) {
+        const prefix = m[1] ?? ''
+        const inner = m[2] ?? ''
+        for (const innerPath of inner.matchAll(/\b(?:path|re_path)\s*\(\s*['"]([^'"]+)['"]/g)) {
+          if (innerPath[1]) found.push({ name: djangoJoinPrefix(prefix, innerPath[1]) })
+        }
+      }
+      const localPaths: string[] = []
+      for (const m of raw.matchAll(/\b(?:path|re_path)\s*\(\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) {
+          localPaths.push(m[1])
+          found.push({ name: m[1] })
+        }
+      }
+      // If this file is a urls module referenced by include('pkg.urls'), emit prefixed paths
+      for (const [mod, prefixes] of djangoModulePrefixes) {
+        const relPosixNorm = relPosix
+        if (!djangoUrlsModuleFiles(mod).some(f => relPosixNorm === f || relPosixNorm.endsWith(`/${f}`))) {
+          continue
+        }
+        for (const prefix of prefixes) {
+          for (const seg of localPaths) {
+            // Skip the include() lines themselves when this is a root urls with only includes
+            if (raw.includes('include(') && seg === prefix) continue
+            found.push({ name: djangoJoinPrefix(prefix, seg) })
+          }
+        }
+      }
     }
     // Go gin/chi/echo/fiber + Go 1.22 ServeMux method patterns
     for (const m of raw.matchAll(
@@ -1101,7 +1384,7 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       }
     }
 
-    // PHP Laravel / Symfony
+    // PHP Laravel / Symfony attributes / Slim maps
     if (ext === '.php') {
       for (const m of raw.matchAll(
         /\bRoute::(get|post|put|patch|delete|options|any|match|resource|apiResource)\s*\(\s*['"]([^'"]+)['"]/gi
@@ -1111,7 +1394,10 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
         if (!routePath) continue
         if (method === 'RESOURCE' || method === 'APIRESOURCE') {
           const base = routePath.startsWith('/') ? routePath : `/${routePath}`
-          found.push({ name: base })
+          for (const r of expandRailsResourceRoutes(base.replace(/^\//, ''))) {
+            // reuse CRUD expansion shape for Laravel resource routes
+            found.push({ name: r.startsWith('/') || r.includes(' ') ? r : `/${r}` })
+          }
         } else if (method === 'ANY' || method === 'MATCH') {
           found.push({ name: routePath })
         } else {
@@ -1123,6 +1409,61 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       }
       for (const m of raw.matchAll(/@Route\s*\(\s*['"]([^'"]+)['"]/g)) {
         if (m[1]) found.push({ name: m[1] })
+      }
+      // Slim: $app->get('/x', …) | $app->map(['GET','POST'], '/x', …)
+      for (const m of raw.matchAll(
+        /\$\w+->(get|post|put|patch|delete|options|any)\s*\(\s*['"]([^'"]+)['"]/gi
+      )) {
+        const method = (m[1] ?? 'GET').toUpperCase()
+        const routePath = m[2]
+        if (!routePath) continue
+        if (method === 'ANY') found.push({ name: routePath })
+        else found.push({ name: `${method} ${routePath}` })
+      }
+      for (const m of raw.matchAll(
+        /\$\w+->map\s*\(\s*\[([^\]]+)\]\s*,\s*['"]([^'"]+)['"]/g
+      )) {
+        const verbs = m[1] ?? ''
+        const routePath = m[2]
+        if (!routePath) continue
+        for (const vm of verbs.matchAll(/['"](GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)['"]/gi)) {
+          if (vm[1]) found.push({ name: `${vm[1].toUpperCase()} ${routePath}` })
+        }
+      }
+    }
+
+    // Symfony YAML route files: `path: /api/users` (+ optional methods)
+    if (ext === '.yaml' || ext === '.yml') {
+      const looksRoutes =
+        /(?:^|\/)routes[^/]*\.(ya?ml)$/i.test(relPosix) ||
+        /(?:^|\/)config\/routes?\//i.test(relPosix) ||
+        (/^\s*path\s*:\s*['"]?\//m.test(raw) &&
+          (/^\s*controller\s*:/m.test(raw) || /^\s*methods\s*:/m.test(raw)))
+      if (looksRoutes && !/^\s*openapi\s*:/m.test(raw) && !/^\s*swagger\s*:/m.test(raw)) {
+        // Named route entries with path: /… and optional methods: [GET, POST]
+        // Allow final property line without trailing newline.
+        for (const m of raw.matchAll(
+          /(^|\n)([A-Za-z_][\w.]*)\s*:\s*\n((?:[ \t]+.+(?:\n|$))*)/g
+        )) {
+          const block = m[3] ?? ''
+          const pathMatch = block.match(/^\s*path\s*:\s*['"]?([^\s'"]+)['"]?/m)
+          if (!pathMatch?.[1]?.startsWith('/')) continue
+          const routePath = pathMatch[1]
+          const methodsMatch = block.match(/^\s*methods\s*:\s*\[([^\]]+)\]/m)
+          if (methodsMatch?.[1]) {
+            for (const vm of methodsMatch[1].matchAll(
+              /\b(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b/gi
+            )) {
+              if (vm[1]) found.push({ name: `${vm[1].toUpperCase()} ${routePath}` })
+            }
+          } else {
+            found.push({ name: routePath })
+          }
+        }
+        // Flat list style: `- path: /health`
+        for (const m of raw.matchAll(/^\s*-\s*path\s*:\s*['"]?([^\s'"]+)['"]?/gm)) {
+          if (m[1]?.startsWith('/')) found.push({ name: m[1] })
+        }
       }
     }
 
@@ -1186,8 +1527,23 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
         for (const m of raw.matchAll(/\b(?:get|post|put|patch|delete|match)\s+['"]([^'"]+)['"]/g)) {
           if (m[1]) found.push({ name: m[1].startsWith('/') ? m[1] : `/${m[1]}` })
         }
-        for (const m of raw.matchAll(/\bresources?\s+:([a-z][a-z0-9_]*)/g)) {
-          if (m[1]) found.push({ name: `/${m[1]}` })
+        // resources :x → full CRUD; resource :x → singular member routes
+        for (const m of raw.matchAll(/\bresources\s+:([a-z][a-z0-9_]*)/g)) {
+          if (m[1]) {
+            for (const r of expandRailsResourceRoutes(m[1])) found.push({ name: r })
+          }
+        }
+        for (const m of raw.matchAll(/\bresource\s+:([a-z][a-z0-9_]*)/g)) {
+          if (!m[1]) continue
+          const base = `/${m[1]}`
+          found.push(
+            { name: base },
+            { name: `GET ${base}` },
+            { name: `POST ${base}` },
+            { name: `PUT ${base}` },
+            { name: `PATCH ${base}` },
+            { name: `DELETE ${base}` }
+          )
         }
         for (const m of raw.matchAll(/\bnamespace\s+:([a-z][a-z0-9_]*)/g)) {
           if (m[1]) found.push({ name: `/${m[1]}` })
@@ -1298,21 +1654,28 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
     const hash = sha256(raw)
 
     // --- Service / controller / handler classes (module) ---
-    // Spring / Jakarta
+    // Spring / Jakarta / Room
     if (ext === '.java' || ext === '.kt' || ext === '.kts') {
       for (const m of raw.matchAll(
-        /@(?:Service|RestController|Controller|Repository|Component)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*(?:public\s+|internal\s+|open\s+)?(?:class|object)\s+([A-Z][A-Za-z0-9_]*)/g
+        /@(?:Service|RestController|Controller|Repository|Component|Dao)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*(?:public\s+|internal\s+|open\s+)?(?:class|object)\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Spring/Jakarta application class')
       }
       for (const m of raw.matchAll(
         /@(?:Entity|Document)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*(?:public\s+|internal\s+)?(?:class|data\s+class)\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
-        if (m[1]) pushModel(m[1], rel, hash, 'JPA/Mongo entity')
+        if (m[1]) pushModel(m[1], rel, hash, 'JPA/Mongo/Room entity')
+      }
+      // Room: @Entity(tableName = "users")
+      for (const m of raw.matchAll(
+        /@Entity\s*\([^)]*tableName\s*=\s*["']([^"']+)["']/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Room tableName', [m[1]])
       }
       for (const m of raw.matchAll(/@Table\s*\(\s*(?:name\s*=\s*)?["']([^"']+)["']/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'JPA @Table', [m[1]])
       }
+      // Room @Database entities = [User::class, …] — class names already harvested via @Entity
     }
 
     // Nest / TS decorators + suffix heuristic + ORMs
@@ -1373,17 +1736,26 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       }
     }
 
-    // Python Django/SQLAlchemy/Peewee/Tortoise + *Service
+    // Python Django/SQLAlchemy/Peewee/Tortoise/Pydantic + *Service + Flask MethodView
     if (ext === '.py') {
       for (const m of raw.matchAll(
         /^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Presenter|UseCase|Interactor|ViewSet|APIView))\s*[\(:]/gm
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Python application class')
       }
+      for (const m of raw.matchAll(/^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*MethodView\s*\)/gm)) {
+        if (m[1]) pushModule(m[1], rel, hash, 'Flask MethodView')
+      }
       for (const m of raw.matchAll(
         /^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:models\.Model|Base|db\.Model|SQLModel|Model|tortoise\.models\.Model)\s*\)/gm
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'ORM model class')
+      }
+      // Pydantic / SQLModel declarative (BaseModel) — treat as model when clearly schema
+      for (const m of raw.matchAll(
+        /^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:BaseModel|SQLModel)\s*\)/gm
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Pydantic/SQLModel schema')
       }
       for (const m of raw.matchAll(/__tablename__\s*=\s*['"]([^'"]+)['"]/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'SQLAlchemy table', [m[1]])
@@ -1527,13 +1899,56 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       }
     }
 
-    // Haskell Persistent: ModelName json / ModelName
+    // Haskell Persistent: TH persist blocks + ModelName json lines
     if (ext === '.hs' || ext === '.lhs') {
       for (const m of raw.matchAll(
-        /^([A-Z][A-Za-z0-9_]*)\s+json(\s|$)/gm
+        /\[persist(?:LowerCase|UpperCase|With)?\|([\s\S]*?)\|\]/g
       )) {
+        const block = m[1] ?? ''
+        for (const line of block.split('\n')) {
+          // Model declarations sit at column 0; fields are indented.
+          const modelLine = line.match(/^([A-Z][A-Za-z0-9_]*)(?:\s+json)?\s*$/)
+          if (modelLine?.[1] && isPlausibleTypeName(modelLine[1])) {
+            pushModel(modelLine[1], rel, hash, 'Persistent model (TH block)')
+          }
+        }
+      }
+      for (const m of raw.matchAll(/^([A-Z][A-Za-z0-9_]*)\s+json(\s|$)/gm)) {
         if (m[1] && isPlausibleTypeName(m[1])) {
           pushModel(m[1], rel, hash, 'Persistent model (quasi-quote line)')
+        }
+      }
+    }
+
+    // Hibernate XML mappings (*.hbm.xml / orm.xml / hibernate *.xml)
+    if (ext === '.xml') {
+      const looksHibernate =
+        /\.hbm\.xml$/i.test(relPosix) ||
+        /(?:^|\/)orm\.xml$/i.test(relPosix) ||
+        /<hibernate-mapping\b/i.test(raw) ||
+        /<entity-mappings\b/i.test(raw) ||
+        /xmlns\s*=\s*["'][^"']*hibernate/i.test(raw)
+      if (looksHibernate) {
+        for (const m of raw.matchAll(
+          /<class\s+[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\btable\s*=\s*["']([^"']+)["']/gi
+        )) {
+          const cls = m[1]?.split('.').pop()
+          if (cls) pushModel(cls, rel, hash, 'Hibernate class', m[2] ? [cls, m[2]] : [cls])
+          if (m[2]) pushModel(m[2], rel, hash, 'Hibernate table', [m[2]])
+        }
+        for (const m of raw.matchAll(
+          /<class\s+[^>]*\btable\s*=\s*["']([^"']+)["'][^>]*\bname\s*=\s*["']([^"']+)["']/gi
+        )) {
+          const cls = m[2]?.split('.').pop()
+          if (cls) pushModel(cls, rel, hash, 'Hibernate class', m[1] ? [cls, m[1]] : [cls])
+          if (m[1]) pushModel(m[1], rel, hash, 'Hibernate table', [m[1]])
+        }
+        for (const m of raw.matchAll(/<entity\s+[^>]*\bclass\s*=\s*["']([^"']+)["']/gi)) {
+          const cls = m[1]?.split('.').pop()
+          if (cls) pushModel(cls, rel, hash, 'JPA orm.xml entity')
+        }
+        for (const m of raw.matchAll(/<table\s+[^>]*\bname\s*=\s*["']([^"']+)["']/gi)) {
+          if (m[1]) pushModel(m[1], rel, hash, 'JPA orm.xml table', [m[1]])
         }
       }
     }

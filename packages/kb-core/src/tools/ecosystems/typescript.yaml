@@ -93,9 +93,10 @@ symbols:
 routes:
   status: partial
   note: >
-    Nest @Controller + @Get/@Post/…, Express/Koa/Hono verbs, Next.js
-    filesystem routes (page → surface, route/api → api), GraphQL roots.
-    Confidence ~0.5; capped.
+    Nest @Controller joined to @Get/@Post/… (`orders` + `:id` →
+    GET /orders/:id), Express/Koa/Hono verbs, Next.js filesystem routes
+    (page → surface, route/api → api), GraphQL roots, and tRPC
+    publicProcedure/mutation keys as trpc/<name>. Confidence ~0.5; capped.
   planned_frameworks: []
 
 app_classes:
@@ -107,5 +108,5 @@ models:
   note: >
     TypeORM/MikroORM @Entity, Prisma model/enum, Sequelize define/Model,
     Mongoose model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object
-    types → model.
+    types → model. OpenAPI path items harvested in contract tier.
 

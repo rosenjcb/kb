@@ -106,11 +106,12 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort Laravel Route::get/post/… and Symfony #[Route]/@Route.
-    Confidence ~0.5; capped. Slim route maps and YAML routes still open.
+    Best-effort Laravel Route::get/post/…/resource, Symfony #[Route]/@Route
+    and config/routes*.yaml `path:` entries, plus Slim $app->get/map.
+    Confidence ~0.5; capped.
   planned_frameworks:
     - laravel # routes/web.php, routes/api.php, routes/*.php
-    - symfony # config/routes*.yaml + Route attributes
+    - symfony # attribute + YAML
     - slim/slim
 
 app_classes:
