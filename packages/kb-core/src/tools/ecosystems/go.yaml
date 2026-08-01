@@ -116,16 +116,14 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort regex for gin/chi/echo/fiber-style r.GET/POST and
-    http.HandleFunc("/path"). Confidence ~0.5; capped. Go 1.22+ ServeMux
-    method+path still open. gRPC/Connect stay contract-tier (proto).
-  planned_frameworks:
-    - net/http # ServeMux Go 1.22+ patterns
+    gin/chi/echo/fiber verbs, http.HandleFunc, Go 1.22 ServeMux
+    Handle("GET /path"), chi Mount/Route. gRPC stays contract-tier (proto).
+  planned_frameworks: []
 
 app_classes:
   status: partial
-  note: '*Service/*Handler/*Controller/*Repository structs → module.'
+  note: '*Service/*Handler/*Controller/*Repository/*Usecase structs → module.'
 
 models:
   status: partial
-  note: GORM Model / TableName methods → model.
+  note: GORM Model / TableName and ent Fields() schemas → model.

@@ -92,6 +92,7 @@ results today. You can inspect the registry with `kb entities`.
 | FR-20 | Harvest Kubernetes, Helm, Procfile, OpenAPI, and protobuf candidates as `service` or `api`. |
 | FR-21 | Harvest tier-4 HTTP routes as low-confidence `api` entities. Harvest Next.js pages as `surface`. Reject file-path false matches. |
 | FR-22 | Harvest tier-4 app classes as `module`. Harvest ORM and SQL models as `model`. Do not emit kind `service` for those atoms. |
+| FR-23 | Harvest extra route and model patterns: Nest method verbs, Hono, Go 1.22 ServeMux, Sinatra/Grape, Tapir `.in`, Drogon, GraphQL roots/types, Drizzle/Mongoose/Sequelize, EF `ToTable`, Exposed, Persistent lines. |
 
 ### QA Test Cases
 
@@ -121,6 +122,7 @@ results today. You can inspect the registry with `kb entities`.
 | TC-22 | FR-20 | OpenAPI file and protobuf `service` | Candidates have kind `api`. |
 | TC-23 | FR-21 | Nest, Express, FastAPI, Go, Spring, Next, and Rails routes plus a junk path | API routes are harvested. Next pages have kind `surface`. Junk paths are skipped. |
 | TC-24 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
+| TC-25 | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. |
 
 ### Related docs
 

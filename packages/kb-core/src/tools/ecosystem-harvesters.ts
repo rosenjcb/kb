@@ -644,7 +644,7 @@ async function harvestProcfile(
 const OPENAPI_CONFIDENCE = 0.9
 const PROTO_CONFIDENCE = 0.85
 const ROUTE_CONFIDENCE = 0.5
-const ROUTE_CAP = 50
+const ROUTE_CAP = 100
 
 /**
  * Tier-3 interface contracts: OpenAPI/Swagger titles and protobuf `service`
@@ -763,16 +763,18 @@ const APP_SOURCE_EXT = new Set([
   '.hpp',
   '.prisma',
   '.sql',
+  '.graphql',
+  '.gql',
 ])
 
 const ROUTE_SOURCE_EXT = APP_SOURCE_EXT
 
 const ROUTE_FILE_EXT_RE =
-  /\.(pem|crt|key|py|ts|tsx|js|jsx|mjs|cjs|go|java|kt|rb|cs|php|rs|scala|hs|cpp|cc|h|hpp|prisma|sql|md|json|mitm|ya?ml|toml|txt|png|jpg|svg)$/i
+  /\.(pem|crt|key|py|ts|tsx|js|jsx|mjs|cjs|go|java|kt|rb|cs|php|rs|scala|hs|cpp|cc|h|hpp|prisma|sql|graphql|gql|md|json|mitm|ya?ml|toml|txt|png|jpg|svg)$/i
 
 const APP_CONCEPT_CONFIDENCE = 0.55
-const APP_CONCEPT_CAP = 80
-const MODEL_CAP = 80
+const APP_CONCEPT_CAP = 120
+const MODEL_CAP = 120
 
 const BANNED_TYPE_NAMES = new Set([
   'String',
@@ -1004,35 +1006,43 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
     const hash = sha256(raw)
     const found: Array<{ name: string; alias?: string }> = []
 
-    // NestJS: @Controller('payments')
+    // NestJS: @Controller('payments') + @Get/@Post('…')
     for (const m of raw.matchAll(/@Controller\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
       if (m[1]) found.push({ name: m[1], alias: m[1] })
     }
-    // Express / Koa-ish: app.get('/path' | router.post("/path"
     for (const m of raw.matchAll(
-      /\b(?:app|router|r)\.(get|post|put|patch|delete|options|head|all)\s*\(\s*['"]([^'"]+)['"]/gi
+      /@(Get|Post|Put|Patch|Delete|Options|Head|All)\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+    )) {
+      if (m[1] && m[2]) {
+        const method = m[1].toUpperCase() === 'ALL' ? 'ANY' : m[1].toUpperCase()
+        found.push({ name: `${method} ${m[2]}` })
+      }
+    }
+    // Express / Koa / Hono: app.get('/path' | router.post("/path" | hono.get(
+    for (const m of raw.matchAll(
+      /\b(?:app|router|r|hono|api)\.(get|post|put|patch|delete|options|head|all)\s*\(\s*['"]([^'"]+)['"]/gi
     )) {
       const method = (m[1] ?? 'GET').toUpperCase()
       const routePath = m[2]
       if (routePath) found.push({ name: `${method} ${routePath}` })
     }
-    // FastAPI: @app.get("/path") | @router.post('/path')
+    // FastAPI / Starlette: @app.get("/path") | @router.post('/path') | @api_router.get
     for (const m of raw.matchAll(
-      /@(?:app|router)\.(get|post|put|patch|delete|options|head)\s*\(\s*['"]([^'"]+)['"]/gi
+      /@(?:app|router|api_router|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*['"]([^'"]+)['"]/gi
     )) {
       const method = (m[1] ?? 'GET').toUpperCase()
       const routePath = m[2]
       if (routePath) found.push({ name: `${method} ${routePath}` })
     }
-    // Flask: @app.route("/path") | @bp.route('/path', methods=[...])
+    // Flask: @app.route / @bp.route / @blueprint.route
     for (const m of raw.matchAll(/@(?:app|bp|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]/gi)) {
       if (m[1]) found.push({ name: m[1] })
     }
-    // Django: path('foo/', ...) — only slash-ish paths (filter kills file paths)
-    for (const m of raw.matchAll(/\bpath\s*\(\s*['"]([^'"]+)['"]/g)) {
+    // Django: path / re_path
+    for (const m of raw.matchAll(/\b(?:path|re_path)\s*\(\s*['"]([^'"]+)['"]/g)) {
       if (m[1]) found.push({ name: m[1] })
     }
-    // Go gin/chi/echo/fiber: r.GET("/path"
+    // Go gin/chi/echo/fiber + Go 1.22 ServeMux method patterns
     for (const m of raw.matchAll(
       /\b(?:r|router|mux|e|app)\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Handle|Get|Post|Put|Patch|Delete)\s*\(\s*"([^"]+)"/g
     )) {
@@ -1041,26 +1051,38 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       const routePath = m[2]
       if (routePath) found.push({ name: `${method} ${routePath}` })
     }
-    // net/http: http.HandleFunc("/path"
     for (const m of raw.matchAll(/\bhttp\.HandleFunc\s*\(\s*"([^"]+)"/g)) {
       if (m[1]) found.push({ name: m[1] })
     }
+    // Go 1.22+: mux.Handle("GET /path", …) | HandleFunc("POST /path", …)
+    for (const m of raw.matchAll(
+      /\b(?:mux|http\.DefaultServeMux|\w+)\.(?:Handle|HandleFunc)\s*\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/[^"]*)"/g
+    )) {
+      if (m[1] && m[2]) found.push({ name: `${m[1]} ${m[2]}` })
+    }
+    // chi Mount / Route
+    for (const m of raw.matchAll(/\b(?:r|router)\.(?:Mount|Route)\s*\(\s*"(\/[^"]*)"/g)) {
+      if (m[1]) found.push({ name: m[1] })
+    }
 
-    // Spring MVC / WebFlux + JAX-RS
+    // Spring MVC / WebFlux + JAX-RS + Micronaut + Ktor
     if (ext === '.java' || ext === '.kt' || ext === '.kts') {
       found.push(...springMappingPaths(raw))
       for (const m of raw.matchAll(/@Path\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
         if (m[1]) found.push({ name: m[1] })
       }
-      // Ktor: get("/path") { } inside routing blocks — require leading slash
+      // Micronaut / Quarkus style @Get("/x") already covered by Spring-ish; Ktor:
       for (const m of raw.matchAll(
         /\b(?:get|post|put|patch|delete|head|options)\s*\(\s*"(\/[^"]*)"\s*\)/g
       )) {
         if (m[1]) found.push({ name: m[1] })
       }
+      for (const m of raw.matchAll(/\broute\s*\(\s*"(\/[^"]*)"\s*\)\s*\{/g)) {
+        if (m[1]) found.push({ name: m[1] })
+      }
     }
 
-    // ASP.NET: [Route("api/[controller]")] [HttpGet("x")] MapGet("/x"
+    // ASP.NET: [Route] [HttpGet] MapGet MapGroup
     if (ext === '.cs') {
       for (const m of raw.matchAll(/\[Route\s*\(\s*"([^"]+)"\s*\)\]/g)) {
         if (m[1]) found.push({ name: m[1] })
@@ -1070,23 +1092,30 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       )) {
         if (m[1] && m[2]) found.push({ name: `${m[1].toUpperCase()} ${m[2]}` })
       }
-      for (const m of raw.matchAll(/\.Map(Get|Post|Put|Patch|Delete|Methods)\s*\(\s*"([^"]+)"/g)) {
-        const method = m[1] === 'Methods' ? 'ANY' : (m[1] ?? 'GET').toUpperCase()
+      for (const m of raw.matchAll(
+        /\.Map(Get|Post|Put|Patch|Delete|Methods|Group)\s*\(\s*"([^"]+)"/g
+      )) {
+        const method =
+          m[1] === 'Methods' || m[1] === 'Group' ? 'ANY' : (m[1] ?? 'GET').toUpperCase()
         if (m[2]) found.push({ name: `${method} ${m[2]}` })
       }
     }
 
-    // PHP Laravel / Symfony attributes
+    // PHP Laravel / Symfony
     if (ext === '.php') {
       for (const m of raw.matchAll(
-        /\bRoute::(get|post|put|patch|delete|options|any|match)\s*\(\s*['"]([^'"]+)['"]/gi
+        /\bRoute::(get|post|put|patch|delete|options|any|match|resource|apiResource)\s*\(\s*['"]([^'"]+)['"]/gi
       )) {
         const method = (m[1] ?? 'GET').toUpperCase()
         const routePath = m[2]
-        if (routePath) {
-          found.push({
-            name: method === 'ANY' || method === 'MATCH' ? routePath : `${method} ${routePath}`,
-          })
+        if (!routePath) continue
+        if (method === 'RESOURCE' || method === 'APIRESOURCE') {
+          const base = routePath.startsWith('/') ? routePath : `/${routePath}`
+          found.push({ name: base })
+        } else if (method === 'ANY' || method === 'MATCH') {
+          found.push({ name: routePath })
+        } else {
+          found.push({ name: `${method} ${routePath}` })
         }
       }
       for (const m of raw.matchAll(/#\[Route\s*\(\s*['"]([^'"]+)['"]/g)) {
@@ -1109,36 +1138,82 @@ export async function harvestRouteDecorators(scanDir: string): Promise<HarvestRe
       )) {
         if (m[1]) found.push({ name: m[1] })
       }
+      for (const m of raw.matchAll(/web::resource\s*\(\s*"([^"]+)"\s*\)/g)) {
+        if (m[1]) found.push({ name: m[1] })
+      }
     }
 
-    // Scala http4s / Tapir-ish path literals in quotes with leading slash
+    // Scala http4s / Tapir / Play already handled via conf/routes
     if (ext === '.scala') {
       for (const m of raw.matchAll(/\b(?:HttpRoutes\.of|Router)\([^)]*["'](\/[^"']+)["']/g)) {
         if (m[1]) found.push({ name: m[1] })
       }
+      // Tapir: endpoint.get.in("users") / .in("users" / path[Int])
+      for (const m of raw.matchAll(/\.in\s*\(\s*"([A-Za-z0-9_-]+)"\s*\)/g)) {
+        if (m[1]) found.push({ name: `/${m[1]}` })
+      }
     }
 
-    // Haskell Servant: "users" :> Get …
+    // Haskell Servant: "users" :> Get …  (multi-segment: "a" :> "b" :> Get)
     if (ext === '.hs' || ext === '.lhs') {
       for (const m of raw.matchAll(/"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b/g)) {
         if (m[1] && m[2]) found.push({ name: `${m[2].toUpperCase()} /${m[1]}` })
       }
+      for (const m of raw.matchAll(
+        /"([A-Za-z0-9_-]+)"\s*:>\s*"([A-Za-z0-9_-]+)"\s*:>\s*(Get|Post|Put|Patch|Delete)\b/g
+      )) {
+        if (m[1] && m[2] && m[3]) {
+          found.push({ name: `${m[3].toUpperCase()} /${m[1]}/${m[2]}` })
+        }
+      }
     }
 
-    // C++ Crow
+    // C++ Crow / Drogon
     if (ext === '.cpp' || ext === '.cc' || ext === '.cxx' || ext === '.h' || ext === '.hpp') {
       for (const m of raw.matchAll(/CROW_ROUTE\s*\(\s*[^,]+,\s*"([^"]+)"\s*\)/g)) {
         if (m[1]) found.push({ name: m[1] })
       }
+      for (const m of raw.matchAll(
+        /ADD_METHOD_TO\s*\(\s*[^,]+,\s*"([^"]+)"\s*,\s*(?:Get|Post|Put|Patch|Delete)/g
+      )) {
+        if (m[1]) found.push({ name: m[1] })
+      }
     }
 
-    // Rails config/routes.rb style
-    if (relPosix.endsWith('routes.rb')) {
-      for (const m of raw.matchAll(/\b(?:get|post|put|patch|delete|match)\s+['"]([^'"]+)['"]/g)) {
+    // Rails + Sinatra/Grape (routes.rb and *.rb)
+    if (ext === '.rb') {
+      if (relPosix.endsWith('routes.rb')) {
+        for (const m of raw.matchAll(/\b(?:get|post|put|patch|delete|match)\s+['"]([^'"]+)['"]/g)) {
+          if (m[1]) found.push({ name: m[1].startsWith('/') ? m[1] : `/${m[1]}` })
+        }
+        for (const m of raw.matchAll(/\bresources?\s+:([a-z][a-z0-9_]*)/g)) {
+          if (m[1]) found.push({ name: `/${m[1]}` })
+        }
+        for (const m of raw.matchAll(/\bnamespace\s+:([a-z][a-z0-9_]*)/g)) {
+          if (m[1]) found.push({ name: `/${m[1]}` })
+        }
+      }
+      // Sinatra
+      for (const m of raw.matchAll(
+        /^\s*(?:get|post|put|patch|delete|options|head)\s+['"]([^'"]+)['"]/gm
+      )) {
         if (m[1]) found.push({ name: m[1].startsWith('/') ? m[1] : `/${m[1]}` })
       }
-      for (const m of raw.matchAll(/\bresources?\s+:([a-z][a-z0-9_]*)/g)) {
+      // Grape
+      for (const m of raw.matchAll(/\b(?:get|post|put|patch|delete)\s+['"]([^'"]+)['"]/g)) {
+        if (m[1]?.startsWith('/')) found.push({ name: m[1] })
+      }
+      for (const m of raw.matchAll(/\bresource\s+:([a-z][a-z0-9_]*)/g)) {
         if (m[1]) found.push({ name: `/${m[1]}` })
+      }
+    }
+
+    // GraphQL root operation types as coarse API surfaces
+    if (ext === '.graphql' || ext === '.gql') {
+      for (const m of raw.matchAll(
+        /^\s*(?:type|extend\s+type)\s+(Query|Mutation|Subscription)\s*[@{]/gm
+      )) {
+        if (m[1]) found.push({ name: `/graphql/${m[1]}` })
       }
     }
 
@@ -1240,19 +1315,18 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       }
     }
 
-    // Nest / TS decorators + suffix heuristic
+    // Nest / TS decorators + suffix heuristic + ORMs
     if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext)) {
       for (const m of raw.matchAll(
-        /@(?:Injectable|Controller|Catch)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
+        /@(?:Injectable|Controller|Catch|Resolver|Module)\b[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'NestJS application class')
       }
       for (const m of raw.matchAll(
-        /export\s+class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase|Interactor))\b/g
+        /export\s+class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase|Interactor|Resolver|Gateway))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Application layer class')
       }
-      // TypeORM / MikroORM
       for (const m of raw.matchAll(
         /@Entity\s*\(\s*(?:['"]([^'"]+)['"])?\s*\)[^\n]*\n(?:\s*@[^\n]+\n)*\s*export\s+class\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
@@ -1262,7 +1336,29 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
           pushModel(cls, rel, hash, 'TypeORM/MikroORM entity', table ? [cls, table] : [cls])
         }
       }
-      // Prisma schema often .prisma — also allow model blocks if embedded
+      // Sequelize
+      for (const m of raw.matchAll(
+        /\b(?:sequelize|Sequelize)\.define\s*\(\s*['"]([A-Za-z][A-Za-z0-9_]*)['"]/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Sequelize model')
+      }
+      for (const m of raw.matchAll(
+        /export\s+class\s+([A-Z][A-Za-z0-9_]*)\s+extends\s+Model\b/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Sequelize Model subclass')
+      }
+      // Mongoose
+      for (const m of raw.matchAll(
+        /\bmongoose\.model\s*\(\s*['"]([A-Za-z][A-Za-z0-9_]*)['"]/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Mongoose model')
+      }
+      // Drizzle pgTable / mysqlTable / sqliteTable
+      for (const m of raw.matchAll(
+        /\b(?:pgTable|mysqlTable|sqliteTable)\s*\(\s*['"]([a-z][a-z0-9_]*)['"]/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Drizzle table')
+      }
       for (const m of raw.matchAll(/\bmodel\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'Prisma model')
       }
@@ -1272,29 +1368,36 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       for (const m of raw.matchAll(/\bmodel\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'Prisma model')
       }
+      for (const m of raw.matchAll(/\benum\s+([A-Z][A-Za-z0-9_]*)\s*\{/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Prisma enum')
+      }
     }
 
-    // Python: FastAPI deps less useful; Django/SQLAlchemy models + *Service classes
+    // Python Django/SQLAlchemy/Peewee/Tortoise + *Service
     if (ext === '.py') {
       for (const m of raw.matchAll(
-        /^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Presenter|UseCase|Interactor))\s*[\(:]/gm
+        /^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Presenter|UseCase|Interactor|ViewSet|APIView))\s*[\(:]/gm
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Python application class')
       }
       for (const m of raw.matchAll(
-        /^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:models\.Model|Base|db\.Model|SQLModel)\s*\)/gm
+        /^class\s+([A-Z][A-Za-z0-9_]*)\s*\(\s*(?:models\.Model|Base|db\.Model|SQLModel|Model|tortoise\.models\.Model)\s*\)/gm
       )) {
-        if (m[1]) pushModel(m[1], rel, hash, 'Django/SQLAlchemy/SQLModel model')
+        if (m[1]) pushModel(m[1], rel, hash, 'ORM model class')
       }
       for (const m of raw.matchAll(/__tablename__\s*=\s*['"]([^'"]+)['"]/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'SQLAlchemy table', [m[1]])
       }
+      // Peewee Meta.table_name
+      for (const m of raw.matchAll(/table_name\s*=\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Peewee/ORM table_name', [m[1]])
+      }
     }
 
-    // Go handlers/services + GORM
+    // Go handlers/services + GORM + ent
     if (ext === '.go') {
       for (const m of raw.matchAll(
-        /\btype\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repository|Server|API))\s+struct\b/g
+        /\btype\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repository|Server|API|Usecase|UseCase))\s+struct\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Go application struct')
       }
@@ -1308,18 +1411,23 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'GORM TableName model')
       }
+      for (const m of raw.matchAll(
+        /func\s+\(([A-Z][A-Za-z0-9_]*)\)\s+Fields\s*\(\s*\)\s*\[\]ent\.Field/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'ent schema')
+      }
     }
 
     // Ruby Rails
     if (ext === '.rb') {
       for (const m of raw.matchAll(
-        /^class\s+([A-Z][A-Za-z0-9_]*(?:::[A-Z][A-Za-z0-9_]*)*)\s*<\s*(?:ApplicationController|ActionController::Base)/gm
+        /^class\s+([A-Z][A-Za-z0-9_]*(?:::[A-Z][A-Za-z0-9_]*)*)\s*<\s*(?:ApplicationController|ActionController::Base|ActionController::API)/gm
       )) {
         const name = m[1]?.split('::').pop()
         if (name) pushModule(name, rel, hash, 'Rails controller', m[1] ? [name, m[1]] : [name])
       }
       for (const m of raw.matchAll(
-        /^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Interactor|Worker|Job))\b/gm
+        /^class\s+([A-Z][A-Za-z0-9_]*(?:Service|Interactor|Worker|Job|Query|Command))\b/gm
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Rails application class')
       }
@@ -1328,9 +1436,12 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'ActiveRecord model')
       }
+      for (const m of raw.matchAll(/self\.table_name\s*=\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'ActiveRecord table_name', [m[1]])
+      }
     }
 
-    // C# / ASP.NET
+    // C# / ASP.NET / EF
     if (ext === '.cs') {
       for (const m of raw.matchAll(
         /(?:\[ApiController\]|\[Route\b)[\s\S]{0,200}?class\s+([A-Z][A-Za-z0-9_]*)/g
@@ -1338,24 +1449,27 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
         if (m[1]) pushModule(m[1], rel, hash, 'ASP.NET controller')
       }
       for (const m of raw.matchAll(
-        /\bclass\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository))\b/g
+        /\b(?:class|record)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|UseCase))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, '.NET application class')
       }
       for (const m of raw.matchAll(
-        /\[Table\s*\(\s*"([^"]+)"\s*\)\][\s\S]{0,120}?class\s+([A-Z][A-Za-z0-9_]*)/g
+        /\[Table\s*\(\s*"([^"]+)"\s*\)\][\s\S]{0,120}?(?:class|record)\s+([A-Z][A-Za-z0-9_]*)/g
       )) {
         if (m[2]) pushModel(m[2], rel, hash, 'EF Core entity', m[1] ? [m[2], m[1]] : [m[2]])
       }
       for (const m of raw.matchAll(/\bDbSet<\s*([A-Z][A-Za-z0-9_]*)\s*>/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'EF Core DbSet')
       }
+      for (const m of raw.matchAll(/\.ToTable\s*\(\s*"([^"]+)"\s*\)/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'EF Core ToTable', [m[1]])
+      }
     }
 
     // PHP Laravel / Doctrine
     if (ext === '.php') {
       for (const m of raw.matchAll(
-        /\bclass\s+([A-Z][A-Za-z0-9_]*(?:Controller|Service|Handler|Repository))\b/g
+        /\bclass\s+([A-Z][A-Za-z0-9_]*(?:Controller|Service|Handler|Repository|Action|Job))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'PHP application class')
       }
@@ -1368,12 +1482,18 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
         const cls = raw.match(/\bclass\s+([A-Z][A-Za-z0-9_]*)\b/)
         if (cls?.[1]) pushModel(cls[1], rel, hash, 'Doctrine entity')
       }
+      for (const m of raw.matchAll(/#\[ORM\\Table\s*\(\s*name:\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Doctrine table', [m[1]])
+      }
+      for (const m of raw.matchAll(/protected\s+\$table\s*=\s*['"]([^'"]+)['"]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Eloquent $table', [m[1]])
+      }
     }
 
-    // Rust diesel table! / sea_orm DeriveEntityModel
+    // Rust diesel / sea_orm / sqlx FromRow structs with table hints
     if (ext === '.rs') {
       for (const m of raw.matchAll(
-        /\bstruct\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repo|Repository))\b/g
+        /\bstruct\s+([A-Z][A-Za-z0-9_]*(?:Service|Handler|Controller|Repo|Repository|UseCase))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Rust application struct')
       }
@@ -1385,12 +1505,15 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       for (const m of raw.matchAll(/\btable!\s*\{\s*([a-z][a-z0-9_]*)\s*\(/g)) {
         if (m[1]) pushModel(m[1], rel, hash, 'Diesel table')
       }
+      for (const m of raw.matchAll(/#\[sea_orm\(table_name\s*=\s*"([^"]+)"\)\]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'SeaORM table_name', [m[1]])
+      }
     }
 
-    // Scala
+    // Scala Slick / Quill-ish
     if (ext === '.scala') {
       for (const m of raw.matchAll(
-        /\b(?:class|object)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository))\b/g
+        /\b(?:class|object)\s+([A-Z][A-Za-z0-9_]*(?:Service|Controller|Handler|Repository|Dao|DAO))\b/g
       )) {
         if (m[1]) pushModule(m[1], rel, hash, 'Scala application type')
       }
@@ -1399,9 +1522,46 @@ export async function harvestAppConcepts(scanDir: string): Promise<HarvestResult
       )) {
         if (m[1]) pushModel(m[1], rel, hash, 'Scala entity')
       }
+      for (const m of raw.matchAll(/TableQuery\[\s*([A-Z][A-Za-z0-9_]*)\s*\]/g)) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Slick TableQuery')
+      }
     }
 
-    // Haskell persistent models are TH-heavy; skip class harvest beyond routes
+    // Haskell Persistent: ModelName json / ModelName
+    if (ext === '.hs' || ext === '.lhs') {
+      for (const m of raw.matchAll(
+        /^([A-Z][A-Za-z0-9_]*)\s+json(\s|$)/gm
+      )) {
+        if (m[1] && isPlausibleTypeName(m[1])) {
+          pushModel(m[1], rel, hash, 'Persistent model (quasi-quote line)')
+        }
+      }
+    }
+
+    // Kotlin Exposed
+    if (ext === '.kt' || ext === '.kts') {
+      for (const m of raw.matchAll(
+        /\bobject\s+([A-Z][A-Za-z0-9_]*)\s*:\s*Table\s*\(\s*"([^"]+)"\s*\)/g
+      )) {
+        if (m[1]) pushModel(m[1], rel, hash, 'Exposed Table', m[2] ? [m[1], m[2]] : [m[1]])
+      }
+    }
+
+    // GraphQL object types as models (not Query/Mutation roots)
+    if (ext === '.graphql' || ext === '.gql') {
+      for (const m of raw.matchAll(/^\s*type\s+([A-Z][A-Za-z0-9_]*)\s*[@{]/gm)) {
+        const name = m[1]
+        if (
+          name &&
+          name !== 'Query' &&
+          name !== 'Mutation' &&
+          name !== 'Subscription' &&
+          isPlausibleTypeName(name)
+        ) {
+          pushModel(name, rel, hash, 'GraphQL type')
+        }
+      }
+    }
 
     // SQL DDL
     if (ext === '.sql') {

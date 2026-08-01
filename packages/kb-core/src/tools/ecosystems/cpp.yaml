@@ -119,9 +119,8 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort Crow CROW_ROUTE(app, "/path") macros. Confidence ~0.5;
-    capped. Drogon/other frameworks still open.
-  planned_frameworks: [drogon]
+    Crow CROW_ROUTE and Drogon ADD_METHOD_TO macros. Confidence ~0.5; capped.
+  planned_frameworks: []
 
 app_classes:
   status: not_implemented

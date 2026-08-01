@@ -539,6 +539,65 @@ describe('harvestAppConcepts', () => {
     expect(result.candidates.every(c => c.kind === 'module' || c.kind === 'model')).toBe(true)
     expect(result.candidates.every(c => c.kind !== 'service')).toBe(true)
   })
+
+  it('[TC-25] Given Nest methods, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Hono, EF ToTable, when harvested, then routes and models expand', async () => {
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'orders.controller.ts'),
+      [
+        "@Controller('orders')",
+        "export class OrdersController {",
+        "  @Get(':id')",
+        '  getOne() {}',
+        "  @Post()",
+        '  create() {}',
+        '}',
+        "hono.get('/hono-up', c => c.text('ok'))",
+        "sequelize.define('Widget', {})",
+        "mongoose.model('Gadget', schema)",
+        "export const users = pgTable('users', {})",
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'mux.go'),
+      [
+        'package main',
+        'func main() {',
+        '  mux.Handle("GET /v2/ready", h)',
+        '  mux.HandleFunc("POST /v2/charge", h)',
+        '}',
+      ].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'src', 'Db.cs'),
+      ['modelBuilder.Entity<Order>().ToTable("orders");'].join('\n')
+    )
+    await writeFile(
+      path.join(scanDir, 'schema.graphql'),
+      ['type Query { me: User }', 'type Mutation { createUser: User }', 'type User { id: ID! }'].join(
+        '\n'
+      )
+    )
+    await writeFile(
+      path.join(scanDir, 'sinatra.rb'),
+      ["get '/sinatra-up' do", "  'ok'", 'end'].join('\n')
+    )
+
+    const routes = await harvestRouteDecorators(scanDir)
+    const names = routes.candidates.map(c => c.canonicalName)
+    expect(names).toContain('orders')
+    expect(names).toContain('GET :id')
+    expect(names).toContain('GET /hono-up')
+    expect(names).toContain('GET /v2/ready')
+    expect(names).toContain('POST /v2/charge')
+    expect(names).toContain('/graphql/Query')
+    expect(names).toContain('/graphql/Mutation')
+    expect(names).toContain('/sinatra-up')
+
+    const concepts = await harvestAppConcepts(scanDir)
+    const models = concepts.candidates.filter(c => c.kind === 'model').map(c => c.canonicalName)
+    expect(models).toEqual(expect.arrayContaining(['Widget', 'Gadget', 'users', 'orders', 'User']))
+  })
 })
 
 describe('harvestRepoEntities', () => {

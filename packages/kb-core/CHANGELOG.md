@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Organizational Ontology Index (issue #167): entity registry + harvest cycle. Ecosystem harvesters cover TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra (compose/fly/Backstage/k8s/Helm/Procfile), OpenAPI/protobuf contracts, tier-4 routes across those ecosystems (Nest/Express/FastAPI/Flask/Django/Go/Spring/JAX-RS/Ktor/Next.js/Rails/ASP.NET/Laravel/axum/Play/Servant/Crow), and tier-4 app-layer capture (`module` service/controller classes + `model` ORM/SQL tables) with path/name filters. **Capture-first** denser ontology for later query consumption — registry inspectable via `kb entities`.
+- Organizational Ontology Index (issue #167): entity registry + harvest cycle. Ecosystem harvesters cover TS/Go/Python/Rust/PHP/Ruby/Java/Haskell/C++/C#/Scala packages, infra (compose/fly/Backstage/k8s/Helm/Procfile), OpenAPI/protobuf contracts, tier-4 routes (Nest methods/Hono/Express/FastAPI/Flask/Django/Go 1.22 ServeMux/Spring/JAX-RS/Ktor/Next/Rails/Sinatra/Grape/ASP.NET/Laravel/axum/actix/Play/Tapir/Servant/Crow/Drogon/GraphQL), and tier-4 app-layer capture (`module` + `model` including Prisma/TypeORM/Drizzle/Mongoose/Sequelize/JPA/EF/GORM/ent/ActiveRecord/Eloquent/Diesel/SeaORM/Exposed/Slick/Persistent/SQL/GraphQL types). Capture-first denser ontology for later query use — inspect with `kb entities`.
 - Move ecosystem harvester coverage into reviewable per-ecosystem YAML under tools/ecosystems/.
 - Expand ecosystem YAML + inference to every tree-sitter language; wire remaining package ecosystems and tier-3/4 harvest.
 

@@ -93,15 +93,19 @@ symbols:
 routes:
   status: partial
   note: >
-    Best-effort harvest: Nest @Controller, Express app/router verbs, and
-    Next.js filesystem routes (page → surface, route/pages/api → api).
-    Confidence ~0.5; capped per repo. Not AST-complete.
+    Nest @Controller + @Get/@Post/…, Express/Koa/Hono verbs, Next.js
+    filesystem routes (page → surface, route/api → api), GraphQL roots.
+    Confidence ~0.5; capped.
   planned_frameworks: []
 
 app_classes:
   status: partial
-  note: 'Nest @Injectable/@Controller and *Service/*Controller/*Handler classes → module.'
+  note: 'Nest @Injectable/@Controller/@Resolver and *Service/*Handler classes → module.'
 
 models:
   status: partial
-  note: TypeORM/MikroORM @Entity and Prisma model blocks → model kind.
+  note: >
+    TypeORM/MikroORM @Entity, Prisma model/enum, Sequelize define/Model,
+    Mongoose model, Drizzle pgTable/mysqlTable/sqliteTable, GraphQL object
+    types → model.
+
