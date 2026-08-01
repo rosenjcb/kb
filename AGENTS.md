@@ -49,10 +49,26 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 
 ## Cursor Cloud specific instructions
 
-Environment is pre-provisioned. The startup update script runs `pnpm install`
-from the repo root. Standard dev commands live in
-[`DEVELOPERS_GUIDE.md`](DEVELOPERS_GUIDE.md) and root `package.json` (`build`,
-`type-check`, `lint`, `test`/`unit:test`, `server:start`). Do not re-document them.
+Environment is pre-provisioned. The startup update script selects the pinned
+Node (`nvm use` → `.nvmrc` 24.15.0) and runs `pnpm install` from the repo root —
+`pnpm install` also runs the `preinstall` Node-version guard and husky
+`prepare`, and pulls in the `@rosenjcb/spec-md` CLI (a workspace devDependency,
+not a global). Standard dev commands live in
+[`DEVELOPERS_GUIDE.md`](DEVELOPERS_GUIDE.md) and root `package.json`
+(`install:global` = deps + build + global `kb`/`kb-server` symlinks, `build`,
+`type-check`, `lint`, `test`/`unit:test`, `spec:check`, `server:start`). Do not
+re-document them.
+
+- **`pnpm install` hands git hooks to husky.** The `prepare` script runs husky,
+  which sets `core.hooksPath` to `.husky/_` and supersedes Cursor's agent-hooks
+  dispatcher (so Cursor's own commit hooks stop firing — expected). Every
+  `git commit` then runs the full `precommit` gate (`changeset:check --staged` →
+  `lint:fix:staged` → `type-check` → `lint` → `spec:check` → `test`, ~40s) and
+  `git push` runs `prepush` (`changeset:check --push`). A source change under
+  `packages/kb-*` with no applied changeset fails the commit — add/apply one
+  first (see top of this file). `spec:check` is the `spec-md coverage` gate;
+  `spec:lint` reports pre-existing spec-content warnings and is **not** part of
+  the commit gate.
 
 - **Node/pnpm resolution (non-obvious).** The VM's default `node` on `PATH`
   (`/exec-daemon/node`) is v22, but this repo requires Node 24 (`preinstall`
