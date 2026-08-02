@@ -573,6 +573,62 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE entity_edges  DROP COLUMN weight;
     `,
   },
+  {
+    // Retrieval telemetry records a categorical evidence label, not a float. The
+    // old `confidence REAL` held the output of a hand-tuned blend that four
+    // separate consumers each re-thresholded with their own invented cut-point;
+    // the label is decided once now (`core/evidence-label`) and compared as an
+    // ordered category.
+    //
+    // Recreated rather than altered: no production code path writes these tables
+    // (the recorder has no callers), the readers only aggregate `status` and
+    // `next_action` and never read the dropped column, and DROP/CREATE is the one
+    // form that is correct whether or not the table exists in a given database.
+    version: 19,
+    name: 'retrieval_events_evidence_label',
+    sql: `
+      DROP TABLE IF EXISTS retrieval_checkpoint_events;
+      CREATE TABLE retrieval_checkpoint_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        method TEXT NOT NULL,
+        detail TEXT,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_stage
+        ON retrieval_checkpoint_events(stage, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_fingerprint
+        ON retrieval_checkpoint_events(query_fingerprint, created_at DESC);
+
+      DROP TABLE IF EXISTS retrieval_lane_routing_events;
+      CREATE TABLE retrieval_lane_routing_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        primary_lane TEXT NOT NULL,
+        routed_lanes_json TEXT NOT NULL,
+        route_reason TEXT NOT NULL,
+        used_fallback INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_lane
+        ON retrieval_lane_routing_events(primary_lane, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_fingerprint
+        ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
+    `,
+  },
 ]
 
 /**

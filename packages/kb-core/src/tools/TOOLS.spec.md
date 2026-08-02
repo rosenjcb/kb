@@ -154,9 +154,9 @@ See companion doc for full vocabulary where applicable.
 | TC-83 | FR-11 | Given empty prompt, then returns validation error | pass |
 | TC-84 | FR-11 | Given subagent read_facts turn then text turn, then succeeds with trace | pass |
 | TC-85 | FR-12 | runs orchestrator scenario matrix (optional ~/.kb/evaluations/_matrix snapshot) | pass |
-| TC-86 | FR-14 | Given result counts, then estimateConfidence returns deterministic bands | pass |
-| TC-87 | FR-14 | Given high-confidence hybrid hit, then next action is return | pass |
-| TC-88 | FR-14 | Given low-confidence lexical stage, then next action advances to rewrite retry | pass |
+| TC-86 | FR-14 | Given result counts, then assessResultCount returns deterministic labels | pass |
+| TC-87 | FR-14 | Given a strong hybrid hit, then next action is return | pass |
+| TC-88 | FR-14 | Given a lexical stage with no evidence, then next action advances to rewrite retry | pass |
 | TC-89 | FR-14 | Given rewrite retry stage, then next action always returns | pass |
 | TC-90 | FR-15 | Given a new document input, then should write markdown file and index table entry | pass |
 | TC-91 | FR-15 | Given duplicate document titles without overwrite, then should create a unique suffixed file id | pass |

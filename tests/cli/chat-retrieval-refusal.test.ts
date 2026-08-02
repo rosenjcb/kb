@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   formatChatTranscriptForDocSession,
-  lastRetrievalCheckpointConfidence,
+  lastRetrievalCheckpointEvidence,
   shouldRefuseChatTurnOnRetrieval,
 } from '@kb/client/cli/chat-cli.js'
 import type { Message } from '@kb/core/core/types.js'
@@ -30,14 +30,15 @@ describe('chat retrieval refusal', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
-        retrieval: { checkpoints: [{ confidence: 0.2 }, { confidence: 0.3 }] },
+        retrieval: { checkpoints: [{ evidence: 'none' }, { evidence: 'weak' }] },
       })
     ).toBe(true)
+    // The *last* checkpoint decides, not the best one.
     expect(
-      lastRetrievalCheckpointConfidence({
-        retrieval: { checkpoints: [{ confidence: 1 }, { confidence: 0.3 }] },
+      lastRetrievalCheckpointEvidence({
+        retrieval: { checkpoints: [{ evidence: 'strong' }, { evidence: 'weak' }] },
       })
-    ).toBe(0.3)
+    ).toBe('weak')
   })
 
   it('[TC-80] allows when checkpoints missing (no signal)', () => {
@@ -53,17 +54,28 @@ describe('chat retrieval refusal', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
-        retrieval: { checkpoints: [{ confidence: 0.45 }] },
+        retrieval: { checkpoints: [{ evidence: 'moderate' }] },
       })
     ).toBe(false)
   })
 
   it('[TC-82] respects KB_CHAT_RETRIEVAL_MIN_CONFIDENCE', () => {
-    process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = '0.9'
+    process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = 'strong'
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
-        retrieval: { checkpoints: [{ confidence: 0.8 }] },
+        retrieval: { checkpoints: [{ evidence: 'moderate' }] },
+      })
+    ).toBe(true)
+  })
+
+  it('[TC-82] falls back to the default floor when the env label is unparseable', () => {
+    process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = '0.9'
+    // A leftover numeric value must not silently disable the gate.
+    expect(
+      shouldRefuseChatTurnOnRetrieval({
+        results: [{ metadata: { id: 'a' }, content: 'x' }],
+        retrieval: { checkpoints: [{ evidence: 'weak' }] },
       })
     ).toBe(true)
   })

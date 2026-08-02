@@ -57,7 +57,7 @@ runIntentLoop(
 ```typescript
 interface IntentLoopConfig {
   maxIterations?: number
-  confidenceThreshold?: number
+  evidenceFloor?: EvidenceLabel
   provider?: LLMProvider
 }
 

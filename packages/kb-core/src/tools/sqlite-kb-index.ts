@@ -1,3 +1,4 @@
+import type { EvidenceLabel } from '../core/evidence-label'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -66,7 +67,7 @@ export interface RetrievalCheckpointEventInput {
   stage: string
   status: 'hit' | 'miss' | 'error'
   nextAction: 'return' | 'advance'
-  confidence: number
+  evidence: EvidenceLabel
   method: 'hybrid' | 'lexical' | 'lexical-fallback'
   detail?: string
   surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
@@ -80,7 +81,7 @@ export interface LaneRoutingEventInput {
   usedFallback: boolean
   status: 'hit' | 'miss' | 'error'
   nextAction: 'return' | 'advance'
-  confidence: number
+  evidence: EvidenceLabel
   surface: 'chat' | 'intent-query' | 'intent-explain' | 'validator' | 'reader'
 }
 
@@ -1428,7 +1429,7 @@ export class SqliteKbIndexer {
         stage,
         status,
         next_action,
-        confidence,
+        evidence,
         method,
         detail,
         surface,
@@ -1439,7 +1440,7 @@ export class SqliteKbIndexer {
         @stage,
         @status,
         @nextAction,
-        @confidence,
+        @evidence,
         @method,
         @detail,
         @surface,
@@ -1455,7 +1456,7 @@ export class SqliteKbIndexer {
           stage: event.stage,
           status: event.status,
           nextAction: event.nextAction,
-          confidence: event.confidence,
+          evidence: event.evidence,
           method: event.method,
           detail: event.detail ?? null,
           surface: event.surface,
@@ -1478,7 +1479,7 @@ export class SqliteKbIndexer {
         used_fallback,
         status,
         next_action,
-        confidence,
+        evidence,
         surface,
         created_at
       )
@@ -1490,7 +1491,7 @@ export class SqliteKbIndexer {
         @usedFallback,
         @status,
         @nextAction,
-        @confidence,
+        @evidence,
         @surface,
         @createdAt
       )
@@ -1503,7 +1504,7 @@ export class SqliteKbIndexer {
         usedFallback: input.usedFallback ? 1 : 0,
         status: input.status,
         nextAction: input.nextAction,
-        confidence: input.confidence,
+        evidence: input.evidence,
         surface: input.surface,
         createdAt: now,
       })

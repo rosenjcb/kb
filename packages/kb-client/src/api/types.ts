@@ -1,3 +1,4 @@
+import type { EvidenceLabel } from '@kb/core/core/evidence-label.js'
 /** Wire types mirroring packages/kb-server/http/openapi.yaml */
 
 export interface ServerConnection {
@@ -62,7 +63,7 @@ export interface QueryResponse {
   answer?: string | null
   results: QuerySource[]
   retrieval?: { method?: string; detail?: string; degraded?: LLMFailureResponse[] }
-  confidence?: number
+  evidence?: EvidenceLabel
   /** Set when synthesis was attempted and failed; `answer` is null and this says why. */
   answerError?: LLMFailureResponse
   traceFile?: string

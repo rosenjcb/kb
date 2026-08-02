@@ -1,3 +1,4 @@
+import type { EvidenceLabel } from '../core/evidence-label'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
@@ -50,7 +51,7 @@ export interface QueryTraceLane {
   /** Per-pass count breadcrumbs (frontier / merge / hop counts), in order. */
   passTrace: string[]
   /** Per-pass stop/continue decisions. */
-  checkpoints: Array<{ stage: string; status: string; nextAction: string; confidence: number }>
+  checkpoints: Array<{ stage: string; status: string; nextAction: string; evidence: EvidenceLabel }>
   /** Every fact the walk surfaced, best score first — the "what it discovered" record. */
   discovered: TracedFact[]
   /** Ids that survived ranking and reached curation (pre-curation result set). */

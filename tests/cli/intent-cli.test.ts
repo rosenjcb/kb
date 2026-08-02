@@ -71,7 +71,6 @@ describe('intent-cli formatting', () => {
   it('[TC-260] formats read_facts results in human mode', () => {
     const output = formatIntentResult({
       status: 'accepted',
-      confidence: 0.8,
       explanation: 'query intent maps directly to read_facts',
       recommendedAction: 'read_facts',
       data: {
@@ -80,7 +79,7 @@ describe('intent-cli formatting', () => {
           method: 'hybrid',
           detail: 'facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on',
           checkpoints: [
-            { stage: 'pass_3', status: 'stop', nextAction: 'return', confidence: 0.86 },
+            { stage: 'pass_3', status: 'stop', nextAction: 'return', evidence: 'strong' },
           ],
         },
         results: [
@@ -132,7 +131,6 @@ describe('intent-cli formatting', () => {
       {
         status: 'accepted',
         recommendedAction: 'read_facts',
-        confidence: 0.8,
         data: {
           retrieval: { method: 'hybrid', detail: 'fts+vector-rerank' },
           results: [{ metadata: { title: 'CLI Facts' }, content: 'KB base precedence order.' }],
@@ -171,7 +169,7 @@ describe('intent-cli formatting', () => {
 })
 
 describe('intent-cli execution and enrichment', () => {
-  it('[TC-264] derives query confidence from retrieval checkpoints instead of a fixed router default', async () => {
+  it('[TC-264] derives query evidence from retrieval checkpoints instead of a fixed router default', async () => {
     const toolExecutor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),
@@ -181,8 +179,8 @@ describe('intent-cli execution and enrichment', () => {
           detail:
             'facts-loop;passes:3;graph_hops:2;stop:weak_evidence_after_exhaustion;semantic:on',
           checkpoints: [
-            { stage: 'pass_1', status: 'continue', nextAction: 'continue', confidence: 0.22 },
-            { stage: 'pass_2', status: 'stop', nextAction: 'plateau', confidence: 0.34 },
+            { stage: 'pass_1', status: 'continue', nextAction: 'continue', evidence: 'none' },
+            { stage: 'pass_2', status: 'stop', nextAction: 'plateau', evidence: 'weak' },
           ],
         },
         results: [{ metadata: { id: 'fact-a' }, content: 'Weak evidence fact.' }],
@@ -195,7 +193,7 @@ describe('intent-cli execution and enrichment', () => {
       toolExecutor
     )
 
-    expect(result.confidence).toBe(0.34)
+    expect(result.evidence).toBe('weak')
   })
 
   it('[TC-265] keeps query rewrite/session fallback scoped to query only', async () => {

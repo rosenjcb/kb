@@ -80,7 +80,7 @@ score = overlapScore × 0.20 + graphProximityScore × 0.60 + confidence × 0.20 
 - `overlapScore` — fraction of query tokens present in the fact text.
 - `semanticScore` — deterministic hash-based cosine similarity (lexical proxy, not neural embeddings).
 - `graphProximityScore` — max score of the frontier parent that led to this code fact via BFS traversal. Zero when the fact was found only by text search. This is the primary discriminator for code facts: a function discovered via graph traversal from a high-scoring doc fact scores 0.55–0.80; a function matched only by identifier name overlap scores 0.25–0.39.
-- `confidence` — indexer-assigned quality signal (code facts default to 0.95).
+- `confidence` — per-fact quality signal written at ingest. **Known issue:** every writer sets a flat per-source constant (docs `0.6`, scan `0.55`, integrations `0.6`, rescan `0.8`), so this term is close to a per-source-kind constant rather than a measurement, and `source_kind` already carries that information. It is the one remaining hand-picked number in scoring; changing it moves retrieval results, so it is left alone until the entity-scope ablation harness exists to measure the effect (see #207).
 - `boosts` — anchor boost +0.10, frontier boost +0.06.
 
 Facts scoring below `MIN_FACT_SCORE` (0.20) are dropped from the final result set (reserved anchor and per-source-kind minimum facts bypass this floor).

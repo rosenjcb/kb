@@ -1,3 +1,4 @@
+import { type EvidenceLabel, isEvidenceLabel } from '../core/evidence-label'
 import dayjs from 'dayjs'
 import type { RunCollector } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
@@ -88,7 +89,7 @@ export class DefaultIntentRouter implements IntentRouter {
       recommendedAction: decision.selectedOperation,
       data: toolResult,
       provenance: extractProvenance(toolResult),
-      confidence: deriveToolResultConfidence(toolResult),
+      evidence: deriveToolResultEvidence(toolResult),
     }
   }
 }
@@ -104,16 +105,18 @@ function extractProvenance(result: unknown): string[] {
   return []
 }
 
-function deriveToolResultConfidence(result: unknown): number {
-  if (!result || typeof result !== 'object') return 0.8
+/**
+ * Carry the last retrieval checkpoint's evidence label onto the intent result.
+ * A tool result that reports no checkpoints (a non-retrieval intent) is treated
+ * as `strong` — it did the work it was asked to do; there is nothing weak about it.
+ */
+function deriveToolResultEvidence(result: unknown): EvidenceLabel {
+  if (!result || typeof result !== 'object') return 'strong'
   const checkpoints = (
     result as {
-      retrieval?: { checkpoints?: Array<{ confidence?: number }> }
+      retrieval?: { checkpoints?: Array<{ evidence?: unknown }> }
     }
   ).retrieval?.checkpoints
-  const lastConfidence = checkpoints?.[checkpoints.length - 1]?.confidence
-  if (typeof lastConfidence === 'number' && Number.isFinite(lastConfidence)) {
-    return Math.max(0, Math.min(1, lastConfidence))
-  }
-  return 0.8
+  const last = checkpoints?.[checkpoints.length - 1]?.evidence
+  return isEvidenceLabel(last) ? last : 'strong'
 }

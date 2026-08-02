@@ -127,10 +127,10 @@ pending-feedback queue `get_feedback_requests` (nothing else). `kb_query` is an
 **agent-to-agent** channel: the client asks a direct natural-language question
 and always gets an answer-first response. The **default payload is trimmed**
 to `query` (echoed back) + `answer` + `sources` (compact citations,
-`path (symbol)`, deduped per file and capped at 5) plus `confidence`,
+`path (symbol)`, deduped per file and capped at 5) plus `evidence`,
 `requestId` (for feedback correlation — it matches the `x-request-id` header
 and the RunReport `sessionId` in `~/.kb/logs/`), and optional `notes` — a
-verify hint when confidence is below 0.7, and a warning when the prose names a
+verify hint when evidence is below `strong`, and a warning when the prose names a
 file absent from the cited sources. The full evidence payload (per-fact
 snippets, tags, `retrieval` metadata) is opt-in via `verbose: true`. No
 `synthesize` flag; it always synthesizes. A fact-id drill-down tool may return

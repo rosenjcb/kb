@@ -4,32 +4,50 @@
 
 ### Patch Changes
 
-- Drop hand-assigned weights from the ecosystem harvesters, and record real
-  provenance in their place.
+- Remove hand-assigned numbers from the harvester and from retrieval assessments.
 
-  Harvest rules described _what_ a manifest or source pattern declares and also
-  carried a `confidence` constant typed in by the rule author. Nothing read those
-  numbers back except one debug line in `kb entities`, so they encoded an opinion
-  no experiment could falsify while looking like measured signal.
+  **Harvest rules carry no weights.** Every `kind_rule` and `source_pattern` had a
+  `confidence` constant typed in by its author, read by nothing but one debug line
+  in `kb entities`. Removed from YAML, code, and schema; config load now rejects
+  `confidence` / `weight` / `score` on any rule, so a rule too weak to act on gets
+  deleted rather than discounted. `classifyPackageKind` / `classifyFromSignals`
+  return an `EntityKind` instead of a `{ kind, confidence }` pair, and
+  `EntityRegistry` drops the confidence arguments on `upsertEntity` / `addAlias` /
+  `linkFact` plus the never-passed `weight` on `addEdge`.
 
-  - `kind_rules` and `source_patterns` no longer accept `confidence`; config load
-    rejects `confidence` / `weight` / `score` on any rule.
-  - `classifyPackageKind` / `classifyFromSignals` return an `EntityKind` instead of
-    a `{ kind, confidence }` pair; `EntityCandidate` drops `confidence`.
-  - `EntityRegistry` drops the confidence arguments on `upsertEntity`, `addAlias`,
-    and `linkFact`, and the never-passed `weight` on `addEdge`.
-  - Migration 18 drops `entities.confidence`, `entity_aliases.confidence`,
-    `entity_links.confidence`, and `entity_edges.weight`.
-
-  `sourceKind` was separately typed as the literal `'manifest'` and hardcoded at
-  all 27 emit sites, including those inside `pattern-engine.ts`, so a field that
-  appeared to record where a name came from recorded nothing. It now carries the
+  **Candidates record real provenance.** `sourceKind` was typed as the literal
+  `'manifest'` and hardcoded at all 27 emit sites, including those inside
+  `pattern-engine.ts` that are by definition not manifests. It now carries the
   extraction path taken: `manifest` for names parsed from a file that declares
   identity, `source-pattern` for names found by a YAML `source_pattern` run over
   ordinary source. The emitting module is the boundary.
 
-  Harvest output is otherwise unchanged: the same entities, aliases, edges, and
-  collisions are produced, with no number attached and their origin recorded.
+  **Retrieval assessments are categorical.** Retrieval produced a `confidence`
+  float from a hand-tuned blend, and four modules each re-interpreted it with their
+  own cut-point: chat refused below `0.45`, the MCP serializer warned below `0.7`,
+  the checkpoint orchestrator used `0.55` / `0.45`, the rescan writer `0.6` /
+  `0.65`. New `@kb/core/core/evidence-label` defines one ordered vocabulary
+  (`none` / `weak` / `moderate` / `strong`); the category is decided once, where
+  the metrics are known, and consumers compare labels.
+
+  - `IntentResult.confidence` → `evidence`; same for REST and MCP query payloads,
+    retrieval checkpoints, the query trace lane, and telemetry.
+  - `KB_CHAT_RETRIEVAL_MIN_CONFIDENCE` and `KB_INTENT_LOOP_CONFIDENCE_THRESHOLD`
+    take labels; an unparseable value falls back to the default rather than
+    silently disabling the gate.
+  - `estimateConfidence` → `assessResultCount`; `computeCheckpointConfidence` →
+    `assessRetrievalEvidence`; rescan's token-count ladder and `evidenceScore`
+    blend → `assessClaimSubstance` / `assessDocEvidence`.
+  - CLI/TUI show `Evidence: moderate` in place of `Confidence: 0.71`.
+
+  Migrations 18 and 19 drop the entity-registry weight columns and recreate the
+  retrieval telemetry tables with an `evidence TEXT` column.
+
+  Harvest output is unchanged — the same entities, aliases, edges, and collisions,
+  with no number attached and their origin recorded. Per-fact `confidence` in the
+  ranking blend is deliberately untouched: it is a stored column feeding
+  arithmetic, every writer sets a flat per-source constant, and changing it moves
+  retrieval results, so it waits for the ablation harness (see #207).
 
 ## 1.6.1
 

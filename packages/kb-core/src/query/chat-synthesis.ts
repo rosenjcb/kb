@@ -1,3 +1,9 @@
+import {
+  type EvidenceLabel,
+  isEvidenceAtLeast,
+  isEvidenceLabel,
+  parseEvidenceLabel,
+} from '../core/evidence-label'
 import { DatabaseSync } from 'node:sqlite'
 import {
   MAX_FACT_CONTENT_CHARS,
@@ -34,7 +40,7 @@ export interface ReadDocumentsResult {
       stage?: string
       status?: string
       nextAction?: string
-      confidence?: number
+      evidence?: EvidenceLabel
     }>
     curation?: CuratorAudit
   }
@@ -103,31 +109,32 @@ const CHAT_SYNTHESIS_SYSTEM_PROMPT = [
 export const CHAT_WEAK_RETRIEVAL_REFUSAL =
   'I don\'t have enough information in the retrieved KB evidence to answer that confidently. Try rephrasing or run `kb query "<topic>"`.'
 
-function chatRetrievalMinConfidence(): number {
-  const raw = process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE
-  if (!raw) return 0.45
-  const n = Number.parseFloat(raw)
-  if (!Number.isFinite(n) || n < 0 || n > 1) return 0.45
-  return n
+/**
+ * Minimum evidence a chat turn must have gathered before it will answer.
+ * `KB_CHAT_RETRIEVAL_MIN_CONFIDENCE` takes a label (`none` / `weak` / `moderate`
+ * / `strong`); an unparseable value falls back to the default rather than
+ * silently disabling the gate.
+ */
+function chatRetrievalEvidenceFloor(): EvidenceLabel {
+  return parseEvidenceLabel(process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE, 'moderate')
 }
 
-export function lastRetrievalCheckpointConfidence(
+export function lastRetrievalCheckpointEvidence(
   snapshot: ReadDocumentsResult
-): number | undefined {
+): EvidenceLabel | undefined {
   const cps = snapshot.retrieval?.checkpoints
   if (!Array.isArray(cps) || cps.length === 0) return undefined
   const last = cps[cps.length - 1]
-  const c = last?.confidence
-  return typeof c === 'number' && Number.isFinite(c) ? c : undefined
+  return isEvidenceLabel(last?.evidence) ? last.evidence : undefined
 }
 
 export function shouldRefuseChatTurnOnRetrieval(snapshot: ReadDocumentsResult): boolean {
   if (snapshot.retrieval?.detail === 'all-facts:already-in-context') return false
   const n = snapshot.results?.length ?? 0
   if (n === 0) return true
-  const conf = lastRetrievalCheckpointConfidence(snapshot)
-  if (conf === undefined) return false
-  return conf < chatRetrievalMinConfidence()
+  const evidence = lastRetrievalCheckpointEvidence(snapshot)
+  if (evidence === undefined) return false
+  return !isEvidenceAtLeast(evidence, chatRetrievalEvidenceFloor())
 }
 
 export async function withStageProgress<T>(
@@ -466,7 +473,7 @@ export function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   const isWeakEvidence = detail.includes('weak_evidence_after_exhaustion')
   const isFrontierExhausted = detail.includes('frontier_exhausted')
   if (isWeakEvidence) {
-    return `${withNotes}\n\n[Retrieval confidence was low — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
+    return `${withNotes}\n\n[Retrieval evidence was weak — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
   }
   if (isFrontierExhausted) {
     return `${withNotes}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`

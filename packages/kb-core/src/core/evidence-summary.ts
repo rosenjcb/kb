@@ -1,3 +1,4 @@
+import { type EvidenceLabel, isEvidenceLabel } from './evidence-label'
 /** Terminal `evidence>` summary — one scannable header; per-fact lines omitted. */
 
 const SOURCE_KINDS = new Set(['import_doc', 'import_code'])
@@ -17,7 +18,7 @@ export interface EvidenceSummaryFact {
 
 export interface EvidenceSummaryRetrieval {
   detail?: string
-  checkpoints?: Array<{ confidence?: number; status?: string }>
+  checkpoints?: Array<{ evidence?: EvidenceLabel; status?: string }>
 }
 
 export interface EvidenceSummaryInput {
@@ -32,7 +33,7 @@ export interface EvidenceSummaryParts {
   leads: string[]
   walk: string
   stop?: string
-  confidence?: number
+  evidence?: EvidenceLabel
 }
 
 export function formatEvidenceSummaryHeader(input: EvidenceSummaryInput): string | undefined {
@@ -56,8 +57,8 @@ export function formatEvidenceSummaryHeader(input: EvidenceSummaryInput): string
   if (parts.stop) {
     segments.push(`stop: ${parts.stop}`)
   }
-  if (typeof parts.confidence === 'number') {
-    segments.push(`conf: ${parts.confidence.toFixed(2)}`)
+  if (parts.evidence) {
+    segments.push(`evidence: ${parts.evidence}`)
   }
 
   return segments.join(' · ')
@@ -100,7 +101,7 @@ export function buildEvidenceSummaryParts(
     leads: leads.slice(0, 3),
     walk: formatRetrievalWalk(input.retrieval?.detail),
     stop: parseRetrievalStop(input.retrieval?.detail),
-    confidence: lastCheckpointConfidence(input.retrieval?.checkpoints),
+    evidence: lastCheckpointEvidence(input.retrieval?.checkpoints),
   }
 }
 
@@ -154,13 +155,13 @@ function formatRetrievalWalk(detail?: string): string {
   return chunks.join('/')
 }
 
-function lastCheckpointConfidence(
+function lastCheckpointEvidence(
   checkpoints: EvidenceSummaryRetrieval['checkpoints']
-): number | undefined {
+): EvidenceLabel | undefined {
   if (!Array.isArray(checkpoints) || checkpoints.length === 0) return undefined
   for (let i = checkpoints.length - 1; i >= 0; i -= 1) {
-    const value = checkpoints[i]?.confidence
-    if (typeof value === 'number' && Number.isFinite(value)) return value
+    const value = checkpoints[i]?.evidence
+    if (isEvidenceLabel(value)) return value
   }
   return undefined
 }

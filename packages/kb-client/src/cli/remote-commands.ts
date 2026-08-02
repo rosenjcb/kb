@@ -195,8 +195,8 @@ export async function runRemoteIntentCommand(
         `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`
       )
     }
-    if (verbose && typeof result.confidence === 'number') {
-      printer.metadata('Confidence', result.confidence.toFixed(2))
+    if (verbose && result.evidence) {
+      printer.metadata('Evidence', result.evidence)
     }
     if (result.traceFile) {
       out.log(`[kb] query trace written on server: ${result.traceFile}`)
