@@ -67,11 +67,10 @@ export async function runEntityIndexCycle(input: EntityIndexInput): Promise<Enti
         ...(input.gitRepo ? { gitRepo: input.gitRepo } : {}),
         sourceKind: candidate.sourceKind,
         contentHash: candidate.contentHash,
-        confidence: candidate.confidence,
       })
       idByName.set(normalizeEntityName(candidate.canonicalName), id)
       for (const alias of candidate.aliases) {
-        registry.addAlias(id, alias, candidate.sourceKind, candidate.confidence)
+        registry.addAlias(id, alias, candidate.sourceKind)
       }
       result.entitiesUpserted++
     }

@@ -76,7 +76,8 @@ frameworks:
 # (niche / abandoned). Homebrew formulae are Ruby DSLs but OUT OF SCOPE —
 # this harvester targets application/library repos' Gemfile + gemspec only.
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 # Match keys document intended signals for the future Ruby harvester.
 #
 # Engine vs app:
@@ -86,40 +87,32 @@ frameworks:
 # gemspec executables ← spec.executables / bindir (≈ npm bin)
 kind_rules:
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
       without_rails_engine: true # host apps / Sinatra / Grape win as service
   - kind: service
-    confidence: 0.85
     match:
       has_rails_app: true
   - kind: library
-    confidence: 0.85
     match:
       has_rails_engine: true # mountable engine gem — reusable package
   - kind: cli
-    confidence: 0.85
     match:
       has_executables: true # gemspec executables
   - kind: cli
-    confidence: 0.75
     match:
       any_dependency_group: cli
       without_dependency_group: server
   - kind: surface
-    confidence: 0.7
     match:
       any_dependency_group: frontend
       without_dependency_group: server
   - kind: library
-    confidence: 0.8
     match:
       has_gemspec: true
       without_executables: true
       without_dependency_group: server
   - kind: library
-    confidence: 0.4
     match: {} # fallback — Gemfile-only with no stronger signal
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -136,7 +129,7 @@ routes:
   note: >
     Best-effort Rails config/routes.rb with namespace/scope stacks joined to
     nested resources/verbs, `resources :x` → full CRUD, singular
-    `resource :x` member routes (confidence ~0.5). Sinatra verb DSL and
+    `resource :x` member routes. Sinatra verb DSL and
     Grape API routes also matched.
   planned_frameworks:
     - hanami
@@ -154,7 +147,6 @@ source_patterns:
   - id: rails_resources_crud
     kind: api
     gloss: Rails nested routes
-    confidence: 0.5
     filter: plausible_http_route
     strategy: rails_resources_crud
     files:
@@ -164,7 +156,6 @@ source_patterns:
         - routes.rb
   - id: sinatra_verbs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Sinatra route
@@ -176,7 +167,6 @@ source_patterns:
         - .rb
   - id: grape_verbs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Grape route
@@ -189,7 +179,6 @@ source_patterns:
         - .rb
   - id: grape_resource_symbol
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Grape resource
@@ -201,7 +190,6 @@ source_patterns:
         - .rb
   - id: rails_controller
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Rails controller
@@ -216,7 +204,6 @@ source_patterns:
         - .rb
   - id: rails_app_suffix
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Rails application class
@@ -228,7 +215,6 @@ source_patterns:
         - .rb
   - id: activerecord_model
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: ActiveRecord model
@@ -240,7 +226,6 @@ source_patterns:
         - .rb
   - id: activerecord_table_name
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: ActiveRecord table_name

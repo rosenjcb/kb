@@ -1,5 +1,28 @@
 # @kb/core
 
+## 1.6.2
+
+### Patch Changes
+
+- Remove hand-assigned weights from the ecosystem harvesters and entity registry.
+
+  Harvest rules described _what_ a manifest or source pattern declares and also
+  carried a `confidence` constant typed in by the rule author. Nothing read those
+  numbers back except one debug line in `kb entities`, so they encoded an opinion
+  that no experiment could falsify while looking like measured signal.
+
+  - `kind_rules` and `source_patterns` no longer accept `confidence`; config load
+    rejects `confidence` / `weight` / `score` on any rule.
+  - `classifyPackageKind` / `classifyFromSignals` return an `EntityKind` instead of
+    a `{ kind, confidence }` pair; `EntityCandidate` drops `confidence`.
+  - `EntityRegistry` drops the confidence arguments on `upsertEntity`, `addAlias`,
+    and `linkFact`, and the unused `weight` argument on `addEdge`.
+  - Migration 18 drops `entities.confidence`, `entity_aliases.confidence`,
+    `entity_links.confidence`, and `entity_edges.weight`.
+
+  Harvest output is unchanged: the same entities, aliases, edges, and collisions
+  are produced, with no number attached.
+
 ## 1.6.1
 
 ### Patch Changes

@@ -47,23 +47,18 @@ frameworks:
 
 kind_rules:
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: surface
-    confidence: 0.8
     match:
       any_dependency_group: frontend
   - kind: cli
-    confidence: 0.85
     match:
       any_dependency_group: cli
   - kind: cli
-    confidence: 0.8
     match:
       has_scripts_entry: true # [project.scripts]
   - kind: library
-    confidence: 0.5
     match: {}
 
 symbols:
@@ -81,7 +76,6 @@ routes:
     APIRouter(prefix=) join, include_router prefix, Starlette/ASGI
     Route/Mount/add_route, Flask @app.route/@bp.route, Flask MethodView
     add_url_rule, Django path() with include() prefix join and app_name.
-    Confidence ~0.5; capped.
   planned_frameworks: []
 
 app_classes:
@@ -98,7 +92,6 @@ models:
 source_patterns:
   - id: fastapi_decorator_verbs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: FastAPI/Starlette route
@@ -111,7 +104,6 @@ source_patterns:
   - id: fastapi_router_prefix_join
     kind: api
     gloss: FastAPI APIRouter prefix join
-    confidence: 0.5
     filter: plausible_http_route
     strategy: router_group_prefix_join
     join_style: fastapi
@@ -121,7 +113,6 @@ source_patterns:
   - id: asgi_route_mount
     kind: api
     gloss: ASGI Route/Mount
-    confidence: 0.5
     filter: plausible_http_route
     strategy: router_group_prefix_join
     join_style: asgi
@@ -130,7 +121,6 @@ source_patterns:
         - .py
   - id: flask_route_decorator
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Flask route
@@ -142,7 +132,6 @@ source_patterns:
         - .py
   - id: flask_add_url_rule
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Flask add_url_rule
@@ -154,7 +143,6 @@ source_patterns:
         - .py
   - id: flask_method_view_route
     kind: api
-    confidence: 0.5
     filter: none
     strategy: regex
     gloss: Flask MethodView
@@ -169,7 +157,6 @@ source_patterns:
   - id: django_include_join
     kind: api
     gloss: Django path/include join
-    confidence: 0.5
     filter: plausible_http_route
     strategy: django_include_join
     files:
@@ -177,7 +164,6 @@ source_patterns:
         - .py
   - id: django_app_name
     kind: api
-    confidence: 0.5
     filter: none
     strategy: regex
     gloss: Django app_name
@@ -191,7 +177,6 @@ source_patterns:
         - .py
   - id: python_app_suffix_classes
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Python application class
@@ -203,7 +188,6 @@ source_patterns:
         - .py
   - id: flask_method_view_module
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Flask MethodView
@@ -215,7 +199,6 @@ source_patterns:
         - .py
   - id: python_orm_model_class
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: ORM model class
@@ -227,7 +210,6 @@ source_patterns:
         - .py
   - id: pydantic_sqlmodel_schema
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Pydantic/SQLModel schema
@@ -239,7 +221,6 @@ source_patterns:
         - .py
   - id: sqlalchemy_tablename
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: SQLAlchemy table
@@ -253,7 +234,6 @@ source_patterns:
         - .py
   - id: peewee_table_name
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Peewee/ORM table_name

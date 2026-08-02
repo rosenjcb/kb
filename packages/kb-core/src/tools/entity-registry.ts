@@ -39,7 +39,6 @@ export interface EntityRow {
   gloss?: string
   gitRepo?: string
   sourceKind: string
-  confidence: number
 }
 
 export interface EntityAliasRow {
@@ -47,7 +46,6 @@ export interface EntityAliasRow {
   alias: string
   normalized: string
   source: string
-  confidence: number
 }
 
 export interface EntityCollision {
@@ -110,7 +108,6 @@ export class EntityRegistry {
     gitRepo?: string
     sourceKind: string
     contentHash?: string
-    confidence?: number
   }): string {
     const name = input.canonicalName.trim()
     const id = `ent-${sha256(`${input.kind}:${normalizeEntityName(name)}`).slice(0, 16)}`
@@ -124,14 +121,13 @@ export class EntityRegistry {
         .prepare(
           `UPDATE entities SET gloss = COALESCE(?, gloss), git_repo = COALESCE(?, git_repo),
              source_kind = ?, content_hash = COALESCE(?, content_hash),
-             confidence = ?, updated_at = ? WHERE id = ?`
+             updated_at = ? WHERE id = ?`
         )
         .run(
           input.gloss ?? null,
           input.gitRepo ?? null,
           input.sourceKind,
           input.contentHash ?? null,
-          input.confidence ?? 0.9,
           now,
           id
         )
@@ -139,8 +135,8 @@ export class EntityRegistry {
     }
     this.db
       .prepare(
-        `INSERT INTO entities (id, kind, canonical_name, gloss, git_repo, source_kind, content_hash, confidence, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO entities (id, kind, canonical_name, gloss, git_repo, source_kind, content_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -150,62 +146,55 @@ export class EntityRegistry {
         input.gitRepo ?? null,
         input.sourceKind,
         input.contentHash ?? null,
-        input.confidence ?? 0.9,
         now,
         now
       )
     // The canonical name is always its own alias.
-    this.addAlias(id, name, input.sourceKind, 1.0)
+    this.addAlias(id, name, input.sourceKind)
     return id
   }
 
-  addAlias(entityId: string, alias: string, source: string, confidence = 0.8): void {
+  addAlias(entityId: string, alias: string, source: string): void {
     const normalized = normalizeEntityName(alias)
     if (!normalized) return
     this.db
       .prepare(
-        `INSERT INTO entity_aliases (entity_id, alias, normalized, source, confidence)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (entity_id, normalized) DO UPDATE SET confidence = MAX(confidence, excluded.confidence)`
+        `INSERT INTO entity_aliases (entity_id, alias, normalized, source)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (entity_id, normalized) DO NOTHING`
       )
-      .run(entityId, alias.trim(), normalized, source, confidence)
+      .run(entityId, alias.trim(), normalized, source)
   }
 
   addEdge(
     fromEntityId: string,
     toEntityId: string,
     edgeType: EntityEdgeType,
-    gloss?: string,
-    weight = 1.0
+    gloss?: string
   ): void {
     this.db
       .prepare(
-        `INSERT INTO entity_edges (from_entity_id, to_entity_id, edge_type, gloss, weight, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO entity_edges (from_entity_id, to_entity_id, edge_type, gloss, created_at)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT (from_entity_id, to_entity_id, edge_type) DO UPDATE SET
-           gloss = COALESCE(excluded.gloss, gloss), weight = excluded.weight`
+           gloss = COALESCE(excluded.gloss, gloss)`
       )
-      .run(fromEntityId, toEntityId, edgeType, gloss ?? null, weight, nowIso())
+      .run(fromEntityId, toEntityId, edgeType, gloss ?? null, nowIso())
   }
 
-  linkFact(
-    factId: string,
-    entityId: string,
-    role: 'subject' | 'object' | 'mention',
-    confidence = 0.8
-  ): void {
+  linkFact(factId: string, entityId: string, role: 'subject' | 'object' | 'mention'): void {
     this.db
       .prepare(
-        `INSERT INTO entity_links (fact_id, entity_id, role, confidence) VALUES (?, ?, ?, ?)
-         ON CONFLICT (fact_id, entity_id, role) DO UPDATE SET confidence = MAX(confidence, excluded.confidence)`
+        `INSERT INTO entity_links (fact_id, entity_id, role) VALUES (?, ?, ?)
+         ON CONFLICT (fact_id, entity_id, role) DO NOTHING`
       )
-      .run(factId, entityId, role, confidence)
+      .run(factId, entityId, role)
   }
 
   getEntityById(id: string): EntityRow | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, kind, canonical_name, gloss, git_repo, source_kind, confidence
+        `SELECT id, kind, canonical_name, gloss, git_repo, source_kind
          FROM entities WHERE id = ? AND tombstoned_at IS NULL`
       )
       .get(id) as
@@ -215,8 +204,7 @@ export class EntityRegistry {
           canonical_name: string
           gloss: string | null
           git_repo: string | null
-          source_kind: string
-          confidence: number
+      source_kind: string
         }
       | undefined
     return row ? toEntityRow(row) : undefined
@@ -227,7 +215,7 @@ export class EntityRegistry {
     const normalized = normalizeEntityName(name)
     const rows = this.db
       .prepare(
-        `SELECT DISTINCT e.id, e.kind, e.canonical_name, e.gloss, e.git_repo, e.source_kind, e.confidence
+        `SELECT DISTINCT e.id, e.kind, e.canonical_name, e.gloss, e.git_repo, e.source_kind
          FROM entities e
          JOIN entity_aliases a ON a.entity_id = e.id
          WHERE a.normalized = ? AND e.tombstoned_at IS NULL`
@@ -239,7 +227,6 @@ export class EntityRegistry {
       gloss: string | null
       git_repo: string | null
       source_kind: string
-      confidence: number
     }>
     return rows.map(toEntityRow)
   }
@@ -249,13 +236,13 @@ export class EntityRegistry {
       kind
         ? this.db
             .prepare(
-              `SELECT id, kind, canonical_name, gloss, git_repo, source_kind, confidence
+              `SELECT id, kind, canonical_name, gloss, git_repo, source_kind
                FROM entities WHERE kind = ? AND tombstoned_at IS NULL ORDER BY canonical_name`
             )
             .all(kind)
         : this.db
             .prepare(
-              `SELECT id, kind, canonical_name, gloss, git_repo, source_kind, confidence
+              `SELECT id, kind, canonical_name, gloss, git_repo, source_kind
                FROM entities WHERE tombstoned_at IS NULL ORDER BY kind, canonical_name`
             )
             .all()
@@ -266,7 +253,6 @@ export class EntityRegistry {
       gloss: string | null
       git_repo: string | null
       source_kind: string
-      confidence: number
     }>
     return rows.map(toEntityRow)
   }
@@ -274,21 +260,19 @@ export class EntityRegistry {
   listAliases(entityId: string): EntityAliasRow[] {
     const rows = this.db
       .prepare(
-        'SELECT entity_id, alias, normalized, source, confidence FROM entity_aliases WHERE entity_id = ?'
+        'SELECT entity_id, alias, normalized, source FROM entity_aliases WHERE entity_id = ?'
       )
       .all(entityId) as Array<{
       entity_id: string
       alias: string
       normalized: string
       source: string
-      confidence: number
     }>
     return rows.map(r => ({
       entityId: r.entity_id,
       alias: r.alias,
       normalized: r.normalized,
       source: r.source,
-      confidence: r.confidence,
     }))
   }
 
@@ -441,8 +425,7 @@ function toEntityRow(row: {
   canonical_name: string
   gloss: string | null
   git_repo: string | null
-  source_kind: string
-  confidence: number
+      source_kind: string
 }): EntityRow {
   return {
     id: row.id,
@@ -451,7 +434,6 @@ function toEntityRow(row: {
     ...(row.gloss ? { gloss: row.gloss } : {}),
     ...(row.git_repo ? { gitRepo: row.git_repo } : {}),
     sourceKind: row.source_kind,
-    confidence: row.confidence,
   }
 }
 

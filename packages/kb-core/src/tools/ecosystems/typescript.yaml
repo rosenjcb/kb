@@ -43,44 +43,36 @@ frameworks:
     - meow
     - ink
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 kind_rules:
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   # Daemon packages often ship a bin (kb-server) without listing a web framework.
   - kind: service
-    confidence: 0.85
     match:
       name_ends_with: server
   - kind: service
-    confidence: 0.85
     match:
       bin_name_ends_with: -server
   - kind: service
-    confidence: 0.6
     match:
       any_script: [start, serve]
       without_bin: true
   - kind: cli
-    confidence: 0.85
     match:
       has_bin: true
   - kind: surface
-    confidence: 0.75
     match:
       any_dependency_group: frontend
   - kind: cli
-    confidence: 0.6
     match:
       any_dependency_group: cli
   - kind: library
-    confidence: 0.8
     match:
       has_entry: true # package.json main or exports
   - kind: library
-    confidence: 0.4
     match: {} # fallback
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -101,8 +93,7 @@ routes:
     RouterModule path, raw node:http url/pathname equality and startsWith
     (kb-server style), URLPattern, Express/Koa/Hono verbs, Next.js
     filesystem routes (page → surface, route/api → api), GraphQL roots,
-    and tRPC publicProcedure/mutation keys as trpc/<name>. Confidence
-    ~0.5; capped.
+    and tRPC publicProcedure/mutation keys as trpc/<name>.
   planned_frameworks: []
 
 app_classes:
@@ -126,7 +117,6 @@ source_patterns:
   - id: next_filesystem_routes
     kind: api
     gloss: Next.js route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: next_filesystem_routes
     files:
@@ -140,7 +130,6 @@ source_patterns:
   - id: nest_controller_method_join
     kind: api
     gloss: NestJS route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: class_method_prefix_join
     join_style: nest
@@ -155,7 +144,6 @@ source_patterns:
   - id: nest_global_prefix_join
     kind: api
     gloss: NestJS global prefix route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: class_method_prefix_join
     join_style: nest_global_prefix
@@ -170,7 +158,6 @@ source_patterns:
   - id: trpc_procedures
     kind: api
     gloss: tRPC procedure
-    confidence: 0.5
     filter: plausible_http_route
     strategy: trpc_procedures
     files:
@@ -183,7 +170,6 @@ source_patterns:
         - .cjs
   - id: express_koa_hono_verbs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Express/Koa/Hono route
@@ -200,7 +186,6 @@ source_patterns:
         - .cjs
   - id: nest_decorator_classes
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: NestJS application class
@@ -218,7 +203,6 @@ source_patterns:
         - .cjs
   - id: ts_app_layer_suffix_classes
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Application layer class
@@ -236,7 +220,6 @@ source_patterns:
         - .cjs
   - id: typeorm_entity_string
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: TypeORM/MikroORM entity
@@ -256,7 +239,6 @@ source_patterns:
         - .cjs
   - id: typeorm_entity_object_name
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: TypeORM/MikroORM entity
@@ -277,7 +259,6 @@ source_patterns:
         - .cjs
   - id: typeorm_entity_bare
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: TypeORM/MikroORM entity
@@ -294,7 +275,6 @@ source_patterns:
         - .cjs
   - id: sequelize_define
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Sequelize model
@@ -311,7 +291,6 @@ source_patterns:
         - .cjs
   - id: sequelize_model_subclass
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Sequelize Model subclass
@@ -328,7 +307,6 @@ source_patterns:
         - .cjs
   - id: mongoose_model
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Mongoose model
@@ -345,7 +323,6 @@ source_patterns:
         - .cjs
   - id: drizzle_table
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Drizzle table
@@ -363,7 +340,6 @@ source_patterns:
   - id: prisma_schema_blocks
     kind: model
     gloss: Prisma schema atom
-    confidence: 0.55
     filter: plausible_model_name
     strategy: prisma_schema_blocks
     files:

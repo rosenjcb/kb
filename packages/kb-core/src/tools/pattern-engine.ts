@@ -16,7 +16,6 @@ export interface EntityCandidate {
   gloss?: string
   sourceFile: string
   sourceKind: 'manifest'
-  confidence: number
   contentHash: string
 }
 
@@ -95,7 +94,6 @@ export async function walkSourceFiles(
 }
 
 const ROUTE_CAP = 200
-const OPENAPI_PATH_CONFIDENCE = 0.75
 const APP_CONCEPT_CAP = 160
 const MODEL_CAP = 160
 
@@ -865,7 +863,7 @@ function pushUniqueCandidate(
 
 /**
  * Tier-4 in-code route/decorator harvest — best-effort regex + Next.js
- * filesystem routes, low confidence, capped. Never load-bearing.
+ * filesystem routes. Never load-bearing for entity identity.
  * Next.js `page` files emit `surface`; API/route handlers emit `api`.
  */
 /** Django `path('api/', include('users.urls'))` → module key `users.urls`. */
@@ -1250,7 +1248,6 @@ export function runOpenApiPathItems(
       gloss: 'OpenAPI path item',
       sourceFile: rel,
       sourceKind: 'manifest',
-      confidence: OPENAPI_PATH_CONFIDENCE,
       contentHash: hash,
     })
     let resolved: unknown = item
@@ -1274,7 +1271,6 @@ export function runOpenApiPathItems(
         gloss: 'OpenAPI operation',
         sourceFile: rel,
         sourceKind: 'manifest',
-        confidence: OPENAPI_PATH_CONFIDENCE,
         contentHash: hash,
       })
     }
@@ -1403,7 +1399,6 @@ export async function runSourcePatterns(
       gloss: hit.gloss ?? rule.gloss,
       sourceFile: rel,
       sourceKind: 'manifest',
-      confidence: rule.confidence,
       contentHash: hash,
     })
     if (opts.phase === 'app' && candidates.length > before) {

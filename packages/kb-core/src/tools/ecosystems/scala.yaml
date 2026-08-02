@@ -96,54 +96,44 @@ frameworks:
     - laminar # com.raquo %%% laminar — primary Scala.js UI signal
     # slinky / scalajs-react / tyrian exist; Laminar is the strongest modern signal
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 # Match keys document intended inference — not wired until status → implemented.
 kind_rules:
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: service
-    confidence: 0.9
     match:
       any_enable_plugin: [PlayScala, PlayJava]
   - kind: service
-    confidence: 0.7
     match:
       has_conf_routes: true # Play conf/routes present
   - kind: surface
-    confidence: 0.85
     match:
       any_enable_plugin: [ScalaJSPlugin]
   - kind: surface
-    confidence: 0.8
     match:
       mill_extends: [ScalaJSModule]
   - kind: surface
-    confidence: 0.75
     match:
       any_dependency_group: surface
   - kind: cli
-    confidence: 0.8
     match:
       any_dependency_group: cli
       has_main_class: true
   - kind: cli
-    confidence: 0.65
     match:
       any_dependency_group: cli
   - kind: service
-    confidence: 0.55
     match:
       has_main_class: true
       without_cli_deps: true
       note: Runnable JVM main without server/cli libs — weak; often a tool or demo
   - kind: library
-    confidence: 0.75
     match:
       publishable: true # sbt publish / Mill publish; no mainClass
   - kind: library
-    confidence: 0.4
     match: {} # fallback
 
 symbols:
@@ -157,7 +147,7 @@ routes:
   status: partial
   note: >
     Best-effort Play conf/routes verb+path lines and http4s HttpRoutes
-    path literals. Confidence ~0.5; capped. Tapir endpoint DSLs still open.
+    path literals. Tapir endpoint DSLs still open.
   planned_frameworks:
     - tapir
 
@@ -173,7 +163,6 @@ models:
 source_patterns:
   - id: http4s_router_paths
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: http4s route
@@ -185,7 +174,6 @@ source_patterns:
         - .scala
   - id: tapir_in_segment
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Tapir .in segment
@@ -197,7 +185,6 @@ source_patterns:
         - .scala
   - id: scala_app_types
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Scala application type
@@ -209,7 +196,6 @@ source_patterns:
         - .scala
   - id: scala_entity
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Scala entity
@@ -221,7 +207,6 @@ source_patterns:
         - .scala
   - id: slick_table_query
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Slick TableQuery

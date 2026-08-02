@@ -554,6 +554,25 @@ const MIGRATIONS: Migration[] = [
         ON entity_links(entity_id);
     `,
   },
+  {
+    // Drop the hand-assigned weights from the entity registry. Every value these
+    // columns ever held was a constant typed into ecosystem YAML or a default in
+    // the registry — never a measurement — and nothing but a debug print ever read
+    // one back. A harvest rule now records only *what* a manifest declares; how far
+    // to trust a name is a question for measured signal at query time, not a number
+    // chosen when the rule was written.
+    //
+    // Every database reaching this migration has had 17 applied, so the columns
+    // exist and each DROP is total.
+    version: 18,
+    name: 'drop_entity_registry_weights',
+    sql: `
+      ALTER TABLE entities      DROP COLUMN confidence;
+      ALTER TABLE entity_aliases DROP COLUMN confidence;
+      ALTER TABLE entity_links  DROP COLUMN confidence;
+      ALTER TABLE entity_edges  DROP COLUMN weight;
+    `,
+  },
 ]
 
 /**

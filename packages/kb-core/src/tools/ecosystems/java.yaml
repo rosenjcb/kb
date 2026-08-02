@@ -101,7 +101,8 @@ frameworks:
 # Avoid as primary (do not add): SparkJava / Javalin as sole frontier defaults
 # (still exist; detect later if needed). Struts 1.x / ancient MVC — legacy only.
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 # Match keys document intended signals for the future JVM harvester.
 #
 # Packaging / plugin signals (Maven + Gradle):
@@ -113,56 +114,45 @@ frameworks:
 #   has_android_plugin      ← com.android.application|library
 kind_rules:
   - kind: service
-    confidence: 0.95
     match:
       has_spring_boot_plugin: true
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: service
-    confidence: 0.85
     match:
       packaging_war: true
   - kind: surface
-    confidence: 0.8
     match:
       has_android_plugin: true
       note: >
         Android apps are mobile surfaces — separate from Vaadin/JavaFX.
-        Prefer weak confidence; do not treat every Android library as surface.
+        Do not treat every Android library as a surface.
   - kind: surface
-    confidence: 0.75
     match:
       any_dependency_group: surface
       without_android_plugin: true # Vaadin / JavaFX only when not AGP
   - kind: cli
-    confidence: 0.85
     match:
       any_dependency_group: cli
       has_main_class: true
   - kind: cli
-    confidence: 0.75
     match:
       any_dependency_group: cli
   - kind: cli
-    confidence: 0.7
     match:
       has_application_plugin: true
       has_main_class: true
       without_dependency_group: server
   - kind: library
-    confidence: 0.75
     match:
       packaging_jar: true
       without_main_class: true
       without_dependency_group: server
   - kind: library
-    confidence: 0.55
     match:
       has_main_class: true # runnable jar, no stronger dep/plugin signal
   - kind: library
-    confidence: 0.4
     match: {} # fallback
 
 symbols:
@@ -179,8 +169,8 @@ routes:
     Best-effort regex for Spring class-level @RequestMapping joined to
     method-level @GetMapping/@PostMapping/… (`/api` + `/users` → `/api/users`),
     Micronaut @Controller + @Get join, JAX-RS/Quarkus class @Path + method
-    @GET/@Path join, and Ktor get("/path") with leading slash. Confidence
-    ~0.5; capped. RouterFunction builders still not covered.
+    @GET/@Path join, and Ktor get("/path") with leading slash.
+    RouterFunction builders still not covered.
   planned_frameworks:
     - spring-webflux # RouterFunction DSL
 
@@ -199,7 +189,6 @@ source_patterns:
   - id: spring_class_method_join
     kind: api
     gloss: Spring MVC mapping
-    confidence: 0.5
     filter: plausible_http_route
     strategy: class_method_prefix_join
     join_style: spring
@@ -211,7 +200,6 @@ source_patterns:
   - id: micronaut_controller_join
     kind: api
     gloss: Micronaut controller route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: class_method_prefix_join
     join_style: micronaut
@@ -223,7 +211,6 @@ source_patterns:
   - id: jaxrs_path_join
     kind: api
     gloss: JAX-RS path join
-    confidence: 0.5
     filter: plausible_http_route
     strategy: class_method_prefix_join
     join_style: jaxrs
@@ -234,7 +221,6 @@ source_patterns:
         - .kts
   - id: jaxrs_path_annotation
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: JAX-RS @Path
@@ -248,7 +234,6 @@ source_patterns:
         - .kts
   - id: ktor_verb_routes
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Ktor route
@@ -262,7 +247,6 @@ source_patterns:
         - .kts
   - id: ktor_route_block
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Ktor route block
@@ -276,7 +260,6 @@ source_patterns:
         - .kts
   - id: spring_app_classes
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Spring/Jakarta application class
@@ -291,7 +274,6 @@ source_patterns:
         - .kts
   - id: jpa_entity_class
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: JPA/Mongo/Room entity
@@ -306,7 +288,6 @@ source_patterns:
         - .kts
   - id: room_tablename
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Room tableName
@@ -322,7 +303,6 @@ source_patterns:
         - .kts
   - id: jpa_table_annotation
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: JPA @Table
@@ -338,7 +318,6 @@ source_patterns:
         - .kts
   - id: exposed_table
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Exposed Table
@@ -355,7 +334,6 @@ source_patterns:
   - id: hibernate_xml_mappings
     kind: model
     gloss: Hibernate mapping
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     pattern: <class\s+[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\btable\s*=\s*["']([^"']+)["']
@@ -370,7 +348,6 @@ source_patterns:
         - .xml
   - id: hibernate_xml_table_name_first
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Hibernate class
@@ -386,7 +363,6 @@ source_patterns:
         - .xml
   - id: jpa_orm_xml_entity
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: JPA orm.xml entity
@@ -398,7 +374,6 @@ source_patterns:
         - .xml
   - id: jpa_orm_xml_table
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: JPA orm.xml table

@@ -34,7 +34,6 @@ source_patterns:
   - id: my_lib_route
     kind: api
     gloss: MyLib route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     pattern: '@MyRoute\s*\(\s*[''"]([^''"]+)[''']'

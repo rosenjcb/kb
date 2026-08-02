@@ -12,14 +12,12 @@ compose:
     - compose.yaml
   services_key: services
   kind: service
-  confidence: 0.85
 
 fly:
   file: fly.toml
   # Captures `app = "name"` (TOML string form used by Fly).
   app_pattern: '^app\s*=\s*["'']([^"'']+)["'']'
   kind: service
-  confidence: 0.85
 
 backstage:
   file: catalog-info.yaml
@@ -27,7 +25,6 @@ backstage:
     API: api
     Domain: domain
     default: service
-  confidence: 0.95
   # Edge: component → spec.domain or spec.system
   belongs_to_keys: [domain, system]
 
@@ -48,7 +45,6 @@ kubernetes:
   kind_map:
     Ingress: api
     default: service
-  confidence: 0.85
   # Skip Helm-templated manifests (contain `{{`).
   skip_template_marker: '{{'
 
@@ -56,13 +52,11 @@ helm:
   file: Chart.yaml
   name_key: name
   kind: service
-  confidence: 0.85
 
 procfile:
   file: Procfile
   # Process type names (web, worker, …) become aliases of the repo basename.
   kind: service
-  confidence: 0.7
 
 # Declared for future inference — not harvested yet.
 planned:

@@ -141,7 +141,7 @@ export async function runEntitiesCommand(
         lines.push(`${entity.canonicalName}  [${entity.kind}]`)
         if (entity.gloss) lines.push(`  ${entity.gloss}`)
         if (entity.gitRepo) lines.push(`  repo: ${entity.gitRepo}`)
-        lines.push(`  source: ${entity.sourceKind} (confidence ${entity.confidence})`)
+        lines.push(`  source: ${entity.sourceKind}`)
         const aliases = registry.listAliases(entity.id).map(a => a.alias)
         if (aliases.length > 0) lines.push(`  aliases: ${aliases.join(', ')}`)
         lines.push(`  linked facts: ${registry.linkedFactIds([entity.id]).length}`)

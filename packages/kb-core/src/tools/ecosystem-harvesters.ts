@@ -62,7 +62,6 @@ export interface EntityCandidate {
   /** File the candidate was extracted from, repo-relative. */
   sourceFile: string
   sourceKind: 'manifest'
-  confidence: number
   contentHash: string
 }
 
@@ -251,22 +250,24 @@ function ruleMatchesSignals(
   return sawKnown
 }
 
-/** Apply YAML kind_rules against extracted dependency/target signals. */
+/**
+ * Apply YAML kind_rules against extracted dependency/target signals. First match
+ * wins; `library` is the fallback when nothing matched. Rules carry no weights —
+ * a rule either describes this package or it doesn't.
+ */
 export function classifyFromSignals(
   signals: KindSignals,
   config: PackageEcosystemConfig
-): { kind: EntityKind; confidence: number } {
+): EntityKind {
   for (const rule of config.kind_rules) {
-    if (ruleMatchesSignals(rule, signals, config)) {
-      return { kind: rule.kind, confidence: rule.confidence }
-    }
+    if (ruleMatchesSignals(rule, signals, config)) return rule.kind
   }
-  return { kind: 'library', confidence: 0.4 }
+  return 'library'
 }
 
 /**
  * Deterministic kind rubric over package.json features — decision table from
- * `ecosystems/typescript.yaml`, not an LLM. Ambiguity lowers confidence.
+ * `ecosystems/typescript.yaml`, not an LLM.
  */
 function packageBinNames(bin: PackageJson['bin']): string[] {
   if (!bin) return []
@@ -277,7 +278,7 @@ function packageBinNames(bin: PackageJson['bin']): string[] {
 export function classifyPackageKind(
   pkg: PackageJson,
   config: TypescriptEcosystemConfig = loadTypescriptEcosystemConfig()
-): { kind: EntityKind; confidence: number } {
+): EntityKind {
   const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) })
   const binNames = packageBinNames(pkg.bin)
   const hasBin = binNames.length > 0 || Boolean(pkg.bin && typeof pkg.bin === 'string')
@@ -366,7 +367,7 @@ export async function harvestTypeScriptEcosystem(scanDir: string): Promise<Harve
     const pkg = safeParsePackage(raw)
     if (!pkg?.name) continue
 
-    const { kind, confidence } = classifyPackageKind(pkg, config)
+    const kind = classifyPackageKind(pkg, config)
     const aliases = new Set<string>([pkg.name, unscoped(pkg.name), path.basename(dir)])
     if (pkg.bin && typeof pkg.bin === 'object') {
       for (const binName of Object.keys(pkg.bin)) aliases.add(binName)
@@ -379,7 +380,6 @@ export async function harvestTypeScriptEcosystem(scanDir: string): Promise<Harve
       ...(pkg.description ? { gloss: pkg.description } : {}),
       sourceFile: path.relative(scanDir, path.join(dir, manifestName)) || manifestName,
       sourceKind: 'manifest',
-      confidence,
       contentHash: sha256(raw),
     })
     if (rootName && pkg.name !== rootName) {
@@ -421,7 +421,6 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
           aliases: [serviceKey],
           sourceFile: composeName,
           sourceKind: 'manifest',
-          confidence: config.compose.confidence,
           contentHash: sha256(raw),
         })
       }
@@ -441,7 +440,6 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
         aliases: [appMatch[1]],
         sourceFile: config.fly.file,
         sourceKind: 'manifest',
-        confidence: config.fly.confidence,
         contentHash: sha256(flyRaw),
       })
     }
@@ -466,7 +464,6 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
           ...(parsed?.metadata?.description ? { gloss: parsed.metadata.description } : {}),
           sourceFile: config.backstage.file,
           sourceKind: 'manifest',
-          confidence: config.backstage.confidence,
           contentHash: sha256(backstageRaw),
         })
         let domain: string | undefined
@@ -600,7 +597,6 @@ async function harvestKubernetesManifests(
           aliases: [name],
           sourceFile: rel,
           sourceKind: 'manifest',
-          confidence: config.kubernetes.confidence,
           contentHash: sha256(doc),
         })
       } catch {
@@ -634,7 +630,6 @@ async function harvestHelmCharts(
         aliases: [name],
         sourceFile: path.relative(scanDir, filePath),
         sourceKind: 'manifest',
-        confidence: config.helm.confidence,
         contentHash: sha256(raw),
       })
     } catch {
@@ -665,13 +660,10 @@ async function harvestProcfile(
     aliases: [...new Set([basename, ...processTypes])],
     sourceFile: config.procfile.file,
     sourceKind: 'manifest',
-    confidence: config.procfile.confidence,
     contentHash: sha256(raw),
   })
 }
 
-const OPENAPI_CONFIDENCE = 0.9
-const PROTO_CONFIDENCE = 0.85
 
 /**
  * Tier-3 interface contracts: OpenAPI/Swagger titles and protobuf `service`
@@ -734,7 +726,6 @@ export async function harvestContractManifests(scanDir: string): Promise<Harvest
         gloss: 'OpenAPI info.title',
         sourceFile: rel,
         sourceKind: 'manifest',
-        confidence: OPENAPI_CONFIDENCE,
         contentHash: hash,
       })
     }
@@ -759,7 +750,6 @@ export async function harvestContractManifests(scanDir: string): Promise<Harvest
         aliases: pkg ? [canonical, svc] : [svc],
         sourceFile: path.relative(scanDir, filePath),
         sourceKind: 'manifest',
-        confidence: PROTO_CONFIDENCE,
         contentHash: sha256(raw),
       })
     }
@@ -831,7 +821,7 @@ export async function harvestGoEcosystem(scanDir: string): Promise<HarvestResult
   if (!raw) return { candidates: [], edges: [] }
   const { module, deps } = parseGoMod(raw)
   if (!module) return { candidates: [], edges: [] }
-  const { kind, confidence } = classifyFromSignals({ deps }, config)
+  const kind = classifyFromSignals({ deps }, config)
   const short = module.includes('/') ? (module.split('/').pop() ?? module) : module
   return {
     candidates: [
@@ -841,7 +831,6 @@ export async function harvestGoEcosystem(scanDir: string): Promise<HarvestResult
         aliases: [module, short],
         sourceFile: 'go.mod',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],
@@ -910,7 +899,7 @@ export async function harvestPythonEcosystem(scanDir: string): Promise<HarvestRe
   }
 
   const hasScriptsEntry = /\[project\.scripts\]/.test(raw) || /\[tool\.poetry\.scripts\]/.test(raw)
-  const { kind, confidence } = classifyFromSignals({ deps, hasScriptsEntry }, config)
+  const kind = classifyFromSignals({ deps, hasScriptsEntry }, config)
   return {
     candidates: [
       {
@@ -920,7 +909,6 @@ export async function harvestPythonEcosystem(scanDir: string): Promise<HarvestRe
         ...(project.description ? { gloss: project.description } : {}),
         sourceFile: 'pyproject.toml',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],
@@ -937,7 +925,7 @@ export async function harvestRustEcosystem(scanDir: string): Promise<HarvestResu
   if (!name) return { candidates: [], edges: [] }
 
   const deps = [...tomlTableKeys(raw, 'dependencies'), ...tomlTableKeys(raw, 'dev-dependencies')]
-  const { kind, confidence } = classifyFromSignals(
+  const kind = classifyFromSignals(
     {
       deps,
       hasBinTarget: tomlHasArrayTable(raw, 'bin') || /\[\[bin\]\]/.test(raw),
@@ -954,7 +942,6 @@ export async function harvestRustEcosystem(scanDir: string): Promise<HarvestResu
         ...(pkg.description ? { gloss: pkg.description } : {}),
         sourceFile: 'Cargo.toml',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],
@@ -988,7 +975,7 @@ export async function harvestPhpEcosystem(scanDir: string): Promise<HarvestResul
     parsed.bin &&
       (typeof parsed.bin === 'string' || (Array.isArray(parsed.bin) && parsed.bin.length > 0))
   )
-  const { kind, confidence } = classifyFromSignals(
+  const kind = classifyFromSignals(
     { deps, hasBin, composerType: parsed.type },
     config
   )
@@ -1002,7 +989,6 @@ export async function harvestPhpEcosystem(scanDir: string): Promise<HarvestResul
         ...(parsed.description ? { gloss: parsed.description } : {}),
         sourceFile: 'composer.json',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],
@@ -1069,7 +1055,7 @@ export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResu
     const parsed = parseGemspec(raw)
     if (!parsed.name) continue
     const deps = [...parsed.deps, ...gemfileDeps]
-    const { kind, confidence } = classifyFromSignals(
+    const kind = classifyFromSignals(
       { deps, hasBin: parsed.executables.length > 0, binNames: parsed.executables },
       config
     )
@@ -1089,7 +1075,6 @@ export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResu
         : {}),
       sourceFile: path.basename(gemspecPath),
       sourceKind: 'manifest',
-      confidence,
       contentHash: sha256(raw),
     })
   }
@@ -1097,14 +1082,13 @@ export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResu
   // Gemfile-only app root (typical Rails) when no gemspec provides identity.
   if (candidates.length === 0 && gemfileRaw) {
     const name = path.basename(scanDir)
-    const { kind, confidence } = classifyFromSignals({ deps: gemfileDeps }, config)
+    const kind = classifyFromSignals({ deps: gemfileDeps }, config)
     candidates.push({
       kind,
       canonicalName: name,
       aliases: [name],
       sourceFile: 'Gemfile',
       sourceKind: 'manifest',
-      confidence,
       contentHash: sha256(gemfileRaw),
     })
   }
@@ -1155,7 +1139,7 @@ async function harvestMavenPom(
   const groupId = xmlTag(raw, 'groupId')
   const description = xmlTag(raw, 'description') ?? xmlTag(raw, 'name')
   const deps = parseMavenDeps(raw)
-  const { kind, confidence } = classifyFromSignals({ deps, packageName: artifactId }, config)
+  const kind = classifyFromSignals({ deps, packageName: artifactId }, config)
   const aliases = new Set<string>([artifactId])
   if (groupId) aliases.add(`${groupId}:${artifactId}`)
   const candidates: EntityCandidate[] = [
@@ -1166,7 +1150,6 @@ async function harvestMavenPom(
       ...(description ? { gloss: description } : {}),
       sourceFile: pomRel,
       sourceKind: 'manifest',
-      confidence,
       contentHash: sha256(raw),
     },
   ]
@@ -1232,14 +1215,13 @@ export async function harvestJavaEcosystem(scanDir: string): Promise<HarvestResu
             if (parts[1]) deps.push(parts[1])
           }
         }
-        const { kind, confidence } = classifyFromSignals({ deps, packageName: name }, config)
+        const kind = classifyFromSignals({ deps, packageName: name }, config)
         candidates.push({
           kind,
           canonicalName: name,
           aliases: [name, `:${member.replace(/\//g, ':')}`],
           sourceFile: buildRel,
           sourceKind: 'manifest',
-          confidence,
           contentHash: sha256(buildRaw),
         })
         if (rootNameMatch && name !== rootNameMatch) {
@@ -1329,7 +1311,7 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
     if (!raw) continue
     const parsed = parseCabalPackage(raw)
     if (!parsed.name) continue
-    const { kind, confidence } = classifyFromSignals(
+    const kind = classifyFromSignals(
       {
         deps: parsed.deps,
         hasExecutableStanza: parsed.hasExecutable,
@@ -1345,7 +1327,6 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
           aliases: [parsed.name],
           sourceFile: path.basename(cabalPath),
           sourceKind: 'manifest',
-          confidence,
           contentHash: sha256(raw),
         },
       ],
@@ -1357,7 +1338,7 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
   if (!hpackRaw) return { candidates: [], edges: [] }
   const parsed = parseHpackPackage(hpackRaw)
   if (!parsed.name) return { candidates: [], edges: [] }
-  const { kind, confidence } = classifyFromSignals(
+  const kind = classifyFromSignals(
     {
       deps: parsed.deps,
       hasExecutableStanza: parsed.hasExecutable,
@@ -1373,7 +1354,6 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
         aliases: [parsed.name],
         sourceFile: 'package.yaml',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(hpackRaw),
       },
     ],
@@ -1405,7 +1385,7 @@ export async function harvestCppEcosystem(scanDir: string): Promise<HarvestResul
   const name = parseCmakeProject(raw)
   if (!name) return { candidates: [], edges: [] }
   const deps = parseCmakeDeps(raw)
-  const { kind, confidence } = classifyFromSignals({ deps, packageName: name }, config)
+  const kind = classifyFromSignals({ deps, packageName: name }, config)
   return {
     candidates: [
       {
@@ -1414,7 +1394,6 @@ export async function harvestCppEcosystem(scanDir: string): Promise<HarvestResul
         aliases: [name, path.basename(scanDir)],
         sourceFile: 'CMakeLists.txt',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],
@@ -1509,7 +1488,7 @@ export async function harvestCsharpEcosystem(scanDir: string): Promise<HarvestRe
     const parsed = parseCsproj(raw)
     const stem = path.basename(csprojPath, '.csproj')
     const canonical = parsed.assemblyName ?? parsed.packageId ?? parsed.rootNamespace ?? stem
-    const { kind, confidence } = classifyFromSignals(
+    const kind = classifyFromSignals(
       {
         deps: parsed.deps,
         packageName: canonical,
@@ -1528,7 +1507,6 @@ export async function harvestCsharpEcosystem(scanDir: string): Promise<HarvestRe
       aliases: [...aliases],
       sourceFile: path.relative(scanDir, csprojPath) || path.basename(csprojPath),
       sourceKind: 'manifest',
-      confidence,
       contentHash: sha256(raw),
     })
     if (slnName && canonical !== slnName) {
@@ -1573,7 +1551,7 @@ export async function harvestScalaEcosystem(scanDir: string): Promise<HarvestRes
   const name = parseSbtName(raw)
   if (!name) return { candidates: [], edges: [] }
   const deps = parseSbtDeps(raw)
-  const { kind, confidence } = classifyFromSignals({ deps, packageName: name }, config)
+  const kind = classifyFromSignals({ deps, packageName: name }, config)
   return {
     candidates: [
       {
@@ -1582,7 +1560,6 @@ export async function harvestScalaEcosystem(scanDir: string): Promise<HarvestRes
         aliases: [name, path.basename(scanDir)],
         sourceFile: 'build.sbt',
         sourceKind: 'manifest',
-        confidence,
         contentHash: sha256(raw),
       },
     ],

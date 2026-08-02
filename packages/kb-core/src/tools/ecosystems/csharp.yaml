@@ -93,57 +93,46 @@ sdks:
 #   Nancy, OWIN/Katana-only stacks, ServiceStack (niche) as default kind signals
 #   packages.config-era ASP.NET System.Web (Framework, not Core) — out of scope
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 # Match keys document intended signals even if the .NET harvester is not wired.
 kind_rules:
   - kind: service
-    confidence: 0.95
     match:
       any_sdk: [Microsoft.NET.Sdk.Web]
   - kind: service
-    confidence: 0.9
     match:
       use_aspnetcore: true # FrameworkReference Microsoft.AspNetCore.App / UsingMicrosoftNETSdkWeb
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: service
-    confidence: 0.85
     match:
       any_sdk: [Microsoft.NET.Sdk.Worker]
   - kind: surface
-    confidence: 0.9
     match:
       any_sdk: [Microsoft.NET.Sdk.BlazorWebAssembly, Microsoft.NET.Sdk.Maui]
   - kind: surface
-    confidence: 0.85
     match:
       any_dependency_group: frontend
   - kind: surface
-    confidence: 0.85
     match:
       any_msbuild_property_true: [UseWPF, UseWindowsForms, UseMaui]
   - kind: cli
-    confidence: 0.85
     match:
       any_dependency_group: cli
   - kind: cli
-    confidence: 0.7
     match:
       output_type: Exe
       without_dependency_group: server
       without_sdk: [Microsoft.NET.Sdk.Web, Microsoft.NET.Sdk.Worker]
   - kind: surface
-    confidence: 0.7
     match:
       output_type: WinExe # WPF / WinForms / desktop default
   - kind: library
-    confidence: 0.8
     match:
       output_type: Library
   - kind: library
-    confidence: 0.4
     match: {} # fallback
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -158,7 +147,7 @@ routes:
   status: partial
   note: >
     Best-effort regex for [Route]/[HttpGet]/Minimal API MapGet/MapPost/….
-    Confidence ~0.5; capped. Never load-bearing for entity identity.
+    Never load-bearing for entity identity.
   planned_frameworks:
     - aspnetcore-minimal # MapGet / MapPost / MapPut / MapDelete / MapMethods / MapGroup
     - aspnetcore-controllers # [Route] / [HttpGet] / MapControllers
@@ -175,7 +164,6 @@ models:
 source_patterns:
   - id: aspnet_route_attr
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: ASP.NET Route
@@ -187,7 +175,6 @@ source_patterns:
         - .cs
   - id: aspnet_http_verb_attr
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: ASP.NET Http* attribute
@@ -199,7 +186,6 @@ source_patterns:
         - .cs
   - id: aspnet_map_verbs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: ASP.NET Map*
@@ -211,7 +197,6 @@ source_patterns:
         - .cs
   - id: aspnet_controller_class
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: ASP.NET controller
@@ -223,7 +208,6 @@ source_patterns:
         - .cs
   - id: dotnet_app_suffix
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: .NET application class
@@ -235,7 +219,6 @@ source_patterns:
         - .cs
   - id: ef_table_attr
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: EF Core entity
@@ -250,7 +233,6 @@ source_patterns:
         - .cs
   - id: ef_dbset
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: EF Core DbSet
@@ -262,7 +244,6 @@ source_patterns:
         - .cs
   - id: ef_totable
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: EF Core ToTable
