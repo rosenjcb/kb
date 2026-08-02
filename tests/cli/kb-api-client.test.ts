@@ -54,7 +54,7 @@ describe('server-connection', () => {
     else process.env.KB_PORT = prevPort
   })
 
-  it('[TC-10] formatConnectionContext shows host and base', () => {
+  it('[TC-11] formatConnectionContext shows host and base', () => {
     const line = formatConnectionContext({}, 'dogfood')
     expect(line).toContain('host: localhost:38117')
     expect(line).toContain('base: dogfood')
@@ -88,7 +88,7 @@ describe('KbApiClient', () => {
     )
   })
 
-  it('[TC-3b] health() falls back to /healthz when /health 404s (older servers)', async () => {
+  it('[TC-4] health() falls back to /healthz when /health 404s (older servers)', async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const path = String(url)
       if (path.endsWith('/health')) return new Response('not found', { status: 404 })
@@ -124,7 +124,7 @@ describe('KbApiClient', () => {
     expect(headers.get('X-KB-Base')).toBe('raylib')
   })
 
-  it('[TC-4] connection errors include setup hints', () => {
+  it('[TC-5] connection errors include setup hints', () => {
     const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
     expect(msg).toContain('KB_HOST')
@@ -137,7 +137,7 @@ describe('KbApiClient', () => {
 })
 
 describe('formatApiError', () => {
-  it('[TC-620] turns a 401 into an actionable KB_SERVER_API_KEY hint', () => {
+  it('[TC-63] turns a 401 into an actionable KB_SERVER_API_KEY hint', () => {
     const msg = formatApiError(401, JSON.stringify({ error: 'unauthorized' }))
     expect(msg).toContain('requires an API key')
     expect(msg).toContain('KB_SERVER_API_KEY')
@@ -145,16 +145,16 @@ describe('formatApiError', () => {
     expect(msg).not.toBe('unauthorized')
   })
 
-  it('[TC-621] gives the API-key hint even when the 401 body is not JSON', () => {
+  it('[TC-64] gives the API-key hint even when the 401 body is not JSON', () => {
     const msg = formatApiError(401, 'Unauthorized')
     expect(msg).toContain('KB_SERVER_API_KEY')
   })
 
-  it('[TC-622] passes through other server error messages unchanged', () => {
+  it('[TC-65] passes through other server error messages unchanged', () => {
     expect(formatApiError(404, JSON.stringify({ error: 'base not found' }))).toBe('base not found')
   })
 
-  it('[TC-623] falls back to a status code when the body has no error field', () => {
+  it('[TC-66] falls back to a status code when the body has no error field', () => {
     expect(formatApiError(500, 'boom')).toBe('server error (500)')
   })
 })

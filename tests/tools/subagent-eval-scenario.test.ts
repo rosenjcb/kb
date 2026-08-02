@@ -31,7 +31,7 @@ describe('subagentLoopTuning', () => {
         defaultProfileIdWhenUnspecified: 'research',
       },
     ],
-  ])('Given scenario %s, then returns expected tuning', (scenario, expected) => {
+  ])('[TC-102] Given scenario %s, then returns expected tuning', (scenario, expected) => {
     expect(subagentLoopTuning(scenario)).toEqual(expected)
   })
 })

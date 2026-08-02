@@ -109,7 +109,7 @@ function factItem(sourcePath: string, symbol?: string, id = sourcePath) {
 }
 
 describe('serializeMcpQueryResult', () => {
-  it('[TC-111] trims to answer + citations and drops retrieval metadata and the fact dump', () => {
+  it('[TC-112] trims to answer + citations and drops retrieval metadata and the fact dump', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       confidence: 0.9,
@@ -127,7 +127,7 @@ describe('serializeMcpQueryResult', () => {
     })
   })
 
-  it('[TC-112] adds a verify note when confidence is below the threshold', () => {
+  it('[TC-113] adds a verify note when confidence is below the threshold', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       confidence: 0.5,
@@ -142,7 +142,7 @@ describe('serializeMcpQueryResult', () => {
     ])
   })
 
-  it('[TC-113] dedupes citations per file, folds in symbols, and caps the list at 5', () => {
+  it('[TC-114] dedupes citations per file, folds in symbols, and caps the list at 5', () => {
     const results = [
       factItem('src/a.ts', 'alpha', 'f1'),
       factItem('src/a.ts', 'beta', 'f2'),
@@ -161,7 +161,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.sources).not.toContain('src/f.ts')
   })
 
-  it('[TC-114] flags answer file references that match no cited source path', () => {
+  it('[TC-115] flags answer file references that match no cited source path', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: {
@@ -176,7 +176,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.notes?.[0]).toContain('trust the sources list')
   })
 
-  it('[TC-115] notes when sources exist but no answer was synthesized', () => {
+  it('[TC-116] notes when sources exist but no answer was synthesized', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: { results: [factItem('src/a.ts')], retrieval: {} },
@@ -189,7 +189,7 @@ describe('serializeMcpQueryResult', () => {
 })
 
 describe('findUngroundedFileReferences', () => {
-  it('[TC-116] matches by basename so relative prose paths ground against absolute evidence paths', () => {
+  it('[TC-117] matches by basename so relative prose paths ground against absolute evidence paths', () => {
     const refs = findUngroundedFileReferences(
       'Resolution happens in `src/cli/base-selection.ts`.',
       ['packages/kb-client/src/cli/base-selection.ts']
@@ -197,7 +197,7 @@ describe('findUngroundedFileReferences', () => {
     expect(refs).toEqual([])
   })
 
-  it('[TC-117] ignores non-file tokens: product names, property access, bare words', () => {
+  it('[TC-118] ignores non-file tokens: product names, property access, bare words', () => {
     const refs = findUngroundedFileReferences(
       'Node.js reads data.results and config.activeBase, e.g. at startup.',
       []
@@ -205,7 +205,7 @@ describe('findUngroundedFileReferences', () => {
     expect(refs).toEqual([])
   })
 
-  it('[TC-118] reports each ungrounded file once', () => {
+  it('[TC-119] reports each ungrounded file once', () => {
     const refs = findUngroundedFileReferences('`dto.ts` … see dto.ts and `other.py`.', [
       'src/real.ts',
     ])

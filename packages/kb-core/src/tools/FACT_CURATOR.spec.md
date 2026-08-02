@@ -4,9 +4,8 @@ title: "Spec: Fact Curator"
 sources: [./fact-curator.ts]
 tests: [../../../../tests/tools/fact-curator.test.ts]
 description: Post-retrieval relevance curation — judge-in-the-loop fact filtering before synthesis
-resource: ./fact-curator.ts
 tags: [query, retrieval, facts, curation, spec]
-timestamp: 2026-08-02T22:40:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -43,6 +42,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | FR-8 | Bound the judge candidate set on large pools (cap + hard-drop the tail; bounded fail-safe) |
 | FR-9 | Rank auto-keep: preserve orchestrator top-N before the LLM judge |
 | FR-10 | [NEW] Record why the curator fell back when the cause was an LLM error, so an outage is attributable rather than indistinguishable from a quiet no-op |
+| FR-11 | [NEW] Record each judge round as a telemetry stage when a collector is supplied |
 
 ### QA Test Cases
 
@@ -60,6 +60,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | TC-10 | FR-5 | Re-discovery returns only known ids | Loop stops without spinning |
 | TC-11 | FR-8 | Pool larger than the candidate cap | Tail hard-dropped; judge sees at most the cap |
 | TC-12 | FR-8 | LLM throws on an over-cap pool | Fail-safe bounded to the cap, not the full pool |
+| TC-13 | FR-11 | Collector supplied and the judge runs | Each judge round recorded as a telemetry stage |
 | TC-14 | FR-9 | Rank auto-keep enabled, judge keeps nothing | Top-N incoming facts still in keep set |
 | TC-15 | FR-10 | LLM throws during judging | record carries the failure kind and stage alongside fellBack |
 

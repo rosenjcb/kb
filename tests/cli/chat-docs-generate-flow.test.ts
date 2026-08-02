@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('chat-docs-generate-flow', () => {
-  it('[TC-99] Given slash line with prompt, answers questionnaire and accept writes document', async () => {
+  it('[TC-75] Given slash line with prompt, answers questionnaire and accept writes document', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-chat-docgen-'))
     tempDirs.push(baseDir)
 

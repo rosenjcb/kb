@@ -57,24 +57,24 @@ function makeOut() {
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
 describe('parseDocsRenameCommand', () => {
-  it('[TC-170] Given doc id and new title, then parses both', () => {
+  it('[TC-146] Given doc id and new title, then parses both', () => {
     const parsed = parseDocsRenameCommand(['my-doc', 'New Title'])
     expect(parsed.documentId).toBe('my-doc')
     expect(parsed.newTitle).toBe('New Title')
     expect(parsed.base).toBeUndefined()
   })
 
-  it('[TC-171] Given --base flag, then captures base', () => {
+  it('[TC-147] Given --base flag, then captures base', () => {
     const parsed = parseDocsRenameCommand(['my-doc', 'New Title', '--base', 'dogfood'])
     expect(parsed.base).toBe('dogfood')
   })
 
-  it('[TC-172] Given doc id with caps/spaces, then normalizes to slug', () => {
+  it('[TC-148] Given doc id with caps/spaces, then normalizes to slug', () => {
     const parsed = parseDocsRenameCommand(['My Doc ID', 'New Title'])
     expect(parsed.documentId).toBe('my-doc-id')
   })
 
-  it('[TC-173] Given no args, then throws with exit code 0', () => {
+  it('[TC-149] Given no args, then throws with exit code 0', () => {
     try {
       parseDocsRenameCommand([])
     } catch (e) {
@@ -83,7 +83,7 @@ describe('parseDocsRenameCommand', () => {
     }
   })
 
-  it('[TC-174] Given --help, then throws with exit code 0', () => {
+  it('[TC-150] Given --help, then throws with exit code 0', () => {
     try {
       parseDocsRenameCommand(['--help'])
     } catch (e) {
@@ -92,19 +92,19 @@ describe('parseDocsRenameCommand', () => {
     }
   })
 
-  it('[TC-175] Given only one positional arg, then throws', () => {
+  it('[TC-151] Given only one positional arg, then throws', () => {
     expect(() => parseDocsRenameCommand(['only-id'])).toThrow(DocsRenameError)
   })
 
-  it('[TC-176] Given three positional args, then throws with wrapping hint', () => {
+  it('[TC-152] Given three positional args, then throws with wrapping hint', () => {
     expect(() => parseDocsRenameCommand(['id', 'word1', 'word2'])).toThrow(DocsRenameError)
   })
 
-  it('[TC-177] Given empty string as new title, then throws', () => {
+  it('[TC-153] Given empty string as new title, then throws', () => {
     expect(() => parseDocsRenameCommand(['my-doc', '   '])).toThrow(DocsRenameError)
   })
 
-  it('[TC-178] Given unknown flag, then throws', () => {
+  it('[TC-154] Given unknown flag, then throws', () => {
     expect(() => parseDocsRenameCommand(['my-doc', 'Title', '--unknown'])).toThrow(DocsRenameError)
   })
 })
@@ -112,7 +112,7 @@ describe('parseDocsRenameCommand', () => {
 // ─── runDocsRename ────────────────────────────────────────────────────────────
 
 describe('runDocsRename', () => {
-  it('[TC-179] Given existing doc, then updates title in stored content', async () => {
+  it('[TC-155] Given existing doc, then updates title in stored content', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Old Title', documentId: 'my-doc', content: 'Body text.' })
 
@@ -125,7 +125,7 @@ describe('runDocsRename', () => {
     expect(content).not.toContain('# Old Title')
   })
 
-  it('[TC-180] Given existing doc, then doc id is unchanged', async () => {
+  it('[TC-156] Given existing doc, then doc id is unchanged', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Old Title', documentId: 'my-doc', content: 'Body.' })
 
@@ -136,7 +136,7 @@ describe('runDocsRename', () => {
     expect(indexer.getDocumentContent('my-doc')).toBeDefined()
   })
 
-  it('[TC-181] Given existing doc, then body content is preserved', async () => {
+  it('[TC-157] Given existing doc, then body content is preserved', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'Old Title',
@@ -152,7 +152,7 @@ describe('runDocsRename', () => {
     expect(content).toContain('Important body content that must survive.')
   })
 
-  it('[TC-182] Given existing doc with tags and type, then metadata is preserved', async () => {
+  it('[TC-158] Given existing doc with tags and type, then metadata is preserved', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, {
       title: 'Old Title',
@@ -171,7 +171,7 @@ describe('runDocsRename', () => {
     expect(content).toContain('Tags: core, infra')
   })
 
-  it('[TC-183] Given existing doc, then output confirms old and new title', async () => {
+  it('[TC-159] Given existing doc, then output confirms old and new title', async () => {
     const baseDir = await createTempBase()
     await seedDocument(baseDir, { title: 'Old Title', documentId: 'my-doc', content: 'Body.' })
 
@@ -182,7 +182,7 @@ describe('runDocsRename', () => {
     expect(lines.join('\n')).toContain('New Title')
   })
 
-  it('[TC-184] Given non-existent doc id, then throws DocsRenameError', async () => {
+  it('[TC-160] Given non-existent doc id, then throws DocsRenameError', async () => {
     const baseDir = await createTempBase()
     const { out } = makeOut()
 

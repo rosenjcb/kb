@@ -11,7 +11,7 @@ import {
 } from '@kb/core/core/llm-error.js'
 
 describe('classifyProviderStatus', () => {
-  it('[TC-632] Given a spent credit balance, when the status is any code, then it classifies as insufficient_credits', () => {
+  it('[TC-187] Given a spent credit balance, when the status is any code, then it classifies as insufficient_credits', () => {
     // Anthropic reports this as 400, OpenAI as 429 — status alone would file the first as a
     // bad request and the second as a rate limit, so the message has to win.
     expect(classifyProviderStatus(400, 'Your credit balance is too low to access the API')).toBe(
@@ -23,7 +23,7 @@ describe('classifyProviderStatus', () => {
     expect(classifyProviderStatus(402, 'payment required')).toBe('insufficient_credits')
   })
 
-  it('[TC-633] Given transport statuses, when classified, then each maps to its kind and retryability', () => {
+  it('[TC-188] Given transport statuses, when classified, then each maps to its kind and retryability', () => {
     expect(classifyProviderStatus(429, 'rate limited')).toBe('rate_limit')
     expect(classifyProviderStatus(401, 'invalid x-api-key')).toBe('auth')
     expect(classifyProviderStatus(403, 'forbidden')).toBe('auth')
@@ -42,7 +42,7 @@ describe('classifyProviderStatus', () => {
 })
 
 describe('toLLMApiError', () => {
-  it('[TC-634] Given a legacy "[provider] API request failed (NNN)" error, then provider and status are recovered', () => {
+  it('[TC-189] Given a legacy "[provider] API request failed (NNN)" error, then provider and status are recovered', () => {
     // Errors thrown before the structured class existed must still classify, or the
     // surfacing depends on every throw site having been migrated.
     const err = toLLMApiError(
@@ -55,7 +55,7 @@ describe('toLLMApiError', () => {
     expect(err.retryable).toBe(true)
   })
 
-  it('[TC-635] Given an abort or fetch failure, then it classifies as timeout or network', () => {
+  it('[TC-190] Given an abort or fetch failure, then it classifies as timeout or network', () => {
     const abort = new Error('The operation was aborted')
     abort.name = 'AbortError'
     expect(toLLMApiError(abort).kind).toBe('timeout')
@@ -64,7 +64,7 @@ describe('toLLMApiError', () => {
     expect(toLLMApiError(netErr).kind).toBe('network')
   })
 
-  it('[TC-636] Given an already-structured LLMApiError, then it passes through unchanged', () => {
+  it('[TC-191] Given an already-structured LLMApiError, then it passes through unchanged', () => {
     const original = new LLMApiError({
       provider: 'openai',
       kind: 'auth',
@@ -76,7 +76,7 @@ describe('toLLMApiError', () => {
 })
 
 describe('failure records', () => {
-  it('[TC-637] Given a thrown provider error, when converted to a failure, then the stage and reason survive', () => {
+  it('[TC-192] Given a thrown provider error, when converted to a failure, then the stage and reason survive', () => {
     const failure = toLLMFailure(
       'synthesis',
       new Error('[anthropic] API request failed (400): Your credit balance is too low'),

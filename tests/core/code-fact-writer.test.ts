@@ -43,7 +43,7 @@ function activeAstRefsForRepo(indexer: SqliteKbIndexer, gitRepo: string): Set<st
 }
 
 describe('tombstoneRemovedCodeFiles', () => {
-  it('[TC-629] tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact', async () => {
+  it('[TC-184] tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact', async () => {
     const indexer = await newIndexer()
     try {
       // repo-a: two files, plus a `_`-bearing sibling that a naive LIKE-prefix would falsely match.
@@ -70,7 +70,7 @@ describe('tombstoneRemovedCodeFiles', () => {
     }
   })
 
-  it('[TC-630] is a no-op when nothing was removed', async () => {
+  it('[TC-185] is a no-op when nothing was removed', async () => {
     const indexer = await newIndexer()
     try {
       addCodeFact(indexer, 'ast:src/a.ts@foo', 'repo-a')
@@ -81,7 +81,7 @@ describe('tombstoneRemovedCodeFiles', () => {
     }
   })
 
-  it('[TC-631] contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan', async () => {
+  it('[TC-186] contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan', async () => {
     const indexer = await newIndexer()
     try {
       addCodeFact(indexer, 'ast:src/changed.ts@a', 'repo-a')

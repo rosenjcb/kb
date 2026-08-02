@@ -65,7 +65,7 @@ describe('createHttpServer', () => {
     })
   })
 
-                it('[TC-3b] returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body)', async () => {
+                it('[TC-4] returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body)', async () => {
     server = createHttpServer({
       service: makeStubService({
         health: () => ({
@@ -87,7 +87,7 @@ describe('createHttpServer', () => {
     })
   })
 
-                it('[TC-4] rejects /v1/query without a valid key', async () => {
+                it('[TC-5] rejects /v1/query without a valid key', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -98,7 +98,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(401)
   })
 
-                it('[TC-5] answers /v1/query with a serialized body when authorized', async () => {
+                it('[TC-6] answers /v1/query with a serialized body when authorized', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -113,7 +113,7 @@ describe('createHttpServer', () => {
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
   })
 
-                it('[TC-5b] forwards trace: true to the service query pipeline', async () => {
+                it('[TC-7] forwards trace: true to the service query pipeline', async () => {
     const query = vi.fn(makeStubService().query)
     server = createHttpServer({ service: makeStubService({ query }), apiKeys: [] })
     const base = await listen(server)
@@ -151,7 +151,7 @@ describe('createHttpServer', () => {
     expect(query).toHaveBeenCalled()
   })
 
-                it('[TC-6] returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
+                it('[TC-8] returns 503 for /v1/query while the server is bootstrapping its first index', async () => {
     const query = vi.fn(makeStubService().query)
     server = createHttpServer({
       service: makeStubService({
@@ -180,7 +180,7 @@ describe('createHttpServer', () => {
     expect(query).not.toHaveBeenCalled()
   })
 
-                it('[TC-7] returns 400 when q is missing', async () => {
+                it('[TC-9] returns 400 when q is missing', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {

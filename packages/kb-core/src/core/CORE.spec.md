@@ -2,10 +2,47 @@
 type: Spec
 title: "Spec: KB Core"
 sources: [./]
-tests: [../../../../tests/core]
+# Precise, disjoint scope: tests/core minus the files owned by CHAT_REPLY.spec.md
+# (chat-reply, markdown-to-slack). TC ids are per-spec, so a whole-dir claim would
+# over-select CHAT_REPLY's [TC-N] tags — both specs number from TC-1. Add new
+# tests/core files here when they carry CORE [TC-N] tags.
+tests:
+  - ../../../../tests/core/agent-loop.test.ts
+  - ../../../../tests/core/agent-registry.test.ts
+  - ../../../../tests/core/code-fact-writer.test.ts
+  - ../../../../tests/core/db-migrations-doctype.test.ts
+  - ../../../../tests/core/doc-fact-writer.test.ts
+  - ../../../../tests/core/doc-generate-orchestrator.test.ts
+  - ../../../../tests/core/doc-generate-session.test.ts
+  - ../../../../tests/core/doc-generate-title.test.ts
+  - ../../../../tests/core/doc-questionnaire.test.ts
+  - ../../../../tests/core/doc-references-footer.test.ts
+  - ../../../../tests/core/doc-supporting-facts.test.ts
+  - ../../../../tests/core/doc-taxonomy.test.ts
+  - ../../../../tests/core/entity-index-cycle.test.ts
+  - ../../../../tests/core/env-boolean.test.ts
+  - ../../../../tests/core/evidence-summary.test.ts
+  - ../../../../tests/core/fact-taxonomy.test.ts
+  - ../../../../tests/core/fact-uri.test.ts
+  - ../../../../tests/core/git-diff-preview.test.ts
+  - ../../../../tests/core/init-synthesis-json.test.ts
+  - ../../../../tests/core/integration-ingest.test.ts
+  - ../../../../tests/core/llm-error.test.ts
+  - ../../../../tests/core/llm-provider.test.ts
+  - ../../../../tests/core/notion-sync.test.ts
+  - ../../../../tests/core/okf.test.ts
+  - ../../../../tests/core/publish-docs.test.ts
+  - ../../../../tests/core/retrieval-context.test.ts
+  - ../../../../tests/core/scan-fact-ingest.test.ts
+  - ../../../../tests/core/sentence-split.test.ts
+  - ../../../../tests/core/snapshot.test.ts
+  - ../../../../tests/core/stream-manager.test.ts
+  - ../../../../tests/core/string-utils.test.ts
+  - ../../../../tests/core/telemetry.test.ts
+  - ../../../../tests/core/yield.test.ts
 description: Behavioral specification for KB Core
 tags: [spec, kb]
-timestamp: 2026-08-02T22:40:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -245,15 +282,16 @@ See companion doc for full vocabulary where applicable.
 | TC-181 | FR-27 | Given a curated detail + raw curation record, it lifts counts and dropped fact ids | pass |
 | TC-182 | FR-27 | Given a traceDetail string, it splits per-pass hop lines in order | pass |
 | TC-183 | FR-27 | Given an unknown shape, it degrades to empty fields without throwing | pass |
-| TC-629 | FR-28 | tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact | pass |
-| TC-630 | FR-28 | is a no-op when nothing was removed | pass |
-| TC-631 | FR-28 | contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan | pass |
-| TC-632 | FR-29 | credit exhaustion reported as 400, 429, or 402 across providers | classified insufficient_credits regardless of status |
-| TC-633 | FR-29 | 429 / 401 / 403 / 5xx statuses | mapped to rate_limit, auth, server with correct retryability and operator-action flags |
-| TC-634 | FR-29 | legacy "[provider] API request failed (NNN)" string error | provider, status, and kind recovered by re-parsing |
-| TC-635 | FR-29 | AbortError and fetch TypeError | classified timeout and network |
-| TC-636 | FR-29 | an already-structured error | returned unchanged, not re-wrapped |
-| TC-637 | FR-29 | a thrown provider error converted to a failure record | stage, kind, provider preserved; description names the operator action |
+| TC-184 | FR-28 | tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact | pass |
+| TC-185 | FR-28 | is a no-op when nothing was removed | pass |
+| TC-186 | FR-28 | contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan | pass |
+| TC-187 | FR-29 | credit exhaustion reported as 400, 429, or 402 across providers | classified insufficient_credits regardless of status |
+| TC-188 | FR-29 | 429 / 401 / 403 / 5xx statuses | mapped to rate_limit, auth, server with correct retryability and operator-action flags |
+| TC-189 | FR-29 | legacy "[provider] API request failed (NNN)" string error | provider, status, and kind recovered by re-parsing |
+| TC-190 | FR-29 | AbortError and fetch TypeError | classified timeout and network |
+| TC-191 | FR-29 | an already-structured error | returned unchanged, not re-wrapped |
+| TC-192 | FR-29 | a thrown provider error converted to a failure record | stage, kind, provider preserved; description names the operator action |
+| TC-193 | FR-8 | every DocType in the taxonomy | questionnaire loads with non-empty keys and questions |
 
 ### Related docs
 

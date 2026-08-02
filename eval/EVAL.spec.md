@@ -8,7 +8,7 @@ tests:
   - ../tests/eval-server.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-07-18T00:00:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -294,6 +294,18 @@ See companion doc for full vocabulary where applicable.
 | TC-240 | FR-16 | buildChildArgv forwards --skip-scan | pass |
 | TC-241 | FR-16 | healthzUrl appends ?base= for multi-base probes | pass |
 | TC-242 | FR-16 | buildKbRemoteEnv carries KB_BASE for X-KB-Base | pass |
+| TC-243 | FR-13 | reuses an existing session when docs are present | pass |
+| TC-244 | FR-13 | force-init wipes the base and runs a full init | pass |
+| TC-245 | FR-13 | missing docs still triggers init without a wipe | pass |
+| TC-246 | FR-13 | runReportToAnswerTelemetry maps RunReport fields | pass |
+| TC-247 | FR-13 | formatAnswerTelemetryLog matches control-style kb query lines | pass |
+| TC-248 | FR-13 | readLatestKbQueryRunReport returns newest query for base | pass |
+| TC-249 | FR-16 | buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE and sets KB_BASE | pass |
+| TC-250 | FR-16 | allocateFreePort returns a positive integer | pass |
+| TC-251 | FR-16 | DEFAULT_KB_SERVER_PORT is 38117 | pass |
+| TC-252 | FR-16 | buildKbRemoteEnv passes through host and default port | pass |
+| TC-253 | FR-16 | buildEvalOfflineEnv clears remote connection vars | pass |
+| TC-254 | FR-16 | allocateFreePort yields distinct ports for concurrent callers | pass |
 
 ### Related docs
 

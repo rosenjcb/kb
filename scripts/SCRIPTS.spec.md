@@ -5,7 +5,7 @@ sources: [./]
 tests: [../tests/scripts]
 description: Behavioral specification for Repo Scripts
 tags: [spec, kb]
-timestamp: 2026-06-28T04:06:57Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -48,22 +48,24 @@ See companion doc for full vocabulary where applicable.
 | TC-11 | FR-1 | passes for a patch bump (exactly one step) | pass |
 | TC-12 | FR-1 | passes for a major bump (exactly one step) | pass |
 | TC-13 | FR-1 | fails when minor bumped but patch not reset | pass |
-| TC-14 | FR-2 | parses major-only specs | pass |
-| TC-15 | FR-2 | parses major.minor.patch specs | pass |
-| TC-16 | FR-2 | returns [0,0,0] for unrecognized specs | pass |
-| TC-17 | FR-2 | accepts equal versions | pass |
-| TC-18 | FR-2 | accepts newer major | pass |
-| TC-19 | FR-2 | accepts newer minor on same major | pass |
-| TC-20 | FR-2 | rejects older major | pass |
-| TC-21 | FR-2 | rejects older patch when major/minor match | pass |
-| TC-22 | FR-2 | passes when engines.node is absent | pass |
-| TC-23 | FR-2 | passes when current version meets minimum | pass |
-| TC-24 | FR-2 | fails when current version is below minimum | pass |
-| TC-25 | FR-2 | includes nvm/fnm hints when .nvmrc is present | pass |
-| TC-26 | FR-2 | falls back to generic install hint without .nvmrc | pass |
-| TC-27 | FR-2 | returns 0 when package.json has no engines.node | pass |
-| TC-28 | FR-2 | returns 0 when current version satisfies engines.node | pass |
-| TC-29 | FR-2 | returns 1 and prints nvm hints when version is too old | pass |
+| TC-14 | FR-1 | fails when the version was downgraded | pass |
+| TC-15 | FR-2 | parses major-only specs | pass |
+| TC-16 | FR-2 | parses major.minor.patch specs | pass |
+| TC-17 | FR-2 | returns [0,0,0] for unrecognized specs | pass |
+| TC-18 | FR-1 | passes for a single major step from pre-1.0 | pass |
+| TC-19 | FR-2 | accepts equal versions | pass |
+| TC-20 | FR-2 | accepts newer major | pass |
+| TC-21 | FR-2 | accepts newer minor on same major | pass |
+| TC-22 | FR-2 | rejects older major | pass |
+| TC-23 | FR-2 | rejects older patch when major/minor match | pass |
+| TC-24 | FR-2 | passes when engines.node is absent | pass |
+| TC-25 | FR-2 | passes when current version meets minimum | pass |
+| TC-26 | FR-2 | fails when current version is below minimum | pass |
+| TC-27 | FR-2 | includes nvm/fnm hints when .nvmrc is present | pass |
+| TC-28 | FR-2 | falls back to generic install hint without .nvmrc | pass |
+| TC-29 | FR-2 | returns 0 when package.json has no engines.node | pass |
+| TC-30 | FR-2 | returns 0 when current version satisfies engines.node | pass |
+| TC-31 | FR-2 | returns 1 and prints nvm hints when version is too old | pass |
 
 ### Related docs
 

@@ -122,7 +122,7 @@ describe('kb base list / delete (remote)', () => {
     )
   })
 
-  it('[TC-14] Given base delete without --force in TUI, then forwards to remote (server enforces --force)', async () => {
+  it('[TC-13] Given base delete without --force in TUI, then forwards to remote (server enforces --force)', async () => {
     const { out } = makeOut()
     await runMainWithOutput(['base', 'delete', 'catalog'], out, {} as never, 'tui')
     expect(mockRunRemoteCliCommand).toHaveBeenCalledWith(
@@ -135,7 +135,7 @@ describe('kb base list / delete (remote)', () => {
 })
 
 describe('kb --help', () => {
-  it('[TC-23] Given kb --help, then prints --host and core commands', async () => {
+  it('[TC-14] Given kb --help, then prints --host and core commands', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['--help'], out, {} as never)
 

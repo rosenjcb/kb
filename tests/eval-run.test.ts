@@ -94,7 +94,7 @@ describe('derivedBase', () => {
 })
 
 describe('resolveEvalInitPlan', () => {
-  it('[TC-523] reuses an existing session when docs are present', () => {
+  it('[TC-243] reuses an existing session when docs are present', () => {
     expect(resolveEvalInitPlan({ hasDocs: true })).toEqual({
       needsInit: false,
       wipeBase: false,
@@ -102,7 +102,7 @@ describe('resolveEvalInitPlan', () => {
     })
   })
 
-  it('[TC-524] force-init wipes the base and runs a full init', () => {
+  it('[TC-244] force-init wipes the base and runs a full init', () => {
     expect(resolveEvalInitPlan({ forceInit: true, hasDocs: true })).toEqual({
       needsInit: true,
       wipeBase: true,
@@ -110,7 +110,7 @@ describe('resolveEvalInitPlan', () => {
     })
   })
 
-  it('[TC-525] missing docs still triggers init without a wipe', () => {
+  it('[TC-245] missing docs still triggers init without a wipe', () => {
     expect(resolveEvalInitPlan({ hasDocs: false })).toEqual({
       needsInit: true,
       wipeBase: false,
@@ -828,7 +828,7 @@ describe('writeResearchResultsTex', () => {
 })
 
 describe('answer telemetry logging', () => {
-  it('[TC-532] runReportToAnswerTelemetry maps RunReport fields', () => {
+  it('[TC-246] runReportToAnswerTelemetry maps RunReport fields', () => {
     expect(
       runReportToAnswerTelemetry({
         totalInputTokens: 1200,
@@ -846,7 +846,7 @@ describe('answer telemetry logging', () => {
     })
   })
 
-  it('[TC-533] formatAnswerTelemetryLog matches control-style kb query lines', () => {
+  it('[TC-247] formatAnswerTelemetryLog matches control-style kb query lines', () => {
     const line = formatAnswerTelemetryLog({
       input_tokens: 1200,
       output_tokens: 340,
@@ -856,7 +856,7 @@ describe('answer telemetry logging', () => {
     expect(line).toBe('in=1200 out=340 cost=$0.0123 45s')
   })
 
-  it('[TC-534] readLatestKbQueryRunReport returns newest query for base', () => {
+  it('[TC-248] readLatestKbQueryRunReport returns newest query for base', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-eval-logs-'))
     const logsDir = path.join(tmp, '.kb', 'logs')
     fs.mkdirSync(logsDir, { recursive: true })

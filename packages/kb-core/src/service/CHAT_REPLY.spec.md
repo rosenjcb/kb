@@ -6,9 +6,8 @@ tests:
   - ../../../../tests/core/chat-reply.test.ts
   - ../../../../tests/core/markdown-to-slack.test.ts
 description: Shared answer body + Sources footer; per-repo blob links from volume registry
-resource: ./chat-reply.ts
 tags: [spec, chat, slack, presentation]
-timestamp: 2026-07-18T00:00:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro

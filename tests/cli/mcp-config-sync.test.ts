@@ -117,7 +117,7 @@ describe('syncKbMcpConfigs', () => {
     })
   })
 
-  it('[TC-510b] requireExplicitHost still refuses the implicit localhost default', async () => {
+  it('[TC-16] requireExplicitHost still refuses the implicit localhost default', async () => {
     process.env.KB_SERVER_API_KEY = 'testkey'
     const results = await syncKbMcpConfigs({ requireExplicitHost: true })
     expect(results).toEqual([
@@ -125,7 +125,7 @@ describe('syncKbMcpConfigs', () => {
     ])
   })
 
-  it('[TC-16] Given KB_HOST/KB_PORT/KB_SSLMODE, points MCP at that host /mcp', async () => {
+  it('[TC-17] Given KB_HOST/KB_PORT/KB_SSLMODE, points MCP at that host /mcp', async () => {
     process.env.KB_HOST = 'kb.example.com'
     process.env.KB_PORT = '8443'
     process.env.KB_SSLMODE = 'require'
@@ -199,7 +199,7 @@ describe('syncKbMcpConfigs', () => {
     expect(cursor.mcpServers.kb.headers).toEqual({ Authorization: 'Bearer from-flag' })
   })
 
-  it('[TC-17] Given matching entry, action is skipped', async () => {
+  it('[TC-18] Given matching entry, action is skipped', async () => {
     process.env.KB_HOST = 'remote'
     process.env.KB_PORT = '38117'
     process.env.KB_SERVER_API_KEY = 'k'
@@ -208,7 +208,7 @@ describe('syncKbMcpConfigs', () => {
     expect(second.every(r => r.action === 'skipped')).toBe(true)
   })
 
-  it('[TC-18] Given stale URL, updates without clobbering other MCP servers', async () => {
+  it('[TC-19] Given stale URL, updates without clobbering other MCP servers', async () => {
     await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
     await writeFile(
       path.join(fakeHome, '.cursor', 'mcp.json'),
