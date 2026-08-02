@@ -46,7 +46,7 @@ tests:
   - ../../../../tests/cli/view-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
-timestamp: 2026-07-26T11:40:00Z
+timestamp: 2026-08-02T22:40:00Z
 ---
 
 ### Intro
@@ -108,6 +108,7 @@ See companion doc for full vocabulary where applicable.
 | FR-37 | Change-detection manifests are isolated per git-repo slug (base-level, surviving `--no-repos` snapshots); a warm rescan of an unchanged multi-repo base detects 0 changed per repo without clobbering sibling repos, so unchanged files are skipped instead of fully re-embedded |
 | FR-38 | A partial rescan re-indexes only files whose content hash changed for that repo and tombstones only files removed from that repo since its last manifest — never unchanged files' facts nor another repo's facts |
 | FR-39 | End-of-session feedback hook (Claude Code only): `kb skills install` writes `~/.kb/hooks/kb-feedback.sh` and registers it for PostToolUse (kb MCP tools), PreToolUse (Bash), and Stop. It records that the session used kb_query, then reminds the agent **once** to call `get_feedback_requests` and resolve what it returns via `submit_feedback` — at the first command-position `git push`, or by blocking the first Stop as a fallback — staying silent after feedback is submitted, after one nudge, when kb_query was never used, or when `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the entries from all three events |
+| FR-40 | [NEW] Answer synthesis never fails silently: a provider error or an empty completion records a structured `answerError` on the result (retrieval results preserved, `status` still `accepted` so downstream source handling is unaffected) instead of returning an answerless success, and a curator that fell back contributes no research note claiming the evidence was focused |
 
 ### QA Test Cases
 
@@ -552,6 +553,10 @@ See companion doc for full vocabulary where applicable.
 | TC-638 | FR-39 | Given submit_feedback already called or a prior nudge, then push reminder and Stop stay silent | pass |
 | TC-639 | FR-39 | Given no kb_query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent | pass |
 | TC-640 | FR-39 | Given installed feedback hooks, then uninstall removes them from all three Claude events | pass |
+| TC-641 | FR-40 | provider throws during synthesis | answerError records kind and stage; results and status preserved |
+| TC-642 | FR-40 | model returns only whitespace | answerError kind is empty_response |
+| TC-643 | FR-40 | synthesis succeeds | answer set and no answerError attached |
+| TC-644 | FR-40 | curator fell back without judging | no note claims the evidence was focused |
 
 ### Related docs
 

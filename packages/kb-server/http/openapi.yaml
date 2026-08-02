@@ -493,6 +493,35 @@ components:
           items: { type: string }
         snippet: { type: string }
 
+    LLMFailure:
+      type: object
+      required: [stage, kind, message, retryable]
+      properties:
+        stage:
+          type: string
+          description: Pipeline stage that failed, e.g. synthesis, curation, graph-rerank.
+        kind:
+          type: string
+          enum:
+            - rate_limit
+            - insufficient_credits
+            - auth
+            - invalid_request
+            - context_length
+            - server
+            - timeout
+            - network
+            - empty_response
+            - unknown
+        message: { type: string }
+        provider: { type: string }
+        status:
+          type: integer
+          description: Upstream provider HTTP status, when the failure came from one.
+        retryable:
+          type: boolean
+          description: True for transient capacity/transport failures; false for auth and billing.
+
     QueryResponse:
       type: object
       required: [status, answer, results, retrieval]
@@ -503,7 +532,10 @@ components:
         answer:
           type: string
           nullable: true
-          description: Synthesized answer, or null when synthesize=false / none produced.
+          description: >-
+            Synthesized answer, or null when synthesize=false / none produced.
+            A null answer is not a retrieval verdict — check `answerError` before
+            concluding the knowledge base had nothing to say.
         results:
           type: array
           items: { $ref: "#/components/schemas/QuerySource" }
@@ -512,6 +544,18 @@ components:
           properties:
             method: { type: string }
             detail: { type: string }
+            degraded:
+              type: array
+              description: >-
+                Best-effort stages (scope inference, graph rerank, sufficiency judge,
+                curation) skipped after an LLM error. Retrieval still succeeded, but
+                ranking and filtering are weaker than usual.
+              items: { $ref: "#/components/schemas/LLMFailure" }
+        answerError:
+          allOf: [{ $ref: "#/components/schemas/LLMFailure" }]
+          description: >-
+            Present only when synthesis was attempted and produced no answer. The
+            retrieval results are still valid; only the answer-writing step failed.
         confidence:
           type: number
           format: float

@@ -47,12 +47,24 @@ export interface QuerySource {
   snippet?: string
 }
 
+/** Why an LLM-backed stage failed, as reported by the server. */
+export interface LLMFailureResponse {
+  stage: string
+  kind: string
+  message: string
+  provider?: string
+  status?: number
+  retryable: boolean
+}
+
 export interface QueryResponse {
   status: string
   answer?: string | null
   results: QuerySource[]
-  retrieval?: { method?: string; detail?: string }
+  retrieval?: { method?: string; detail?: string; degraded?: LLMFailureResponse[] }
   confidence?: number
+  /** Set when synthesis was attempted and failed; `answer` is null and this says why. */
+  answerError?: LLMFailureResponse
   traceFile?: string
 }
 

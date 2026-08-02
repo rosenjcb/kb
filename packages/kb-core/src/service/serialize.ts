@@ -5,6 +5,7 @@
  */
 
 import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
+import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
 
 export interface QuerySource {
@@ -34,8 +35,16 @@ export interface QueryResponseBody {
   retrieval: {
     method?: string
     detail?: string
+    /** Best-effort LLM stages that failed and were skipped; retrieval still succeeded. */
+    degraded?: LLMFailure[]
   }
   confidence?: number
+  /**
+   * Why no answer came back. Present only when synthesis was attempted and failed, so
+   * `answer: null` alone never has to be interpreted — a provider outage is legible as
+   * an outage instead of reading as "the knowledge base had nothing to say".
+   */
+  answerError?: LLMFailure
   /** Server-side path to the deep trace dump when `trace: true` was requested. */
   traceFile?: string
 }
@@ -111,6 +120,12 @@ export interface McpQueryResponseBody {
   confidence?: number
   /** Actionable caveats: verify hints, answer/evidence path mismatches. */
   notes?: string[]
+  /**
+   * Why synthesis produced no answer. An agent that sees this must not conclude the
+   * knowledge base lacks the information — the retrieval below is real; only the
+   * answer-writing step failed.
+   */
+  answerError?: LLMFailure
 }
 
 const MCP_MAX_SOURCES = 5
@@ -120,16 +135,60 @@ const MCP_VERIFY_CONFIDENCE_BELOW = 0.7
 
 /** File extensions that make a token in prose read as a source-file reference. */
 const FILE_REF_EXTENSIONS = new Set([
-  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'py', 'go', 'rs', 'java',
-  'kt', 'rb', 'php', 'cs', 'c', 'h', 'cc', 'cpp', 'hpp', 'swift', 'scala', 'sql',
-  'sh', 'bash', 'md', 'json', 'yaml', 'yml', 'toml', 'css', 'scss', 'html', 'vue',
-  'svelte', 'proto', 'tf', 'ini', 'env',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'mts',
+  'cts',
+  'py',
+  'go',
+  'rs',
+  'java',
+  'kt',
+  'rb',
+  'php',
+  'cs',
+  'c',
+  'h',
+  'cc',
+  'cpp',
+  'hpp',
+  'swift',
+  'scala',
+  'sql',
+  'sh',
+  'bash',
+  'md',
+  'json',
+  'yaml',
+  'yml',
+  'toml',
+  'css',
+  'scss',
+  'html',
+  'vue',
+  'svelte',
+  'proto',
+  'tf',
+  'ini',
+  'env',
 ])
 
 /** Prose tokens that look like files but are product names, never citations. */
 const NON_FILE_TOKENS = new Set([
-  'node.js', 'next.js', 'vue.js', 'nuxt.js', 'express.js', 'three.js', 'd3.js',
-  'ember.js', 'backbone.js', 'chart.js',
+  'node.js',
+  'next.js',
+  'vue.js',
+  'nuxt.js',
+  'express.js',
+  'three.js',
+  'd3.js',
+  'ember.js',
+  'backbone.js',
+  'chart.js',
 ])
 
 /**
@@ -205,8 +264,20 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
         `The answer names file(s) not in the cited sources (${ungrounded.join(', ')}) — trust the sources list for exact paths.`
       )
     }
+  } else if (full.answerError) {
+    // Lead with the failure. "Open the cited sources directly" reads as a retrieval
+    // verdict; an agent acting on it would wrongly conclude the KB is thin, when in
+    // fact the provider call failed and a retry is what's warranted.
+    notes.unshift(describeLLMFailure(full.answerError))
   } else if (sources.length > 0) {
     notes.push('No synthesized answer was produced — open the cited sources directly.')
+  }
+
+  const degraded = full.retrieval.degraded
+  if (degraded && degraded.length > 0) {
+    notes.push(
+      `Degraded retrieval — ${degraded.map(d => `${d.stage} (${d.kind})`).join(', ')} was skipped after an LLM error, so ranking and filtering are weaker than usual.`
+    )
   }
 
   return {
@@ -215,6 +286,7 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
     sources,
     ...(typeof full.confidence === 'number' ? { confidence: full.confidence } : {}),
     ...(notes.length > 0 ? { notes } : {}),
+    ...(full.answerError ? { answerError: full.answerError } : {}),
   }
 }
 
@@ -223,6 +295,7 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
 
+  const degraded = data.retrieval?.degraded
   return {
     status: result.status,
     answer: data.answer?.trim() || null,
@@ -230,8 +303,10 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
     retrieval: {
       method: data.retrieval?.method,
       detail: data.retrieval?.detail,
+      ...(degraded && degraded.length > 0 ? { degraded } : {}),
     },
     ...(typeof result.confidence === 'number' ? { confidence: result.confidence } : {}),
+    ...(data.answerError ? { answerError: data.answerError } : {}),
     ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
   }
 }

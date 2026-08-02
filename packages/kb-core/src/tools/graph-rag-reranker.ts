@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
+import { type LLMFailure, toLLMFailure } from '../core/llm-error.js'
 import type { LLMProvider } from '../core/types'
 import { expandQueryWithGraph, toGraphQuerySlugs } from './graph-query-expansion'
 
@@ -13,7 +14,8 @@ const MAX_NEIGHBOR_TERMS = 24
  */
 export async function llmExtractQueryEntities(
   query: string,
-  llmProvider: LLMProvider
+  llmProvider: LLMProvider,
+  onFailure?: (failure: LLMFailure) => void
 ): Promise<string[]> {
   try {
     const completion = await llmProvider.call({
@@ -39,7 +41,10 @@ export async function llmExtractQueryEntities(
     return parsed
       .filter((e): e is string => typeof e === 'string' && e.length > 0)
       .slice(0, MAX_ENTITIES)
-  } catch {
+  } catch (error) {
+    // Extraction is best-effort — an empty list just means no rerank. Report the cause so a
+    // provider outage is not silently filed as "the query had no entities".
+    onFailure?.(toLLMFailure('graph-rerank', error, llmProvider.name))
     return []
   }
 }

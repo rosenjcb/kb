@@ -1,5 +1,13 @@
 # kb-server
 
+## 1.5.3
+
+### Patch Changes
+
+- Never present a failed LLM call as an answer. Provider errors during answer synthesis (rate limit, spent credit balance, bad key, 5xx, timeout) and empty completions were swallowed by a bare `catch`, so an outage reached callers as `answer: null` with the note "No synthesized answer was produced — open the cited sources directly" — indistinguishable from a knowledge base with nothing to say, on a `200 OK` recorded as a successful RunReport. Provider calls now throw a classified `LLMApiError` (`insufficient_credits` is detected by message, since Anthropic reports it as `400` and OpenAI as `429`), synthesis records a structured `answerError` (`stage`/`kind`/`message`/`provider`/`status`/`retryable`) that `/v1/query` and `kb_query` serialize with the failure leading `notes`, `kb query` prints the reason and exits non-zero instead of printing a bare source list and exiting 0, and the sampled feedback ask is skipped so an outage is never scored as answer quality. Retrieval results are preserved and `status` stays `accepted` throughout, so source handling downstream is unchanged. Best-effort stages (scope inference, graph rerank, sufficiency judge, curation) still fail safe but report on `retrieval.degraded[]` rather than vanishing; the fact curator no longer tells the synthesis prompt that evidence was "focused to N facts" when its judge never ran; and a chat turn whose model returns no text emits an `error` event instead of the canned "I don't have enough information to answer that."
+- Updated dependencies
+  - @kb/core@1.6.1
+
 ## 1.5.2
 
 ### Patch Changes

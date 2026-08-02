@@ -70,6 +70,13 @@ flowchart TD
    `buildToolQueryResult` appends a note telling the LLM to try different query terms before
    concluding information is unavailable.
 
+9a. **Failed turn** — a turn that produces no answer is a failure, not an empty success.
+   Provider errors already propagate to the SSE `error` event; an **empty completion** now
+   does too, via `ChatSynthesisResult.failure`. It previously rendered as
+   `"I don't have enough information to answer that."` — a knowledge-base verdict standing in
+   for a model failure, and simply untrue when facts had been gathered. Note this is distinct
+   from `CHAT_WEAK_RETRIEVAL_REFUSAL` (step 9), which is a real retrieval verdict.
+
 10. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
    `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`confidence>` rows,
    `--debug` for per-document provenance.
@@ -105,6 +112,7 @@ CLI loop would duplicate process/env/base/errors. Orchestrator = same contract, 
 - Always append weak-evidence hint when `weak_evidence_after_exhaustion` is set.
 - Decompose only when `SYNTHESIS_QUERY_RE` matches and input ≥40 chars.
 - No cross-turn fact pool; curator re-decides per query; decisions stay out-of-band.
+- Never substitute prose for a failed model call — no answer means an `error` event.
 
 ## See also
 

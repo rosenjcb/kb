@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../../tests/core]
 description: Behavioral specification for KB Core
 tags: [spec, kb]
-timestamp: 2026-06-28T04:05:29Z
+timestamp: 2026-08-02T22:40:00Z
 ---
 
 ### Intro
@@ -56,6 +56,7 @@ See companion doc for full vocabulary where applicable.
 | FR-26 | Behaviors in string-utils.test.ts |
 | FR-27 | Behaviors in telemetry.test.ts |
 | FR-28 | Behaviors in code-fact-writer.test.ts |
+| FR-29 | [NEW] Classify LLM transport failures into a structured error (provider, HTTP status, kind, retryability) so callers can distinguish a spent credit balance, a rate limit, bad credentials, and a timeout from one another — and from a model that simply returned nothing |
 
 ### QA Test Cases
 
@@ -247,6 +248,12 @@ See companion doc for full vocabulary where applicable.
 | TC-629 | FR-28 | tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact | pass |
 | TC-630 | FR-28 | is a no-op when nothing was removed | pass |
 | TC-631 | FR-28 | contrast: blanket tombstoneStaleCodeFacts would purge unchanged files on a partial rescan | pass |
+| TC-632 | FR-29 | credit exhaustion reported as 400, 429, or 402 across providers | classified insufficient_credits regardless of status |
+| TC-633 | FR-29 | 429 / 401 / 403 / 5xx statuses | mapped to rate_limit, auth, server with correct retryability and operator-action flags |
+| TC-634 | FR-29 | legacy "[provider] API request failed (NNN)" string error | provider, status, and kind recovered by re-parsing |
+| TC-635 | FR-29 | AbortError and fetch TypeError | classified timeout and network |
+| TC-636 | FR-29 | an already-structured error | returned unchanged, not re-wrapped |
+| TC-637 | FR-29 | a thrown provider error converted to a failure record | stage, kind, provider preserved; description names the operator action |
 
 ### Related docs
 

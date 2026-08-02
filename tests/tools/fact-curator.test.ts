@@ -80,7 +80,9 @@ describe('curateFacts', () => {
     const results = [
       makeResult('keep-1', 'authentication token rotation'),
       makeResult('keep-2', 'authentication session expiry'),
-      ...Array.from({ length: 18 }, (_, i) => makeResult(`junk-${i}`, `rendering frame buffer ${i}`)),
+      ...Array.from({ length: 18 }, (_, i) =>
+        makeResult(`junk-${i}`, `rendering frame buffer ${i}`)
+      ),
     ]
     const llm = verdictLlm({ keep: ['keep-1', 'keep-2'], gaps: [], sufficient: true })
 
@@ -176,7 +178,9 @@ describe('curateFacts', () => {
 
   it('[TC-11] Given a pool larger than the judge candidate cap, then the tail is hard-dropped and the judge sees at most the cap', async () => {
     // 130 low-overlap facts → all candidates (none auto-kept), exceeding the default cap of 100.
-    const results = Array.from({ length: 130 }, (_, i) => makeResult(`f-${i}`, `unrelated topic ${i}`))
+    const results = Array.from({ length: 130 }, (_, i) =>
+      makeResult(`f-${i}`, `unrelated topic ${i}`)
+    )
     const call = vi.fn(async () => ({
       text: JSON.stringify({ keep: ['f-0', 'f-1'], gaps: [], sufficient: true }),
       stopReason: 'end_turn' as const,
@@ -202,7 +206,9 @@ describe('curateFacts', () => {
   })
 
   it('[TC-12] Given the LLM throws on an over-cap pool, then the fallback is bounded to the cap, not the full pool', async () => {
-    const results = Array.from({ length: 250 }, (_, i) => makeResult(`f-${i}`, `unrelated topic ${i}`))
+    const results = Array.from({ length: 250 }, (_, i) =>
+      makeResult(`f-${i}`, `unrelated topic ${i}`)
+    )
     const { results: out, record } = await curateFacts({
       llm: errorLlm(),
       query: 'alpha beta gamma',
@@ -293,5 +299,25 @@ describe('curateFacts', () => {
       inputTokens: 10,
       outputTokens: 5,
     })
+  })
+})
+
+describe('curator degradation reporting', () => {
+  it('[TC-15] Given the LLM throws, then the record carries why it fell back so the outage is attributable', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    const { record } = await curateFacts({
+      llm: {
+        name: 'anthropic',
+        model: 'stub',
+        call: async () => {
+          throw new Error('[anthropic] API request failed (429): rate limited')
+        },
+      } as unknown as LLMProvider,
+      query: 'anything',
+      results,
+    })
+    expect(record.fellBack).toBe(true)
+    expect(record.failure?.kind).toBe('rate_limit')
+    expect(record.failure?.stage).toBe('curation')
   })
 })

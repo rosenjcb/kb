@@ -39,7 +39,12 @@ import {
   isDuplicateEvent,
   verifySlackSignature,
 } from './slack-handler.js'
-import { ReportWriter, RunCollector, estimateCost, type RunReport } from '@kb/core/core/telemetry.js'
+import {
+  ReportWriter,
+  RunCollector,
+  estimateCost,
+  type RunReport,
+} from '@kb/core/core/telemetry.js'
 
 export interface HttpServerOptions {
   /** The boot/default base service (serves requests with no `X-KB-Base`). */
@@ -76,7 +81,7 @@ export interface HttpServerOptions {
 }
 
 const MAX_BODY_BYTES = 1 << 20 // 1 MiB
-const QUERY_LOG_MAX = 300      // truncate logged query/message text at this many chars
+const QUERY_LOG_MAX = 300 // truncate logged query/message text at this many chars
 
 /** Request headers a browser may send to the API (echoed in preflight). */
 const CORS_ALLOW_HEADERS =
@@ -169,7 +174,8 @@ function isAuthorized(req: IncomingMessage, apiKeys: string[]): boolean {
   if (apiKeys.length === 0) return true
   const header = req.headers.authorization ?? ''
   const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
-  const apiKey = bearer || (typeof req.headers['x-api-key'] === 'string' ? req.headers['x-api-key'].trim() : '')
+  const apiKey =
+    bearer || (typeof req.headers['x-api-key'] === 'string' ? req.headers['x-api-key'].trim() : '')
   return apiKey !== '' && apiKeys.includes(apiKey)
 }
 
@@ -382,7 +388,9 @@ export function createHttpServer(options: HttpServerOptions): Server {
       path: url,
       ip: clientIp(req),
       userAgent: req.headers['user-agent'] ?? undefined,
-      contentLength: req.headers['content-length'] ? Number(req.headers['content-length']) : undefined,
+      contentLength: req.headers['content-length']
+        ? Number(req.headers['content-length'])
+        : undefined,
     })
 
     // Log every response — status + latency — regardless of which handler ran.
@@ -598,16 +606,27 @@ export function createHttpServer(options: HttpServerOptions): Server {
         timeout,
       ])
       const serialized = serializeQueryResult(result)
+      const answerError = serialized.answerError
       log.info('query complete', {
         requestId: ctx.requestId,
         resultsCount: serialized.results.length,
         hasAnswer: serialized.answer !== null,
         status: serialized.status,
         retrievalMethod: serialized.retrieval.method,
+        ...(answerError
+          ? { answerError: answerError.kind, answerErrorMessage: answerError.message }
+          : {}),
         durationMs: Date.now() - ctx.startMs,
       })
       sendJson(res, 200, serialized)
-      writeReport(finalizeHttpReport(collector, ctx, 'success'))
+      // Retrieval succeeded and the caller still gets its sources, so this stays a 200 —
+      // but recording it as a plain success would hide provider outages from telemetry
+      // exactly when the RunReports are what you'd go looking at.
+      writeReport(
+        answerError
+          ? finalizeHttpReport(collector, ctx, 'error', answerError.message)
+          : finalizeHttpReport(collector, ctx, 'success')
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const status = message === 'query timed out' ? 504 : 500
@@ -736,7 +755,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     req: IncomingMessage,
     res: ServerResponse,
     ctx: RequestCtx,
-    slackOpts: SlackOptions,
+    slackOpts: SlackOptions
   ): Promise<void> {
     let raw: string
     let parsed: unknown
@@ -809,8 +828,11 @@ async function handleMcpRequest(
 ): Promise<void> {
   // Extract the JSON-RPC method name for logging (best-effort, body may be null/non-object).
   const rpcMethod =
-    body && typeof body === 'object' && 'method' in body && typeof (body as Record<string, unknown>).method === 'string'
-      ? (body as Record<string, unknown>).method as string
+    body &&
+    typeof body === 'object' &&
+    'method' in body &&
+    typeof (body as Record<string, unknown>).method === 'string'
+      ? ((body as Record<string, unknown>).method as string)
       : undefined
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })

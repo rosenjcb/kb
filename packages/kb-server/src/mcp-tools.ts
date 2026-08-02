@@ -334,7 +334,9 @@ export async function dispatchMcpToolCall(
     // Prefer MCP form elicitation (user-facing yes/partial/no) when the client
     // supports it; otherwise keep the AGENT_INSTRUCTION + pending-queue path so
     // the agent can submit_feedback later.
-    if (!verbose) {
+    // Never ask "did this answer help?" about an answer that failed to generate — the
+    // reply would score a provider outage as a knowledge-base quality problem.
+    if (!verbose && !body.answerError) {
       const rate = opts.feedbackSampleRate ?? readFeedbackSampleRate()
       const random = opts.random ?? Math.random
       if (rate > 0 && random() < rate) {

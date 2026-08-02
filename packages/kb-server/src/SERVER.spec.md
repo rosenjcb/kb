@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T23:20:00Z
+timestamp: 2026-08-02T22:40:00Z
 ---
 
 ### Intro
@@ -54,6 +54,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
+| FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, graph rerank, sufficiency judge, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
 
 ### Known issues
 
@@ -217,6 +218,13 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-152 | FR-23 | client responds decline: resolves dismissed with action decline | pass |
 | TC-153 | FR-23 | client responds cancel: resolves dismissed with action cancel | pass |
 | TC-154 | FR-23 | the client request rejects: resolves unavailable instead of throwing | pass |
+| TC-155 | FR-24 | chat turn where the model returns no text | error event carrying empty_response, no answer event |
+| TC-156 | FR-24 | REST body for a failed synthesis | answerError present, answer null, sources retained |
+| TC-157 | FR-24 | MCP notes for a failed synthesis | leads with the outage, never "No synthesized answer was produced" |
+| TC-158 | FR-24 | a best-effort stage degraded by an LLM error | note names the stage and kind; answer still returned |
+| TC-159 | FR-24 | no answer and no failure | original evidence note unchanged, no answerError |
+| TC-160 | FR-24 | kb_query when synthesis failed | answerError in payload, sources still cited |
+| TC-161 | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
 
 ### Related docs
 

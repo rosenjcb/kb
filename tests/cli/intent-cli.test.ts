@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   enrichReadDocumentsAnswerWithLLM,
   executeIntentCommand,
+  formatCuratorResearchNotes,
   formatIntentResult,
   isIntentCommand,
   parseIntentCommand,
@@ -68,42 +69,42 @@ describe('intent-cli parsing', () => {
 
 describe('intent-cli formatting', () => {
   it('[TC-284] formats read_facts results in human mode', () => {
-    const output = formatIntentResult(
-      {
-        status: 'accepted',
-        confidence: 0.8,
-        explanation: 'query intent maps directly to read_facts',
-        recommendedAction: 'read_facts',
-        data: {
-          answer: 'The KB uses session base first, then default base.',
-          retrieval: {
-            method: 'hybrid',
-            detail: 'facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on',
-            checkpoints: [
-              { stage: 'pass_3', status: 'stop', nextAction: 'return', confidence: 0.86 },
-            ],
-          },
-          results: [
-            {
-              metadata: {
-                id: 'cli-facts',
-                title: 'CLI Facts',
-                filePath: '/tmp/cli-facts.md',
-                tags: ['import_doc', 'cli', 'fact'],
-              },
-              content: '# CLI Facts\n\nKB base precedence order: 1) active base, 2) default base.',
-            },
+    const output = formatIntentResult({
+      status: 'accepted',
+      confidence: 0.8,
+      explanation: 'query intent maps directly to read_facts',
+      recommendedAction: 'read_facts',
+      data: {
+        answer: 'The KB uses session base first, then default base.',
+        retrieval: {
+          method: 'hybrid',
+          detail: 'facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on',
+          checkpoints: [
+            { stage: 'pass_3', status: 'stop', nextAction: 'return', confidence: 0.86 },
           ],
-          total: 1,
         },
-      }
-    )
+        results: [
+          {
+            metadata: {
+              id: 'cli-facts',
+              title: 'CLI Facts',
+              filePath: '/tmp/cli-facts.md',
+              tags: ['import_doc', 'cli', 'fact'],
+            },
+            content: '# CLI Facts\n\nKB base precedence order: 1) active base, 2) default base.',
+          },
+        ],
+        total: 1,
+      },
+    })
 
     expect(output).toContain('The KB uses session base first, then default base.')
     expect(output).toContain('evidence> 1 facts → LLM (full text)')
     expect(output).toContain('themes: cli')
     expect(output).toContain('stop: answerable_plateau')
-    expect(output).toContain('retrieval> hybrid (facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on)')
+    expect(output).toContain(
+      'retrieval> hybrid (facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on)'
+    )
     expect(output).toContain('matches> 1 ranked facts')
     expect(output).toContain('sources> all 1 ranked: cli-facts')
   })
@@ -177,7 +178,8 @@ describe('intent-cli execution and enrichment', () => {
       execute: vi.fn(async () => ({
         retrieval: {
           method: 'hybrid',
-          detail: 'facts-loop;passes:3;graph_hops:2;stop:weak_evidence_after_exhaustion;semantic:on',
+          detail:
+            'facts-loop;passes:3;graph_hops:2;stop:weak_evidence_after_exhaustion;semantic:on',
           checkpoints: [
             { stage: 'pass_1', status: 'continue', nextAction: 'continue', confidence: 0.22 },
             { stage: 'pass_2', status: 'stop', nextAction: 'plateau', confidence: 0.34 },
@@ -493,8 +495,100 @@ Static linking can fail on some distros.`
       { onReasoning }
     )
 
-    expect(call).toHaveBeenCalledWith(
-      expect.objectContaining({ maxTokens: 32_768, onReasoning })
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 32_768, onReasoning }))
+  })
+})
+
+describe('synthesis failure surfacing', () => {
+  const evidence = {
+    retrieval: { method: 'hybrid' as const },
+    results: [
+      {
+        metadata: { id: 'cli-facts', title: 'CLI Facts' },
+        content: '# CLI Facts\n\nKB base precedence order: 1) active base, 2) default base.',
+      },
+    ],
+  }
+
+  it('[TC-641] Given the provider throws, when synthesis runs, then answerError records the reason and results survive', async () => {
+    const llm: LLMProvider = {
+      name: 'anthropic',
+      model: 'stub',
+      call: vi.fn(async () => {
+        throw new Error('[anthropic] API request failed (400): Your credit balance is too low')
+      }),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'base precedence'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      { status: 'accepted', recommendedAction: 'read_facts', data: evidence },
+      llm
+    )
+
+    const data = enriched.data as {
+      answer?: string
+      answerError?: { kind: string; stage: string; retryable: boolean }
+      results?: unknown[]
+    }
+    expect(data.answer).toBeUndefined()
+    expect(data.answerError?.kind).toBe('insufficient_credits')
+    expect(data.answerError?.stage).toBe('synthesis')
+    expect(data.answerError?.retryable).toBe(false)
+    // Retrieval succeeded — the sources are real and must not be discarded with the answer.
+    expect(data.results).toHaveLength(1)
+    // status stays `accepted` so isReadFactsResult keeps matching downstream.
+    expect(enriched.status).toBe('accepted')
+  })
+
+  it('[TC-642] Given the model returns empty text, then answerError marks it empty_response, not a missing answer', async () => {
+    const llm: LLMProvider = {
+      name: 'anthropic',
+      model: 'stub',
+      call: vi.fn(async () => ({ text: '   ', usage: { inputTokens: 1, outputTokens: 0 } })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'base precedence'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      { status: 'accepted', recommendedAction: 'read_facts', data: evidence },
+      llm
+    )
+
+    const data = enriched.data as { answerError?: { kind: string } }
+    expect(data.answerError?.kind).toBe('empty_response')
+  })
+
+  it('[TC-643] Given a successful answer, then no answerError is attached', async () => {
+    const llm: LLMProvider = {
+      name: 'anthropic',
+      model: 'stub',
+      call: vi.fn(async () => ({
+        text: 'Active base first, then the default base.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    } as unknown as LLMProvider
+
+    const parsed = parseIntentCommand(['query', 'base precedence'])
+    const enriched = await enrichReadDocumentsAnswerWithLLM(
+      parsed,
+      { status: 'accepted', recommendedAction: 'read_facts', data: evidence },
+      llm
+    )
+
+    const data = enriched.data as { answer?: string; answerError?: unknown }
+    expect(data.answer).toContain('Active base first')
+    expect(data.answerError).toBeUndefined()
+  })
+})
+
+describe('curator research notes', () => {
+  it('[TC-644] Given the curator fell back, then no note claims the evidence was focused', () => {
+    // The fallback means no judging ran. Telling the synthesis prompt that N facts were
+    // "focused" would put a fabricated process claim in front of the model.
+    expect(formatCuratorResearchNotes({ evaluated: 40, dropped: [], fellBack: true })).toBe('')
+    expect(formatCuratorResearchNotes({ evaluated: 40, dropped: [] })).toContain(
+      'Focused the evidence'
     )
   })
 })

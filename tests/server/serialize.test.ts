@@ -7,7 +7,7 @@ import {
 } from '@kb/core/service/serialize.js'
 
 describe('serializeQueryResult', () => {
-                it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {
+  it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {
     const result: IntentResult = {
       status: 'accepted',
       recommendedAction: 'read_facts',
@@ -16,7 +16,12 @@ describe('serializeQueryResult', () => {
         answer: '  Base resolution walks up for a .kb file.  ',
         results: [
           {
-            metadata: { id: 'doc-1', title: 'Base Selection', filePath: 'src/cli/base-selection.ts', tags: ['cli'] },
+            metadata: {
+              id: 'doc-1',
+              title: 'Base Selection',
+              filePath: 'src/cli/base-selection.ts',
+              tags: ['cli'],
+            },
             content: '# Heading\nResolves the active base from config.activeBase then defaultBase.',
           },
         ],
@@ -42,14 +47,14 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].snippet).not.toContain('# Heading')
   })
 
-                it('[TC-35] returns null answer when none is present', () => {
+  it('[TC-35] returns null answer when none is present', () => {
     const body = serializeQueryResult({ status: 'accepted', data: { results: [] } })
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
     expect(body.confidence).toBeUndefined()
   })
 
-                it('[TC-39] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
+  it('[TC-39] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -74,7 +79,7 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].filePath).not.toContain('fact://')
   })
 
-                it('[TC-40] falls back to the fact:// URI when no physical sourcePath is known', () => {
+  it('[TC-40] falls back to the fact:// URI when no physical sourcePath is known', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -84,7 +89,7 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].filePath).toBe('fact://def456')
   })
 
-                it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
+  it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -205,5 +210,92 @@ describe('findUngroundedFileReferences', () => {
       'src/real.ts',
     ])
     expect(refs).toEqual(['dto.ts', 'other.py'])
+  })
+})
+
+describe('synthesis failure surfacing', () => {
+  const failure = {
+    stage: 'synthesis',
+    kind: 'insufficient_credits',
+    message: '[anthropic] API request failed (400): Your credit balance is too low',
+    provider: 'anthropic',
+    status: 400,
+    retryable: false,
+  }
+
+  const resultWithFailure = {
+    status: 'accepted' as const,
+    recommendedAction: 'read_facts',
+    data: {
+      answerError: failure,
+      retrieval: { method: 'facts-loop' },
+      results: [
+        {
+          metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/auth/login.ts' },
+          content: 'Handles login.',
+        },
+      ],
+    },
+  }
+
+  it('[TC-156] Given synthesis failed, then the REST body carries answerError alongside the sources', () => {
+    const body = serializeQueryResult(resultWithFailure)
+    expect(body.answer).toBeNull()
+    expect(body.answerError).toEqual(failure)
+    // Retrieval succeeded, so the caller still gets something actionable.
+    expect(body.results).toHaveLength(1)
+  })
+
+  it('[TC-157] Given synthesis failed, then the MCP note names the outage instead of blaming the evidence', () => {
+    const body = serializeMcpQueryResult(resultWithFailure)
+    expect(body.answer).toBeNull()
+    expect(body.answerError).toEqual(failure)
+    const notes = body.notes ?? []
+    // The failure leads: an agent reading "open the cited sources directly" would wrongly
+    // conclude the KB is thin and stop retrying.
+    expect(notes[0]).toContain('insufficient_credits')
+    expect(notes[0]).toContain('billing')
+    expect(notes.join(' ')).not.toContain('No synthesized answer was produced')
+  })
+
+  it('[TC-158] Given a degraded best-effort stage, then the payload says ranking is weaker than usual', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      recommendedAction: 'read_facts',
+      data: {
+        answer: 'An answer.',
+        retrieval: {
+          method: 'facts-loop',
+          degraded: [
+            {
+              stage: 'curation',
+              kind: 'rate_limit',
+              message: '[anthropic] API request failed (429): slow down',
+              provider: 'anthropic',
+              status: 429,
+              retryable: true,
+            },
+          ],
+        },
+        results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
+      },
+    })
+    expect(body.answer).toBe('An answer.')
+    expect((body.notes ?? []).join(' ')).toContain('curation (rate_limit)')
+  })
+
+  it('[TC-159] Given no answer and no failure, then the original evidence note is unchanged', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      recommendedAction: 'read_facts',
+      data: {
+        retrieval: { method: 'facts-loop' },
+        results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
+      },
+    })
+    expect(body.notes).toEqual([
+      'No synthesized answer was produced — open the cited sources directly.',
+    ])
+    expect(body.answerError).toBeUndefined()
   })
 })

@@ -1,14 +1,39 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig } from '@kb/core/config/kb-config.js'
-import { getIntentQuestion, isIntentCommand, parseIntentCommand } from '@kb/core/query/intent-cli.js'
+import {
+  getIntentQuestion,
+  isIntentCommand,
+  parseIntentCommand,
+} from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
-import type { ChatStreamEvent } from '../api/types.js'
+import type { ChatStreamEvent, LLMFailureResponse } from '../api/types.js'
 import { resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
 import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
+
+/**
+ * One-line rendering of a server-reported synthesis failure.
+ *
+ * Kept local rather than importing the core formatter: the client models server
+ * responses with loose types on purpose, so it keeps working against a server whose
+ * failure vocabulary is newer than its own.
+ */
+function describeQueryFailure(failure: LLMFailureResponse): string {
+  const where = failure.provider ? ` from ${failure.provider}` : ''
+  const hint =
+    failure.kind === 'insufficient_credits' || failure.kind === 'auth'
+      ? ' Check the provider API key and billing status.'
+      : failure.retryable
+        ? ' This is usually transient — retry shortly.'
+        : ''
+  return `Answer synthesis failed (${failure.kind})${where}: ${failure.message}.${hint}`.replace(
+    /\.\.($| )/,
+    '$1'
+  )
+}
 
 /** Client-only commands — never forwarded to kb-server. */
 export function isClientLocalCommand(args: string[]): boolean {
@@ -16,12 +41,7 @@ export function isClientLocalCommand(args: string[]): boolean {
   if (!command) return false
   if (command === '--version' || command === '-v' || command === 'version') return true
   // mcp / skills / uninstall / sync rewrite local agent configs — server has no handlers.
-  if (
-    command === 'mcp' ||
-    command === 'skills' ||
-    command === 'uninstall' ||
-    command === 'sync'
-  ) {
+  if (command === 'mcp' || command === 'skills' || command === 'uninstall' || command === 'sync') {
     return true
   }
   // `base use` is client connection-profile state; `base --help` stays offline.
@@ -59,7 +79,7 @@ export async function discoverRemoteDefaultBase(config: KbConfig): Promise<strin
 export async function runRemoteAdminCli(
   args: string[],
   out: CliOutput,
-  config?: KbConfig,
+  config?: KbConfig
 ): Promise<{ exitCode: number }> {
   const kbConfig = config ?? (await readKbConfig())
   const client = createKbApiClient(resolveServerConnection(kbConfig))
@@ -77,7 +97,7 @@ export async function runRemoteCliCommand(
   args: string[],
   out: CliOutput,
   config: KbConfig,
-  mode: CmdMode,
+  mode: CmdMode
 ): Promise<number> {
   if (isIntentCommand(args[0] ?? '')) {
     return await runRemoteIntentCommand(args, out, config, mode)
@@ -105,7 +125,7 @@ export async function runRemoteIntentCommand(
   args: string[],
   out: CliOutput,
   config: KbConfig,
-  mode: CmdMode,
+  mode: CmdMode
 ): Promise<number> {
   const connection = resolveServerConnection(config)
   const client = createKbApiClient(connection)
@@ -144,6 +164,23 @@ export async function runRemoteIntentCommand(
     if (result.answer?.trim()) {
       printer.content(result.answer.trim())
     }
+    // Sources without an answer used to print as a bare metadata footer and exit 0, which
+    // reads as "nothing worth saying". Say what actually happened, and fail the command so
+    // scripts and CI notice an outage instead of treating it as an empty result.
+    if (!result.answer?.trim() && result.answerError) {
+      out.error(`❌ ${describeQueryFailure(result.answerError)}`)
+      if (result.results.length > 0) {
+        out.error(
+          `   Retrieval succeeded — ${result.results.length} source(s) found. Re-run the query to synthesize an answer.`
+        )
+      }
+      return 1
+    }
+    for (const degradation of result.retrieval?.degraded ?? []) {
+      out.error(
+        `⚠️  ${degradation.stage} was skipped after an LLM error (${degradation.kind}); results are ranked less precisely than usual.`
+      )
+    }
     if (result.results.length > 0) {
       printer.separator()
       printer.metadata('Sources', String(result.results.length))
@@ -155,7 +192,7 @@ export async function runRemoteIntentCommand(
     if (result.retrieval?.method) {
       printer.metadata(
         'Retrieval',
-        `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`,
+        `${result.retrieval.method}${result.retrieval.detail ? ` (${result.retrieval.detail})` : ''}`
       )
     }
     if (verbose && typeof result.confidence === 'number') {
@@ -184,7 +221,7 @@ export function dispatchRemoteChatStreamEvent(
   hooks: {
     onSession?: (sessionId: string) => void
     onAnswer?: (text: string) => void
-  } = {},
+  } = {}
 ): void {
   switch (event.type) {
     case 'session':
@@ -210,7 +247,7 @@ export async function runRemoteChatTurn(
   message: string,
   sessionId: string | undefined,
   out: CliOutput,
-  config: KbConfig,
+  config: KbConfig
 ): Promise<{ sessionId: string; answer: string }> {
   const client = createKbApiClient(resolveServerConnection(config))
   await client.connect()
@@ -262,7 +299,7 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
           error: line => io.error(line),
           progress: line => io.setProgressLine?.(line ?? null),
         },
-        kbConfig,
+        kbConfig
       )
       sessionId = nextSession
       io.setProgressLine?.(null)
@@ -279,7 +316,7 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
 export async function runRemoteSlashCommand(
   argv: string[],
   write: (line: string) => void,
-  config: KbConfig,
+  config: KbConfig
 ): Promise<{ exitCode: number }> {
   const client = createKbApiClient(resolveServerConnection(config))
   await client.connect()
