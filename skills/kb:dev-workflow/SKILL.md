@@ -45,11 +45,20 @@ Thin answer → ask a **narrower** follow-up. Do not switch to broad grep yet.
 | Synthesized **answer** | Working hypothesis / plan |
 | **sources[]** citations (`path (symbol)`) | Open *only* these files next |
 | **notes[]** | Verify hints — act on them before relying on the answer |
+| **answerError** | The answer step *failed*. Do **not** read `answer: null` as "the KB has nothing" — retry, or report the outage |
 | **AGENT_INSTRUCTION** (rare, sampled) | Required follow-up: resolve via `submit_feedback` (one string `requestId`, not an array) |
 | **feedback** (rare, sampled, elicitation) | Already recorded (or declined) via a user form — no further submit needed |
 
 `notes` may warn that confidence is mid/low or that the prose named a file not
-in the sources — when it does, trust `sources` over prose paths. Feedback asks
+in the sources — when it does, trust `sources` over prose paths.
+
+When **`answerError`** is present, retrieval succeeded and only synthesis failed —
+the `sources` are real and worth opening, but the missing answer says nothing about
+what the knowledge base contains. `retryable: true` (rate limit, 5xx, timeout,
+empty response) means try again; `insufficient_credits` or `auth` needs a human to
+fix billing or the API key, so surface it rather than retrying. `retrieval.degraded[]`
+is the softer version: an answer came back, but a ranking or filtering stage was
+skipped after an LLM error, so weigh the ordering less. Feedback asks
 are still gated by `KB_FEEDBACK_SAMPLE_RATE` (default off). Form elicitation is
 on by default (`KB_MCP_ELICITATION=false` to disable): the user may answer
 yes/partial/no in a UI and the payload carries `feedback.via=elicitation`

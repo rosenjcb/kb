@@ -8,6 +8,7 @@
  * because a turn is request-driven (one message → one streamed answer).
  */
 
+import { describeLLMFailure } from '@kb/core/core/llm-error.js'
 import { runChatSynthesis } from '@kb/core/query/chat-synthesis.js'
 import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
 import type {
@@ -77,6 +78,10 @@ export async function* streamChatTurn(
       factsRetrieved = result.factsRetrieved
       inputTokens = result.inputTokens
       outputTokens = result.outputTokens
+      // A turn that produced no answer is a failure, not an empty success. Routing it to
+      // the same `error` event as a thrown provider error keeps every client's existing
+      // failure handling working, instead of shipping a blank `answer` event.
+      if (result.failure) failure = new Error(describeLLMFailure(result.failure))
       if (result.lastIntentResult && isReadFactsResult(result.lastIntentResult)) {
         sources = serializeQueryResult(result.lastIntentResult).results
       }

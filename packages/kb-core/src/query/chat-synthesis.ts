@@ -4,6 +4,7 @@ import {
   formatRetrievedFactsForLLM,
   formatToolQueryFactsForLLM,
 } from '../core/retrieval-context.js'
+import { type LLMFailure, emptyResponseFailure } from '../core/llm-error.js'
 import type { ToolExecutor } from '../core/tool-registry.js'
 import type { LLMProvider, Message, ToolDefinition } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
@@ -41,6 +42,12 @@ export interface ReadDocumentsResult {
 
 export interface ChatSynthesisResult {
   answer: string
+  /**
+   * Set when the turn produced no answer because the model returned nothing. Transport
+   * errors still throw; this covers the quieter failure where the call succeeds but the
+   * completion is empty. Callers must surface it rather than rendering `answer`.
+   */
+  failure?: LLMFailure
   inputTokens: number
   outputTokens: number
   answerMs: number
@@ -373,9 +380,23 @@ export async function runChatSynthesis(params: {
     facts: factsRetrieved,
   })
 
+  // An empty completion is a model failure, not a finding. Answering "I don't have enough
+  // information" here would blame the knowledge base for the provider's silence — and when
+  // facts *were* gathered, that sentence is simply untrue.
+  if (!answered) {
+    return {
+      answer: '',
+      failure: emptyResponseFailure('chat-synthesis', params.llmProvider.name),
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      answerMs: Date.now() - started,
+      factsRetrieved,
+      lastIntentResult,
+    }
+  }
+
   return {
-    answer:
-      completionText.trim() || "I don't have enough information to answer that. Try rephrasing.",
+    answer: completionText.trim(),
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
     answerMs: Date.now() - started,

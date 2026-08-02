@@ -254,6 +254,11 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - Fresh-volume bootstrap runs after `listen()` so startup probes can pass during long first indexing.
 - **503 on query/chat/MCP only when `health.indexing` (bootstrap)** — never solely because `reindexing` is true.
 - Empty `apiKeys` ⇒ authorize all protected routes; non-empty ⇒ Bearer / `X-Api-Key` required.
+- **A failed answer is never served as an empty one.** When synthesis errors or returns
+  nothing, `/v1/query` and `kb_query` still return 200 with the retrieval results, plus
+  `answerError` (`{ stage, kind, message, provider, status, retryable }`) and a leading note
+  naming the failure; the RunReport records `error`, and the sampled feedback ask is skipped.
+  `/v1/chat` emits an `error` event instead of an `answer`.
 - `kb-server scan` never opens an HTTP listener; `--from`/`--out` are local paths only; batch always replaces adopt index and overwrites `--out` (no `--force`).
 
 ## Extension checklist
@@ -266,6 +271,8 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
 - REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes and returns the trimmed answer + citations payload by default (`verbose: true` for the full evidence dump).
+- `answer: null` is not a retrieval verdict. Check `answerError` before concluding the base is
+  thin — a spent credit balance and "nothing indexed" used to look identical on the wire.
 - Fly `kb-demo` is **Pages chatbot only** — no Slack secrets on that app; see [`../FLY.md`](../FLY.md).
 - Volume at `/data` is clones + SQLite only; image rootfs holds `node_modules`.
 

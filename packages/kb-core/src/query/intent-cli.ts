@@ -1,11 +1,19 @@
 import dayjs from 'dayjs'
 import { formatEvidenceSummaryHeader } from '@kb/core/core/evidence-summary.js'
-import { formatRetrievedFactsForLLM, MAX_FACT_CONTENT_CHARS } from '@kb/core/core/retrieval-context.js'
+import {
+  formatRetrievedFactsForLLM,
+  MAX_FACT_CONTENT_CHARS,
+} from '@kb/core/core/retrieval-context.js'
+import { type LLMFailure, emptyResponseFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider, Message } from '@kb/core/core/types.js'
 import { assertConsumerSafeCommand } from '@kb/core/intents/policy.js'
 import { DefaultIntentRouter } from '@kb/core/intents/router.js'
-import type { ConsumerIntent, ConsumerIntentEnvelope, IntentResult } from '@kb/core/intents/types.js'
+import type {
+  ConsumerIntent,
+  ConsumerIntentEnvelope,
+  IntentResult,
+} from '@kb/core/intents/types.js'
 import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
 
@@ -19,7 +27,6 @@ export interface IntentResultPrinter {
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session.js'
 import { formatReadDocumentSourcesPreview } from './retrieval-fallback.js'
-
 
 export function formatRetrievalMatchesMeta(retrievedCount: number): string {
   if (retrievedCount === 0) return '0'
@@ -247,7 +254,21 @@ export interface ReadDocumentsResultData {
      * "research notes" framing — never quoted as fact. See `formatCuratorResearchNotes`.
      */
     curation?: CuratorAudit
+    /**
+     * Best-effort stages (scope inference, graph rerank, sufficiency judge, curation)
+     * that failed on an LLM/transport error and were skipped. Retrieval still
+     * succeeded, so these never block an answer — but they must not be invisible,
+     * or an outage reads as a quality regression.
+     */
+    degraded?: LLMFailure[]
   }
+  /**
+   * Set when answer synthesis was attempted and did not produce an answer. Absent
+   * `answer` alone is ambiguous — it could mean the provider errored, the model
+   * returned nothing, or synthesis was never requested. Callers must be able to
+   * tell an outage from a genuine "nothing to say".
+   */
+  answerError?: LLMFailure
   /** Path to the opt-in deep trace dump when `kb query --trace` ran. */
   traceFile?: string
 }
@@ -259,6 +280,8 @@ export interface CuratorAudit {
   added?: number
   requeried?: string[]
   sufficient?: boolean
+  /** True when the curator bailed to its safe fallback — no judging actually happened. */
+  fellBack?: boolean
 }
 
 /**
@@ -269,6 +292,10 @@ export interface CuratorAudit {
  */
 export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): string {
   if (!curation) return ''
+  // The curator bailed (LLM error / empty-result guard), so no judging happened. Claiming
+  // the evidence was "focused" here would be a fabricated process claim in the synthesis
+  // prompt — the one place a false statement turns into a false answer.
+  if (curation.fellBack) return ''
   const evaluated = typeof curation.evaluated === 'number' ? curation.evaluated : undefined
   const droppedCount = Array.isArray(curation.dropped) ? curation.dropped.length : 0
   const added = typeof curation.added === 'number' ? curation.added : 0
@@ -276,7 +303,9 @@ export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): 
   if (evaluated !== undefined) {
     const kept = Math.max(0, evaluated - droppedCount) + added
     const droppedNote = droppedCount > 0 ? ` (dropped ${droppedCount} off-topic).` : '.'
-    lines.push(`- Focused the evidence to the ${kept} fact(s) most relevant to the question${droppedNote}`)
+    lines.push(
+      `- Focused the evidence to the ${kept} fact(s) most relevant to the question${droppedNote}`
+    )
   }
   const gaps = Array.isArray(curation.requeried)
     ? curation.requeried.filter(g => typeof g === 'string' && g.trim().length > 0)
@@ -409,11 +438,12 @@ export async function enrichReadDocumentsAnswerWithLLM(
     })
 
     let answer = completion.text.trim()
-    if (!answer) return result
+    if (!answer) return withAnswerError(result, emptyResponseFailure('synthesis', llmProvider.name))
 
     if (looksLikeInsufficientEvidenceAnswer(answer)) {
       answer = buildDeterministicIntentAnswer(question, results) ?? ''
-      if (!answer) return result
+      if (!answer)
+        return withAnswerError(result, emptyResponseFailure('synthesis', llmProvider.name))
     }
     const scaffolded = buildBuildConfigScaffoldAnswer(question, results)
     if (scaffolded && answerNeedsScaffoldRecovery(question, answer)) {
@@ -431,8 +461,26 @@ export async function enrichReadDocumentsAnswerWithLLM(
         answer,
       },
     }
-  } catch {
-    return result
+  } catch (error) {
+    // A provider outage (429, spent credits, bad key, 5xx, timeout) must never look
+    // like "the KB had nothing to say". Keep the retrieval results — they are still
+    // real and useful — but record why no answer came back.
+    return withAnswerError(result, toLLMFailure('synthesis', error, llmProvider.name))
+  }
+}
+
+/**
+ * Attach a synthesis failure to a retrieval result without disturbing anything else.
+ *
+ * `status` deliberately stays `accepted`: {@link isReadFactsResult} gates on it, and
+ * flipping it here would strip sources from chat replies and skip re-synthesis on
+ * retry. The failure travels as data, not as a status change.
+ */
+function withAnswerError(result: IntentResult, failure: LLMFailure): IntentResult {
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  return {
+    ...result,
+    data: { ...data, answerError: failure },
   }
 }
 
@@ -556,7 +604,6 @@ function buildDeterministicIntentAnswer(
 
   return undefined
 }
-
 
 function findEvidenceLine(
   results: ReadDocumentsResultItem[],
@@ -892,7 +939,6 @@ function extractSnippet(content: string | undefined): string {
   if (normalized.length <= 180) return normalized
   return `${normalized.slice(0, 177)}...`
 }
-
 
 export function printIntentHelp(mode: CmdMode = 'cli'): string {
   return [

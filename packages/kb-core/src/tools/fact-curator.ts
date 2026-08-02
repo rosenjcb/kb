@@ -1,3 +1,4 @@
+import { type LLMFailure, toLLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
 import { estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
@@ -41,9 +42,32 @@ const JUDGE_SUMMARY_CHARS = 160
 const JUDGE_MAX_KEPT_CONTEXT = 25
 
 const CURATOR_STOP_WORDS = new Set([
-  'what', 'where', 'when', 'which', 'who', 'why', 'how', 'does', 'the', 'and',
-  'for', 'with', 'from', 'into', 'about', 'that', 'this', 'are', 'is', 'was',
-  'were', 'has', 'have', 'can', 'will', 'its',
+  'what',
+  'where',
+  'when',
+  'which',
+  'who',
+  'why',
+  'how',
+  'does',
+  'the',
+  'and',
+  'for',
+  'with',
+  'from',
+  'into',
+  'about',
+  'that',
+  'this',
+  'are',
+  'is',
+  'was',
+  'were',
+  'has',
+  'have',
+  'can',
+  'will',
+  'its',
 ])
 
 export interface CuratorOptions {
@@ -82,6 +106,12 @@ export interface CurationRecord {
   sufficient: boolean
   /** True when the curator bailed to a safe fallback (LLM error or empty result guard). */
   fellBack: boolean
+  /**
+   * Why the curator bailed, when the cause was an LLM/transport error. Absent for the
+   * non-error fallbacks (empty-result guard). Surfaced as a degradation so a provider
+   * outage is not mistaken for a curation-quality problem.
+   */
+  failure?: LLMFailure
 }
 
 /** Bounded re-discovery: given a gap sub-query + ids to exclude, return up to `budget` facts. */
@@ -213,12 +243,13 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
       if (fresh.length === 0) break
       candidates = fresh // next round judges only the newly discovered facts
     }
-  } catch {
+  } catch (error) {
     // Fail safe — but bounded. Returning the *full* pool here is what let a truncated/failed
     // verdict flush hundreds of unpruned facts into synthesis. Only the pathological large pool
     // is capped (to the orchestrator's top `maxJudgeCandidates`); small pools pass through
     // untouched, preserving the original fail-safe semantics.
     record.fellBack = true
+    record.failure = toLLMFailure('curation', error, llm.name)
     if (results.length <= opts.maxJudgeCandidates) return { results, record }
     for (const r of results.slice(opts.maxJudgeCandidates)) {
       if (record.dropped.some(d => d.id === r.metadata.id)) continue

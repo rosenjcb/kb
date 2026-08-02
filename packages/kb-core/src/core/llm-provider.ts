@@ -4,6 +4,7 @@
  */
 
 import dayjs from 'dayjs'
+import { LLMApiError, classifyProviderStatus } from './llm-error.js'
 import type {
   LLMCallParams,
   LLMProvider,
@@ -47,6 +48,29 @@ function readApiErrorMessage(data: unknown, fallback: string): string {
   return fallback
 }
 
+/**
+ * Build a classified {@link LLMApiError} for a non-2xx provider response.
+ *
+ * Every provider funnels through here so callers can branch on `kind`
+ * (`rate_limit`, `insufficient_credits`, `auth`, …) instead of pattern-matching
+ * a message string. The message keeps its historical
+ * `[provider] API request failed (NNN): …` shape so logs stay recognizable.
+ */
+function providerApiError(
+  providerLabel: string,
+  response: Pick<Response, 'status' | 'statusText'>,
+  data: unknown
+): LLMApiError {
+  const detail = readApiErrorMessage(data, response.statusText)
+  return new LLMApiError({
+    provider: providerLabel,
+    kind: classifyProviderStatus(response.status, detail),
+    message: `[${providerLabel}] API request failed (${response.status}): ${detail}`,
+    status: response.status,
+    detail,
+  })
+}
+
 /** Resolve the reasoning budget for a reasoning-enabled call. */
 function resolveReasoningBudget(params: LLMCallParams): number {
   if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
@@ -66,12 +90,7 @@ async function* iterateSseData(
 ): AsyncGenerator<JsonRecord> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
-    throw new Error(
-      `[${providerLabel}] API request failed (${response.status}): ${readApiErrorMessage(
-        data,
-        response.statusText
-      )}`
-    )
+    throw providerApiError(providerLabel, response, data)
   }
 
   const reader = response.body?.getReader()
@@ -116,12 +135,7 @@ async function* iterateJsonLines(
 ): AsyncGenerator<JsonRecord> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
-    throw new Error(
-      `[${providerLabel}] API request failed (${response.status}): ${readApiErrorMessage(
-        data,
-        response.statusText
-      )}`
-    )
+    throw providerApiError(providerLabel, response, data)
   }
 
   const reader = response.body?.getReader()
@@ -241,12 +255,7 @@ export class AnthropicProvider implements LLMProvider {
 
     const data = await response.json()
     if (!response.ok) {
-      throw new Error(
-        `[anthropic] API request failed (${response.status}): ${readApiErrorMessage(
-          data,
-          response.statusText
-        )}`
-      )
+      throw providerApiError('anthropic', response, data)
     }
 
     const payload = asRecord(data)
@@ -529,12 +538,7 @@ export class OpenAIProvider implements LLMProvider {
 
     const data = await response.json()
     if (!response.ok) {
-      throw new Error(
-        `[openai] API request failed (${response.status}): ${readApiErrorMessage(
-          data,
-          response.statusText
-        )}`
-      )
+      throw providerApiError('openai', response, data)
     }
 
     const payload = asRecord(data)
@@ -899,12 +903,7 @@ export class GeminiProvider implements LLMProvider {
 
     const data = await response.json()
     if (!response.ok) {
-      throw new Error(
-        `[gemini] API request failed (${response.status}): ${readApiErrorMessage(
-          data,
-          response.statusText
-        )}`
-      )
+      throw providerApiError('gemini', response, data)
     }
 
     const payload = asRecord(data)
@@ -1053,12 +1052,7 @@ export class OllamaProvider implements LLMProvider {
 
     const data = await response.json()
     if (!response.ok) {
-      throw new Error(
-        `[ollama] API request failed (${response.status}): ${readApiErrorMessage(
-          data,
-          response.statusText
-        )}`
-      )
+      throw providerApiError('ollama', response, data)
     }
 
     const payload = asRecord(data)

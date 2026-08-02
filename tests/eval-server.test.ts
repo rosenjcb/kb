@@ -9,7 +9,7 @@ import {
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-526][TC-242] buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE, sets KB_BASE', () => {
+  it('[TC-249][TC-242] buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE, sets KB_BASE', () => {
     const prevNodePath = process.env.NODE_PATH
     process.env.NODE_PATH = '/tmp/node_path'
     try {
@@ -39,7 +39,7 @@ describe('eval-server helpers', () => {
     )
   })
 
-  it('[TC-531] buildEvalOfflineEnv clears remote connection vars', () => {
+  it('[TC-253] buildEvalOfflineEnv clears remote connection vars', () => {
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
     const prevSslmode = process.env.KB_SSLMODE
@@ -71,23 +71,23 @@ describe('eval-server helpers', () => {
     }
   })
 
-  it('[TC-529] DEFAULT_KB_SERVER_PORT is 38117', () => {
+  it('[TC-251] DEFAULT_KB_SERVER_PORT is 38117', () => {
     expect(DEFAULT_KB_SERVER_PORT).toBe(38117)
   })
 
-  it('[TC-530] buildKbRemoteEnv passes through host and default port', () => {
+  it('[TC-252] buildKbRemoteEnv passes through host and default port', () => {
     const env = buildKbRemoteEnv({ host: '127.0.0.1', port: DEFAULT_KB_SERVER_PORT, apiKey: defaultEvalApiKey() })
     expect(env.KB_HOST).toBe('127.0.0.1')
     expect(env.KB_PORT).toBe('38117')
   })
 
-  it('[TC-528] allocateFreePort returns a positive integer', async () => {
+  it('[TC-250] allocateFreePort returns a positive integer', async () => {
     const port = await allocateFreePort('127.0.0.1')
     expect(Number.isInteger(port)).toBe(true)
     expect(port).toBeGreaterThan(0)
   })
 
-  it('[TC-535] allocateFreePort yields distinct ports for concurrent callers', async () => {
+  it('[TC-254] allocateFreePort yields distinct ports for concurrent callers', async () => {
     const ports = await Promise.all([
       allocateFreePort('127.0.0.1'),
       allocateFreePort('127.0.0.1'),

@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-07-26T23:20:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -54,10 +54,10 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
+| FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, graph rerank, sufficiency judge, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
 
 ### Known issues
 
-- **Id-sequence debt**: the QA table carries pre-existing violations of the contiguous-ascending id rule (`TC-3b`, `TC-109b`, and a missing `TC-9`), so `spec-md lint --strict` fails on this file. The repair is a full renumber to `TC-1..TC-n` with matching `[TC-N]` tag updates across `tests/server/` — deferred to a dedicated change to keep feature diffs reviewable.
 - **Scope boundary**: `refresh` deliberately does *not* replace the object-store pull/push/pointer-flip/prune steps in `scripts/gcp/refresh.sh` / `scripts/fly/refresh.sh` — those stay in the shell layer by design, so this FR only covers the "build one fresh snapshot dir" portion of the builder flow, not the whole publish pipeline.
 
 ### QA Test Cases
@@ -67,11 +67,12 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-1 | FR-1 | streams reasoning then a terminal answer and done | pass |
 | TC-2 | FR-1 | emits an error event when synthesis throws | pass |
 | TC-3 | FR-2 | serves /healthz without auth | pass |
-| TC-3b | FR-2 | returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body) | pass |
-| TC-4 | FR-2 | rejects /v1/query without a valid key | pass |
-| TC-5 | FR-2 | answers /v1/query with a serialized body when authorized | pass |
-| TC-6 | FR-2 | returns 503 for /v1/query while the server is bootstrapping its first index | pass |
-| TC-7 | FR-2 | returns 400 when q is missing | pass |
+| TC-4 | FR-2 | returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body) | pass |
+| TC-5 | FR-2 | rejects /v1/query without a valid key | pass |
+| TC-6 | FR-2 | answers /v1/query with a serialized body when authorized | pass |
+| TC-7 | FR-2 | forwards trace: true to the service query pipeline | pass |
+| TC-8 | FR-2 | returns 503 for /v1/query while the server is bootstrapping its first index | pass |
+| TC-9 | FR-2 | returns 400 when q is missing | pass |
 | TC-10 | FR-2 | streams /v1/chat as SSE with a session id, answer, and done | pass |
 | TC-11 | FR-2 | returns 400 when chat message is missing | pass |
 | TC-12 | FR-2 | 404s on unknown routes and when MCP is disabled | pass |
@@ -172,33 +173,33 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-107 | FR-16 | rejects preflight OPTIONS from a disallowed origin with 405 | pass |
 | TC-108 | FR-17 | serves `/v1/query` while scheduled reindex is in progress (not bootstrap) | pass |
 | TC-109 | FR-4 | default response is answer + compact citations, no fact dump or retrieval metadata | pass |
-| TC-109b | FR-4 | advertises the verbose flag in the tool schema | pass |
-| TC-110 | FR-4 | verbose:true opts into the full evidence payload | pass |
-| TC-111 | FR-6 | trims to answer + citations and drops retrieval metadata and the fact dump | pass |
-| TC-112 | FR-6 | adds a verify note when confidence is below the threshold | pass |
-| TC-113 | FR-6 | dedupes citations per file, folds in symbols, and caps the list at 5 | pass |
-| TC-114 | FR-6 | flags answer file references that match no cited source path | pass |
-| TC-115 | FR-6 | notes when sources exist but no answer was synthesized | pass |
-| TC-116 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
-| TC-117 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
-| TC-118 | FR-6 | grounding reports each ungrounded file once | pass |
-| TC-119 | FR-18 | warm: given `--from <prior-snapshot>` and `--repo`/`--branch`, adopts the prior index, re-clones the repo, and reindexes only changed files at `--out` | pass |
-| TC-120 | FR-18 | cold: given `--repo` with no `--from`, clones fresh and produces a full index at `--out` | pass |
-| TC-121 | FR-18 | cold mode with neither `--from` nor `--repo` errors instead of hanging | pass |
-| TC-122 | FR-18 | surfaces the child bootstrap's `bootstrapError` as a failure instead of waiting out the full timeout | pass |
-| TC-123 | FR-18 | returns a timeout error (not a hang) when bootstrap never reaches `ok:true` | pass |
-| TC-124 | FR-18 | `--json` emits a single `{ ok: true, ... }` summary on stdout on success | pass |
-| TC-125 | FR-18 | `--json` emits `{ ok: false, error }` on stdout before the process exits non-zero on failure | pass |
-| TC-126 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
-| TC-127 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
-| TC-128 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
-| TC-129 | FR-19 | submit_feedback records helped/notes/query/requestId/scores as an NDJSON feedback record and returns ok | pass |
-| TC-130 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
-| TC-131 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
-| TC-132 | FR-19 | sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes | pass |
-| TC-133 | FR-19 | sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
-| TC-134 | FR-4 | kb_query response echoes back the original query text | pass |
-| TC-135 | FR-19 | submit_feedback response echoes back the submitted query when provided, omits it when absent | pass |
+| TC-110 | FR-4 | advertises the verbose flag in the tool schema | pass |
+| TC-111 | FR-4 | verbose:true opts into the full evidence payload | pass |
+| TC-112 | FR-6 | trims to answer + citations and drops retrieval metadata and the fact dump | pass |
+| TC-113 | FR-6 | adds a verify note when confidence is below the threshold | pass |
+| TC-114 | FR-6 | dedupes citations per file, folds in symbols, and caps the list at 5 | pass |
+| TC-115 | FR-6 | flags answer file references that match no cited source path | pass |
+| TC-116 | FR-6 | notes when sources exist but no answer was synthesized | pass |
+| TC-117 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
+| TC-118 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
+| TC-119 | FR-6 | grounding reports each ungrounded file once | pass |
+| TC-120 | FR-18 | warm: given `--from <prior-snapshot>` and `--repo`/`--branch`, adopts the prior index, re-clones the repo, and reindexes only changed files at `--out` | pass |
+| TC-121 | FR-18 | cold: given `--repo` with no `--from`, clones fresh and produces a full index at `--out` | pass |
+| TC-122 | FR-18 | cold mode with neither `--from` nor `--repo` errors instead of hanging | pass |
+| TC-123 | FR-18 | surfaces the child bootstrap's `bootstrapError` as a failure instead of waiting out the full timeout | pass |
+| TC-124 | FR-18 | returns a timeout error (not a hang) when bootstrap never reaches `ok:true` | pass |
+| TC-125 | FR-18 | `--json` emits a single `{ ok: true, ... }` summary on stdout on success | pass |
+| TC-126 | FR-18 | `--json` emits `{ ok: false, error }` on stdout before the process exits non-zero on failure | pass |
+| TC-127 | FR-18 | rejects `gs://`/`s3://`-scheme values for `--from`/`--out` (local-paths-only invariant; `--repos` legitimately holds `https://`/`git@` git URLs and is exempt) | pass |
+| TC-128 | FR-18 | terminates its bootstrap child process (no orphan) after both success and timeout | pass |
+| TC-129 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
+| TC-130 | FR-19 | submit_feedback records helped/notes/query/requestId/scores as an NDJSON feedback record and returns ok | pass |
+| TC-131 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
+| TC-132 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
+| TC-133 | FR-19 | sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes | pass |
+| TC-134 | FR-19 | sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
+| TC-135 | FR-4 | kb_query response echoes back the original query text | pass |
+| TC-136 | FR-19 | submit_feedback response echoes back the submitted query when provided, omits it when absent | pass |
 | TC-137 | FR-19 | submit_feedback response echoes the full recorded feedback (helped/notes/requestId/scores), not just query | pass |
 | TC-138 | FR-19 | submit_feedback rejects a non-string requestId (no array batching) | pass |
 | TC-139 | FR-20 | get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it | pass |
@@ -217,6 +218,13 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-152 | FR-23 | client responds decline: resolves dismissed with action decline | pass |
 | TC-153 | FR-23 | client responds cancel: resolves dismissed with action cancel | pass |
 | TC-154 | FR-23 | the client request rejects: resolves unavailable instead of throwing | pass |
+| TC-155 | FR-24 | chat turn where the model returns no text | error event carrying empty_response, no answer event |
+| TC-156 | FR-24 | REST body for a failed synthesis | answerError present, answer null, sources retained |
+| TC-157 | FR-24 | MCP notes for a failed synthesis | leads with the outage, never "No synthesized answer was produced" |
+| TC-158 | FR-24 | a best-effort stage degraded by an LLM error | note names the stage and kind; answer still returned |
+| TC-159 | FR-24 | no answer and no failure | original evidence note unchanged, no answerError |
+| TC-160 | FR-24 | kb_query when synthesis failed | answerError in payload, sources still cited |
+| TC-161 | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
 
 ### Related docs
 

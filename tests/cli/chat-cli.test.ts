@@ -17,7 +17,7 @@ import type { LLMProvider } from '@kb/core/core/types.js'
 const mockRunRemoteChatSession = vi.mocked(runRemoteChatSession)
 
 describe('chat-cli prompt', () => {
-  it('[TC-77] Given chat help printer, then returns grouped usage and interactive commands including /clear', () => {
+  it('[TC-68] Given chat help printer, then returns grouped usage and interactive commands including /clear', () => {
     const help = printChatHelp()
     expect(help).toContain('kb chat')
     expect(help).toContain('Usage:')
@@ -27,7 +27,7 @@ describe('chat-cli prompt', () => {
     expect(help).toContain('--verbose')
   })
 
-  it('[TC-78] Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
+  it('[TC-69] Given evidence and question, then turn content includes evidence block and question without embedded history', () => {
     const content = buildChatTurnContent({
       question: 'How does base precedence work?',
       retrieval: {
@@ -49,7 +49,7 @@ describe('chat-cli prompt', () => {
     expect(content).not.toContain('Conversation history:')
   })
 
-  it('[TC-79] Given long retrieved fact bodies, then turn content truncates each fact for synthesis', () => {
+  it('[TC-70] Given long retrieved fact bodies, then turn content truncates each fact for synthesis', () => {
     const long = 'z'.repeat(2500)
     const content = buildChatTurnContent({
       question: 'What is kb?',
@@ -65,7 +65,7 @@ describe('chat-cli prompt', () => {
 })
 
 describe('chat-cli session loop', () => {
-  it('[TC-80] Given runChatSession, then delegates to runRemoteChatSession', async () => {
+  it('[TC-71] Given runChatSession, then delegates to runRemoteChatSession', async () => {
     mockRunRemoteChatSession.mockClear()
     mockRunRemoteChatSession.mockResolvedValue(undefined)
 
@@ -102,7 +102,7 @@ describe('runChatSynthesis', () => {
     }
   }
 
-  it('[TC-96] Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval', async () => {
+  it('[TC-72] Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -137,7 +137,7 @@ describe('runChatSynthesis', () => {
     expect(executor.execute).not.toHaveBeenCalled()
   })
 
-  it('[TC-97] Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult', async () => {
+  it('[TC-73] Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),
@@ -190,7 +190,7 @@ describe('runChatSynthesis', () => {
     expect(result.factsRetrieved).toBeGreaterThanOrEqual(3)
   })
 
-  it('[TC-98] Given retrieval undefined (chat path), then starts loop from provided messages directly', async () => {
+  it('[TC-74] Given retrieval undefined (chat path), then starts loop from provided messages directly', async () => {
     const { printer } = makePrinter()
     const executor: ToolExecutor = {
       register: vi.fn(),

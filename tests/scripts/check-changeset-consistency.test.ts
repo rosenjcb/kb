@@ -157,7 +157,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.errors.some(e => e.includes('jumped more than one semver step'))).toBe(true)
   })
 
-  it('[TC-13b] fails when the version was downgraded', () => {
+  it('[TC-14] fails when the version was downgraded', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -169,7 +169,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.errors.some(e => e.includes('did not move forward'))).toBe(true)
   })
 
-  it('[TC-14] requires kb-core bump when core source changes', () => {
+  it('[TC-15] requires kb-core bump when core source changes', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-core/src/service/kb-service.ts'],
       pendingChangesets: [],
@@ -183,7 +183,7 @@ describe('evaluateChangesetConsistency', () => {
     ).toBe(true)
   })
 
-  it('[TC-15] accepts a brand-new package with no base version on main', () => {
+  it('[TC-16] accepts a brand-new package with no base version on main', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-core/src/service/kb-service.ts'],
       pendingChangesets: [],
@@ -195,7 +195,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.notes.some(n => n.includes('@kb/core introduced at 1.1.0'))).toBe(true)
   })
 
-  it('[TC-16] fails when version jumps multiple steps from pre-1.0 to stable', () => {
+  it('[TC-17] fails when version jumps multiple steps from pre-1.0 to stable', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -207,7 +207,7 @@ describe('evaluateChangesetConsistency', () => {
     expect(result.errors.some(e => e.includes('jumped more than one semver step'))).toBe(true)
   })
 
-  it('[TC-16b] passes for a single major step from pre-1.0', () => {
+  it('[TC-18] passes for a single major step from pre-1.0', () => {
     const result = evaluateChangesetConsistency({
       changedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -220,13 +220,13 @@ describe('evaluateChangesetConsistency', () => {
 })
 
 describe('isSingleSemverStep', () => {
-  it('[TC-17] accepts patch, minor, and major single steps', () => {
+  it('[TC-19] accepts patch, minor, and major single steps', () => {
     expect(isSingleSemverStep('1.0.0', '1.0.1')).toBe(true)
     expect(isSingleSemverStep('1.0.0', '1.1.0')).toBe(true)
     expect(isSingleSemverStep('1.0.0', '2.0.0')).toBe(true)
   })
 
-  it('[TC-18] rejects double jumps and invalid minor forms', () => {
+  it('[TC-20] rejects double jumps and invalid minor forms', () => {
     expect(isSingleSemverStep('1.0.0', '1.2.0')).toBe(false)
     expect(isSingleSemverStep('1.1.4', '1.3.0')).toBe(false)
     expect(isSingleSemverStep('0.10.1', '0.11.1')).toBe(false)
@@ -234,7 +234,7 @@ describe('isSingleSemverStep', () => {
 })
 
 describe('evaluateStagedChangesetGuard', () => {
-  it('[TC-19] passes when shipped source is staged with a pending changeset', () => {
+  it('[TC-21] passes when shipped source is staged with a pending changeset', () => {
     const result = evaluateStagedChangesetGuard({
       stagedFiles: ['packages/kb-client/src/cli/index.ts', '.changeset/foo.md'],
       pendingChangesets: ['.changeset/foo.md'],
@@ -248,7 +248,7 @@ describe('evaluateStagedChangesetGuard', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('[TC-20] fails when shipped source is staged without changeset or bump', () => {
+  it('[TC-22] fails when shipped source is staged without changeset or bump', () => {
     const result = evaluateStagedChangesetGuard({
       stagedFiles: ['packages/kb-client/src/cli/index.ts'],
       pendingChangesets: [],
@@ -266,7 +266,7 @@ describe('evaluateStagedChangesetGuard', () => {
     expect(result.errors.some(e => e.includes('no changeset is pending'))).toBe(true)
   })
 
-  it('[TC-21] passes when staged package.json carries a valid single-step bump', () => {
+  it('[TC-23] passes when staged package.json carries a valid single-step bump', () => {
     const result = evaluateStagedChangesetGuard({
       stagedFiles: ['packages/kb-client/src/cli/index.ts', 'packages/kb-client/package.json'],
       pendingChangesets: [],
@@ -280,7 +280,7 @@ describe('evaluateStagedChangesetGuard', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('[TC-22] fails when staged bump jumps more than one step', () => {
+  it('[TC-24] fails when staged bump jumps more than one step', () => {
     const result = evaluateStagedChangesetGuard({
       stagedFiles: ['packages/kb-client/src/cli/index.ts', 'packages/kb-client/package.json'],
       pendingChangesets: [],

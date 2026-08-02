@@ -10,7 +10,7 @@ tests:
   - ../../../../tests/cli/remote-commands.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-07-26T23:00:00Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -74,20 +74,22 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-1 | FR-1 | Given no env overrides | `resolveServerConnection` → `http://localhost:38117` |
 | TC-2 | FR-2 | Given a bare remote hostname (`KB_HOST`, no `KB_SSLMODE`) | Infers `https` under default `prefer` — parity with `kb://` |
 | TC-3 | FR-1 | Given `health()` | Calls `/healthz` |
-| TC-4 | FR-4 | Given connection failure message | Includes `kb-server start`, `--host`, env vars |
-| TC-5 | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
-| TC-6 | FR-3 | Given `--host=value` | Parses inline form |
-| TC-7 | FR-3 | Given bare `--host` | Throws requiring a value |
-| TC-8 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
-| TC-9 | FR-3 | Given `--host http://remote/` | Decomposes into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` |
-| TC-10 | FR-5 | Given config + base name | `formatConnectionContext` → `host: … │ base: …` |
+| TC-4 | FR-1 | Given an older server where `/health` 404s | `health()` falls back to `/healthz` |
+| TC-5 | FR-4 | Given connection failure message | Includes `kb-server start`, `--host`, env vars |
+| TC-6 | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
+| TC-7 | FR-3 | Given `--host=value` | Parses inline form |
+| TC-8 | FR-3 | Given bare `--host` | Throws requiring a value |
+| TC-9 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
+| TC-10 | FR-3 | Given `--host http://remote/` | Decomposes into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` |
+| TC-11 | FR-5 | Given config + base name | `formatConnectionContext` → `host: … │ base: …` |
 | TC-12 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
 | TC-13 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
 | TC-14 | FR-9 | Given Claude entry builder | includes `type: "http"` |
 | TC-15 | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
-| TC-16 | FR-9 | Given `KB_HOST`/`KB_PORT`/`KB_SSLMODE` | MCP URL uses that host `/mcp` |
-| TC-17 | FR-10 | Given matching entry | action is skipped |
-| TC-18 | FR-10 | Given stale URL + sibling server | updates `kb` only |
+| TC-16 | FR-10 | Given `requireExplicitHost` and only the implicit localhost default | Refuses the implicit default instead of syncing it |
+| TC-17 | FR-9 | Given `KB_HOST`/`KB_PORT`/`KB_SSLMODE` | MCP URL uses that host `/mcp` |
+| TC-18 | FR-10 | Given matching entry | action is skipped |
+| TC-19 | FR-10 | Given stale URL + sibling server | updates `kb` only |
 | TC-20 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
 | TC-21 | FR-11 | Given no `kb` entry | action is not-found |
 | TC-22 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
@@ -131,3 +133,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-60 | FR-18 | Given `--host` + `--port` + `--sslmode` + `--api-key` together | Each applies in order, later flags refining earlier ones |
 | TC-61 | FR-24 | Given `kb mcp install` with zero extra args | Syncs from the already-applied ambient connection (no duplicate parser) |
 | TC-62 | FR-24 | Given `kb mcp install <unrecognized-arg>` | Still throws `Unknown argument: <arg>` |
+| TC-63 | FR-4 | Given a 401 with a JSON error body | Message names `KB_SERVER_API_KEY` as the fix |
+| TC-64 | FR-4 | Given a 401 whose body is not JSON | Still returns the API-key hint |
+| TC-65 | FR-4 | Given a non-401 server error carrying an `error` field | Passes the server message through unchanged |
+| TC-66 | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |

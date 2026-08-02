@@ -26,7 +26,7 @@ const defaultOptions = {
 }
 
 describe('promptNamedListInterview', () => {
-  it('[TC-356] Given /skip, then returns skip without asking for descriptions', async () => {
+  it('[TC-333] Given /skip, then returns skip without asking for descriptions', async () => {
     const { io } = makeIO(['/skip'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -35,7 +35,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'skip' })
   })
 
-  it('[TC-357] Given blank input, then returns skip', async () => {
+  it('[TC-334] Given blank input, then returns skip', async () => {
     const { io } = makeIO([''])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -44,7 +44,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'skip' })
   })
 
-  it('[TC-358] Given /cancel on name prompt, then returns cancel', async () => {
+  it('[TC-335] Given /cancel on name prompt, then returns cancel', async () => {
     const { io } = makeIO(['/cancel'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -53,7 +53,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'cancel' })
   })
 
-  it('[TC-359] Given null read on name prompt, then returns cancel', async () => {
+  it('[TC-336] Given null read on name prompt, then returns cancel', async () => {
     const { io } = makeIO([null])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -62,7 +62,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'cancel' })
   })
 
-  it('[TC-360] Given /complete with no items, then returns skip', async () => {
+  it('[TC-337] Given /complete with no items, then returns skip', async () => {
     const { io } = makeIO(['/complete'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -71,7 +71,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'skip' })
   })
 
-  it('[TC-361] Given name then /cancel on description, then returns cancel', async () => {
+  it('[TC-338] Given name then /cancel on description, then returns cancel', async () => {
     const { io } = makeIO(['Overview', '/cancel'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -80,7 +80,7 @@ describe('promptNamedListInterview', () => {
     expect(result).toEqual({ kind: 'cancel' })
   })
 
-  it('[TC-362] Given multiple names one at a time, then returns items after /complete and /accept', async () => {
+  it('[TC-339] Given multiple names one at a time, then returns items after /complete and /accept', async () => {
     const { io } = makeIO(['Overview', '', 'Usage', 'How to use it', '/complete', '/accept'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -95,7 +95,7 @@ describe('promptNamedListInterview', () => {
     })
   })
 
-  it('[TC-363] Given blank description for an item, then uses default', async () => {
+  it('[TC-340] Given blank description for an item, then uses default', async () => {
     const { io } = makeIO(['API Reference', '', '/complete', '/accept'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -107,7 +107,7 @@ describe('promptNamedListInterview', () => {
     })
   })
 
-  it('[TC-364] Given each added item, then writes running list to output', async () => {
+  it('[TC-341] Given each added item, then writes running list to output', async () => {
     const { io, lines } = makeIO(['Alpha', 'desc a', 'Beta', 'desc b', '/complete', '/accept'])
     await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,
@@ -119,7 +119,7 @@ describe('promptNamedListInterview', () => {
     expect(listOutput).toContain('2. Beta')
   })
 
-  it('[TC-365] Given /reject after /complete, then restarts collection from the beginning', async () => {
+  it('[TC-342] Given /reject after /complete, then restarts collection from the beginning', async () => {
     const { io } = makeIO([
       'Overview',
       '',
@@ -140,7 +140,7 @@ describe('promptNamedListInterview', () => {
     })
   })
 
-  it('[TC-366] Given /cancel on final confirmation, then returns cancel', async () => {
+  it('[TC-343] Given /cancel on final confirmation, then returns cancel', async () => {
     const { io } = makeIO(['Overview', '', '/complete', '/cancel'])
     const result = await promptNamedListInterview(io, defaultOptions, ({ name, description }) => ({
       name,

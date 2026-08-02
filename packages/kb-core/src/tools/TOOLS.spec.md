@@ -25,7 +25,7 @@ tests:
   - ../../../../tests/tools/task-tool.test.ts
 description: Behavioral specification for KB Tools
 tags: [spec, kb]
-timestamp: 2026-06-28T04:05:29Z
+timestamp: 2026-08-02T23:10:00Z
 ---
 
 ### Intro
@@ -170,6 +170,7 @@ See companion doc for full vocabulary where applicable.
 | TC-99 | FR-16 | Given KB_QUERY_TRACE=true, then run attaches a lane dumping every discovered fact | pass |
 | TC-100 | FR-16 | Given --trace on a deep query, then the reader writes a dump under KB_HOME/traces | pass |
 | TC-101 | FR-16 | Given tracing off, then run attaches no lane | pass |
+| TC-102 | FR-13 | each subagent eval scenario | loop tuning matches the scenario profile |
 
 ### Related docs
 

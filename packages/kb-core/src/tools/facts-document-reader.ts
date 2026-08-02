@@ -1,17 +1,16 @@
 import { isEnvTrue } from '../config/env-boolean.js'
+import type { LLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
 import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
-import {
-  type CuratorRequery,
-  type CurationRecord,
-  curateFacts,
-  shouldCurate,
-} from './fact-curator'
+import { type CuratorRequery, type CurationRecord, curateFacts, shouldCurate } from './fact-curator'
 import { type Embedder, createEmbedder } from '../core/embeddings'
-import { DEFAULT_FACT_LIMIT, FactsQueryResearchOrchestrator } from './facts-query-research-orchestrator'
+import {
+  DEFAULT_FACT_LIMIT,
+  FactsQueryResearchOrchestrator,
+} from './facts-query-research-orchestrator'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import {
@@ -75,6 +74,12 @@ export interface QueryResponse {
     }>
     /** Out-of-band curator audit — kept/dropped/re-queried decisions. Never injected into context. */
     curation?: CurationRecord
+    /**
+     * Best-effort LLM stages that failed and were skipped (sufficiency judge, curation).
+     * Retrieval still succeeded; these exist so an outage is visible rather than being
+     * mistaken for a retrieval-quality problem.
+     */
+    degraded?: LLMFailure[]
   }
   /**
    * Opt-in deep trace lane (`kb query --trace`). Present only when tracing is on; the reader
@@ -123,13 +128,18 @@ export class FactsDocumentReader {
     }
 
     if (input.discoveryDepth === 'deep') {
-      const judge = this.llm ? makeSufficiencyJudge(this.llm, input.collector) : undefined
+      // Collects best-effort stage failures across this call so they can ride out on the
+      // response instead of vanishing into a bare catch.
+      const degraded: LLMFailure[] = []
+      const judge = this.llm
+        ? makeSufficiencyJudge(this.llm, input.collector, failure => degraded.push(failure))
+        : undefined
       const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
       const baseQuery = input.query?.trim() ?? ''
       // H5 ablation: score against the raw question (env-provided) while discovery stays on
       // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
       const rawScoringQuery = isEnvTrue(process.env.KB_ABLATE_RAW_SCORING)
-        ? (process.env.KB_ABLATE_RAW_Q?.trim() || undefined)
+        ? process.env.KB_ABLATE_RAW_Q?.trim() || undefined
         : undefined
       const opts = {
         includeContent: input.includeContent === true,
@@ -142,9 +152,7 @@ export class FactsDocumentReader {
       await this.indexer.cacheQueryEmbedding(rawScoringQuery ?? baseQuery)
 
       const excludeIdSet =
-        input.excludeIds && input.excludeIds.length > 0
-          ? new Set(input.excludeIds)
-          : undefined
+        input.excludeIds && input.excludeIds.length > 0 ? new Set(input.excludeIds) : undefined
 
       if (this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
         const expansions = await expandQuery(this.llm, baseQuery)
@@ -165,11 +173,15 @@ export class FactsDocumentReader {
             excludeIdSet,
             input.collector
           )
-          return this.finalizeDeep(baseQuery, lanes, curated)
+          return this.finalizeDeep(baseQuery, lanes, curated, degraded)
         }
       }
 
-      const response = await orchestrator.run({ query: baseQuery, ...opts, excludeIds: excludeIdSet })
+      const response = await orchestrator.run({
+        query: baseQuery,
+        ...opts,
+        excludeIds: excludeIdSet,
+      })
       const lanes = response.trace ? [response.trace] : []
       const curated = await this.curateRelevance(
         response,
@@ -218,8 +230,9 @@ export class FactsDocumentReader {
 
     // Bonus ablation: the curator is documented to key on the *raw* question, but `query` here
     // is the graph-expanded string. This gate feeds it the real raw question instead.
-    const curatorQuery =
-      process.env.KB_ABLATE_CURATOR_RAW_Q?.trim() ? process.env.KB_ABLATE_CURATOR_RAW_Q.trim() : query
+    const curatorQuery = process.env.KB_ABLATE_CURATOR_RAW_Q?.trim()
+      ? process.env.KB_ABLATE_CURATOR_RAW_Q.trim()
+      : query
     const { results, record } = await curateFacts({
       llm: this.llm,
       query: curatorQuery,
@@ -228,7 +241,13 @@ export class FactsDocumentReader {
       collector,
     })
 
-    if (record.fellBack && record.dropped.length === 0 && record.added === 0) return response
+    // Total fallback: nothing was curated, so no audit detail is worth reporting — but if an
+    // LLM error caused it, the record still has to travel or the degradation disappears.
+    if (record.fellBack && record.dropped.length === 0 && record.added === 0) {
+      return record.failure
+        ? { ...response, retrieval: { ...response.retrieval, curation: record } }
+        : response
+    }
 
     const detail = [
       response.retrieval.detail ?? '',
@@ -253,8 +272,17 @@ export class FactsDocumentReader {
   private async finalizeDeep(
     query: string,
     lanes: QueryTraceLane[],
-    curated: QueryResponse
+    input: QueryResponse,
+    degraded: LLMFailure[] = []
   ): Promise<QueryResponse> {
+    // The curator swallows its own LLM errors to stay fail-safe; fold that failure in here
+    // so every best-effort degradation leaves on one channel.
+    const curatorFailure = input.retrieval.curation?.failure
+    const allDegraded = curatorFailure ? [...degraded, curatorFailure] : degraded
+    const curated: QueryResponse =
+      allDegraded.length > 0
+        ? { ...input, retrieval: { ...input.retrieval, degraded: allDegraded } }
+        : input
     if (lanes.length > 0 && isQueryTraceEnabled()) {
       const record = curated.retrieval.curation
       const dump: QueryTraceDump = {
@@ -317,10 +345,7 @@ function summarizeFactTitle(text: string): string {
   return `${trimmed.slice(0, 69)}...`
 }
 
-function mergeQueryResponses(
-  responses: QueryResponse[],
-  expansionCount: number
-): QueryResponse {
+function mergeQueryResponses(responses: QueryResponse[], expansionCount: number): QueryResponse {
   const seen = new Set<string>()
   const merged: QueryResult[] = []
   for (const res of responses) {

@@ -1,3 +1,4 @@
+import { type LLMFailure, toLLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
 import { estimateCost } from '../core/telemetry'
 import type { LLMProvider } from '../core/types'
@@ -17,9 +18,17 @@ export type FactsSufficiencyJudge = (
   relevantFacts: Array<{ id: string; text: string }>
 ) => Promise<SufficiencyVerdict>
 
+/**
+ * @param onFailure Invoked when the judge call fails on an LLM/transport error. The
+ * verdict still falls back to `insufficient` (the safe choice — keep researching), but
+ * the caller can record the degradation so a provider outage is distinguishable from a
+ * genuine "not answerable yet" verdict. Without this the two are identical, and an
+ * outage silently burns the full iteration budget on every query.
+ */
 export function makeSufficiencyJudge(
   llm: LLMProvider,
-  collector?: RunCollector
+  collector?: RunCollector,
+  onFailure?: (failure: LLMFailure) => void
 ): FactsSufficiencyJudge {
   return async (query, relevantFacts) => {
     if (relevantFacts.length < JUDGE_MIN_RELEVANT_FACTS) return 'insufficient'
@@ -71,7 +80,8 @@ export function makeSufficiencyJudge(
       return response.text.trim().toUpperCase().startsWith('ANSWERABLE')
         ? 'answerable'
         : 'insufficient'
-    } catch {
+    } catch (error) {
+      onFailure?.(toLLMFailure('sufficiency-judge', error, llm.name))
       return 'insufficient'
     }
   }

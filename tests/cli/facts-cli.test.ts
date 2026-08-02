@@ -18,12 +18,12 @@ async function tempBase(): Promise<string> {
 }
 
 describe('parseFactsCommand', () => {
-  it('[TC-185] Given list subcommand, then parses limit and base', () => {
+  it('[TC-161] Given list subcommand, then parses limit and base', () => {
     const p = parseFactsCommand(['list', '--limit', '5', '--base', 'dogfood'])
     expect(p).toEqual({ sub: 'list', base: 'dogfood', limit: 5 })
   })
 
-  it('[TC-186] Given --help, then throws FactsCommandError exit 0', () => {
+  it('[TC-162] Given --help, then throws FactsCommandError exit 0', () => {
     try {
       parseFactsCommand(['--help'])
       expect.fail('expected throw')
@@ -33,13 +33,13 @@ describe('parseFactsCommand', () => {
     }
   })
 
-  it('[TC-187] Given search without query, then throws', () => {
+  it('[TC-163] Given search without query, then throws', () => {
     expect(() => parseFactsCommand(['search'])).toThrow(FactsCommandError)
   })
 })
 
 describe('runFactsCommand', () => {
-  it('[TC-188] Given seeded facts, list and search return human text', async () => {
+  it('[TC-164] Given seeded facts, list and search return human text', async () => {
     const baseDir = await tempBase()
     const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     ix.upsertFact({
@@ -58,7 +58,7 @@ describe('runFactsCommand', () => {
     expect(searched).toContain('Unique orchid')
   })
 
-  it('[TC-189] Given fact id, show returns that row', async () => {
+  it('[TC-165] Given fact id, show returns that row', async () => {
     const baseDir = await tempBase()
     const ix = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
     ix.upsertFact({

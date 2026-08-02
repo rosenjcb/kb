@@ -10,7 +10,11 @@ import type { KbService } from '@kb/core/service/kb-service.js'
 
 const registryTools: ToolDefinition[] = [
   { name: 'read_facts', description: 'Search facts', schema: { type: 'object', properties: {} } },
-  { name: 'search_code_symbols', description: 'Search symbols', schema: { type: 'object', properties: {} } },
+  {
+    name: 'search_code_symbols',
+    description: 'Search symbols',
+    schema: { type: 'object', properties: {} },
+  },
   { name: 'upsert_fact', description: 'Write a fact', schema: { type: 'object', properties: {} } },
 ]
 
@@ -87,7 +91,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).not.toContain('snippet')
   })
 
-  it('[TC-110] verbose:true opts into the full evidence payload', async () => {
+  it('[TC-111] verbose:true opts into the full evidence payload', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {
       q: 'auth',
       verbose: true,
@@ -100,9 +104,12 @@ describe('dispatchMcpToolCall', () => {
     expect(body.retrieval).toEqual({ method: 'facts-loop', detail: 'passes:1;ponds:6;facts:104' })
   })
 
-  it('[TC-109b] advertises the verbose flag in the tool schema', () => {
+  it('[TC-110] advertises the verbose flag in the tool schema', () => {
     const tools = buildMcpToolList(makeStubService())
-    const schema = tools[0].inputSchema as { properties: Record<string, unknown>; required: string[] }
+    const schema = tools[0].inputSchema as {
+      properties: Record<string, unknown>
+      required: string[]
+    }
     expect(Object.keys(schema.properties)).toEqual(['q', 'verbose'])
     expect(schema.required).toEqual(['q'])
   })
@@ -136,7 +143,7 @@ describe('submit_feedback and feedback nudge', () => {
     return { dir, store: new QueryFeedbackStore(dir) }
   }
 
-  it('[TC-129] records helped/notes/query/requestId/scores as an NDJSON record and returns ok', async () => {
+  it('[TC-130] records helped/notes/query/requestId/scores as an NDJSON record and returns ok', async () => {
     const { dir, store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -165,9 +172,14 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.ts).toBeTruthy()
   })
 
-  it('[TC-130] errors when helped is missing or not yes/partial/no', async () => {
+  it('[TC-131] errors when helped is missing or not yes/partial/no', async () => {
     const { store } = makeTempStore()
-    const missing = await dispatchMcpToolCall(makeStubService(), 'submit_feedback', {}, { feedbackStore: store })
+    const missing = await dispatchMcpToolCall(
+      makeStubService(),
+      'submit_feedback',
+      {},
+      { feedbackStore: store }
+    )
     expect(missing.isError).toBe(true)
     const invalid = await dispatchMcpToolCall(
       makeStubService(),
@@ -179,7 +191,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(invalid.content[0].text).toContain('helped')
   })
 
-  it('[TC-131] kb_query payload echoes the server requestId for feedback correlation', async () => {
+  it('[TC-132] kb_query payload echoes the server requestId for feedback correlation', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'kb_query',
@@ -190,7 +202,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(result.content[0].text).requestId).toBe('req-42')
   })
 
-  it('[TC-132] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
+  it('[TC-133] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'kb_query',
@@ -206,7 +218,7 @@ describe('submit_feedback and feedback nudge', () => {
     }
   })
 
-  it('[TC-133] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
+  it('[TC-134] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
     vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
     try {
       const unset = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
@@ -223,13 +235,15 @@ describe('submit_feedback and feedback nudge', () => {
     }
   })
 
-  it('[TC-134] kb_query response echoes back the original query text', async () => {
-    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'how does auth retry work?' })
+  it('[TC-135] kb_query response echoes back the original query text', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {
+      q: 'how does auth retry work?',
+    })
     expect(result.isError).toBeUndefined()
     expect(JSON.parse(result.content[0].text).query).toBe('how does auth retry work?')
   })
 
-  it('[TC-135] submit_feedback response echoes back the submitted query when provided, omits it when absent', async () => {
+  it('[TC-136] submit_feedback response echoes back the submitted query when provided, omits it when absent', async () => {
     const { store } = makeTempStore()
     const withQuery = await dispatchMcpToolCall(
       makeStubService(),
@@ -293,7 +307,12 @@ describe('submit_feedback and feedback nudge', () => {
     )
     expect(JSON.parse(queried.content[0].text).AGENT_INSTRUCTION).toContain('req-5')
 
-    const pendingBefore = await dispatchMcpToolCall(service, 'get_feedback_requests', {}, { pendingFeedbackStore })
+    const pendingBefore = await dispatchMcpToolCall(
+      service,
+      'get_feedback_requests',
+      {},
+      { pendingFeedbackStore }
+    )
     expect(JSON.parse(pendingBefore.content[0].text).pending).toEqual([
       expect.objectContaining({ requestId: 'req-5', query: 'how does auth retry work?' }),
     ])
@@ -305,7 +324,12 @@ describe('submit_feedback and feedback nudge', () => {
       { feedbackStore, pendingFeedbackStore }
     )
 
-    const pendingAfter = await dispatchMcpToolCall(service, 'get_feedback_requests', {}, { pendingFeedbackStore })
+    const pendingAfter = await dispatchMcpToolCall(
+      service,
+      'get_feedback_requests',
+      {},
+      { pendingFeedbackStore }
+    )
     expect(JSON.parse(pendingAfter.content[0].text).pending).toEqual([])
   })
 
@@ -327,7 +351,12 @@ describe('submit_feedback and feedback nudge', () => {
       { feedbackStore, pendingFeedbackStore }
     )
     expect(result.isError).toBeUndefined()
-    const pending = await dispatchMcpToolCall(service, 'get_feedback_requests', {}, { pendingFeedbackStore })
+    const pending = await dispatchMcpToolCall(
+      service,
+      'get_feedback_requests',
+      {},
+      { pendingFeedbackStore }
+    )
     expect(JSON.parse(pending.content[0].text).pending).toEqual([
       expect.objectContaining({ requestId: 'req-6' }),
     ])
@@ -414,5 +443,60 @@ describe('submit_feedback and feedback nudge', () => {
     expect(pendingFeedbackStore.list()).toEqual([
       expect.objectContaining({ requestId: 'req-elicit-3' }),
     ])
+  })
+})
+
+describe('kb_query synthesis failure', () => {
+  const failingService = () =>
+    makeStubService({
+      query: async () => ({
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          answerError: {
+            stage: 'synthesis',
+            kind: 'insufficient_credits',
+            message: '[anthropic] API request failed (400): Your credit balance is too low',
+            provider: 'anthropic',
+            status: 400,
+            retryable: false,
+          },
+          results: [
+            {
+              metadata: { id: 'fact-1', title: 'Auth flow', sourcePath: 'src/auth/login.ts' },
+              content: 'Handles login.',
+            },
+          ],
+          retrieval: { method: 'facts-loop' },
+        },
+      }),
+    })
+
+  it('[TC-160] Given synthesis failed, then kb_query reports answerError rather than an empty answer', async () => {
+    const result = await dispatchMcpToolCall(failingService(), 'kb_query', { q: 'auth' })
+    const body = JSON.parse(result.content[0].text)
+    expect(body.answer).toBeNull()
+    expect(body.answerError.kind).toBe('insufficient_credits')
+    expect(body.notes[0]).toContain('Answer synthesis failed')
+    // Sources still ship — retrieval worked, only the answer-writing step failed.
+    expect(body.sources).toEqual(['src/auth/login.ts'])
+  })
+
+  it('[TC-161] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {
+    // Sampling forced on: without the guard this would ask an agent to rate an answer
+    // that never existed, scoring a provider outage as a KB quality problem.
+    const result = await dispatchMcpToolCall(
+      failingService(),
+      'kb_query',
+      { q: 'auth' },
+      {
+        feedbackSampleRate: 1,
+        random: () => 0,
+        requestId: 'req-1',
+      }
+    )
+    const body = JSON.parse(result.content[0].text)
+    expect(body.AGENT_INSTRUCTION).toBeUndefined()
+    expect(body.feedback).toBeUndefined()
   })
 })

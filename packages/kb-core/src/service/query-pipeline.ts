@@ -17,6 +17,7 @@ import {
   estimateCost,
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
+import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import { llmExtractQueryEntities, rerankByGraphConnectivity } from '@kb/core/tools/graph-rag-reranker.js'
 import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
@@ -130,6 +131,9 @@ export async function runQueryPipeline(
   // Stage 0 — scope inference (best-effort): infer which entity (service /
   // surface / domain) the question is about before any fuzzy retrieval runs.
   // Inert when the registry is empty, unresolved, or KB_ENTITY_SCOPE=false.
+  // Best-effort stages that failed on an LLM error. Never block the query, never silent.
+  const degraded: LLMFailure[] = []
+
   let scope: ScopeVerdict | undefined
   if (!allFacts) {
     try {
@@ -139,8 +143,11 @@ export async function runQueryPipeline(
         ...(llmProvider ? { llm: llmProvider } : {}),
       })
       if (!verdict.unresolved) scope = verdict
-    } catch {
-      // Scope inference is best-effort; never block the query.
+    } catch (error) {
+      // Scope inference is best-effort; never block the query. But a failure here means the
+      // answer may silently be about the wrong entity *and* the disclosure line that would
+      // have exposed that is missing — so it gets recorded.
+      degraded.push(toLLMFailure('scope-inference', error, llmProvider?.name))
     }
   }
 
@@ -221,7 +228,9 @@ export async function runQueryPipeline(
   // facts by graph connectivity.
   if (llmProvider && isReadFactsResult(aligned) && !allFacts) {
     try {
-      const entities = await llmExtractQueryEntities(query, llmProvider)
+      const entities = await llmExtractQueryEntities(query, llmProvider, failure =>
+        degraded.push(failure)
+      )
       if (entities.length > 0) {
         const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
         try {
@@ -236,8 +245,25 @@ export async function runQueryPipeline(
           db.close()
         }
       }
-    } catch {
+    } catch (error) {
       // Re-ranking is best-effort; never block the answer.
+      degraded.push(toLLMFailure('graph-rerank', error, llmProvider.name))
+    }
+  }
+
+  // Fold pipeline-level degradations in with any recorded during retrieval, so every
+  // best-effort LLM failure for this query arrives on one channel.
+  if (degraded.length > 0 && isReadFactsResult(aligned)) {
+    const data = (aligned.data ?? {}) as ReadDocumentsResultData
+    aligned = {
+      ...aligned,
+      data: {
+        ...data,
+        retrieval: {
+          ...data.retrieval,
+          degraded: [...(data.retrieval?.degraded ?? []), ...degraded],
+        },
+      },
     }
   }
 

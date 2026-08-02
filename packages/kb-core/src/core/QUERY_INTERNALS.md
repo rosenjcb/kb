@@ -106,6 +106,32 @@ After retrieval, ranked facts are turned into prose via **`formatRetrievedFactsF
 
 A **post-retrieval fact curator** (`src/tools/fact-curator.ts`) runs when the pool exceeds 12 facts. It is judge-in-the-loop, not a one-shot filter: it deterministically **auto-keeps** high-overlap facts (no LLM cost), sends the rest to a single **structured LLM verdict** (`{keep, gaps, sufficient}`) keyed on the **raw user question** (not the graph-expanded string), then **hard-drops** everything the judge did not keep — there is **no 15% floor**. When the judge reports `gaps` and the set is not yet `sufficient`, the curator issues **bounded shallow re-discovery** queries (`searchFacts`, excluding what's already known) to refill, so aggressive dropping is safe. It fails safe to the unfiltered pool on any LLM/parse error, and guards against ever returning an empty set (deterministic top-K fallback). Curator decisions are recorded **out-of-band** on `retrieval.curation` (kept/dropped/re-queried counts) for terminal + session-log surfacing — they are **never** injected into the synthesis context, since the whole point is to shrink the prompt.
 
+## When synthesis fails
+
+Retrieval and synthesis fail independently, and the difference is load-bearing: retrieval
+is deterministic, so an identical query can return identical evidence and still produce no
+answer when the provider call fails. Synthesis therefore **never fails silently**.
+
+A provider error (429, spent credits, bad key, 5xx, timeout) or an empty completion records
+**`data.answerError`** — a structured `{ stage, kind, message, provider, status, retryable }`
+(see `src/core/llm-error.ts`). `kind` is classified rather than inferred from the status code,
+because credit exhaustion is not uniform: Anthropic reports it as `400 credit balance is too
+low`, OpenAI as `429 insufficient_quota`. Status alone would file the first as a bad request
+and the second as a rate limit.
+
+Rules that hold on this path:
+
+- **Retrieval results survive.** The sources are real; only the answer-writing step failed.
+- **`status` stays `accepted`.** `isReadFactsResult()` gates on it, and flipping it to `error`
+  would strip sources from chat replies and skip re-synthesis on retry.
+- **Best-effort stages report too.** Scope inference, graph rerank, the sufficiency judge, and
+  the curator all keep failing safe, but each now records on **`retrieval.degraded[]`** instead
+  of vanishing into a bare `catch`. A sufficiency-judge outage used to be indistinguishable
+  from a genuine `insufficient` verdict, which silently burned the full iteration budget.
+- **The curator claims nothing it did not do.** When it falls back (`fellBack`), it contributes
+  no research note — the previous behavior told the synthesis prompt the evidence had been
+  "focused to N facts" when no judging had run.
+
 Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
 
 ## Deep query trace (opt-in)

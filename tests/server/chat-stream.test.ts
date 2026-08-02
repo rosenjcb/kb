@@ -34,10 +34,14 @@ async function collect(gen: AsyncGenerator<ChatEvent>): Promise<ChatEvent[]> {
 }
 
 describe('streamChatTurn', () => {
-                it('[TC-1] streams reasoning then a terminal answer and done', async () => {
+  it('[TC-1] streams reasoning then a terminal answer and done', async () => {
     const events = await collect(
       streamChatTurn(
-        { llmProvider: fakeProvider('The answer.'), toolExecutor: emptyToolExecutor, baseDir: '/tmp/none' },
+        {
+          llmProvider: fakeProvider('The answer.'),
+          toolExecutor: emptyToolExecutor,
+          baseDir: '/tmp/none',
+        },
         { question: 'hi', messages: [{ role: 'user', content: 'hi' }] }
       )
     )
@@ -49,15 +53,37 @@ describe('streamChatTurn', () => {
     expect(events.at(-1)).toEqual({ type: 'done', inputTokens: 4, outputTokens: 2 })
   })
 
-                it('[TC-2] emits an error event when synthesis throws', async () => {
+  it('[TC-2] emits an error event when synthesis throws', async () => {
     const events = await collect(
       streamChatTurn(
-        { llmProvider: fakeProvider('', { fail: true }), toolExecutor: emptyToolExecutor, baseDir: '/tmp/none' },
+        {
+          llmProvider: fakeProvider('', { fail: true }),
+          toolExecutor: emptyToolExecutor,
+          baseDir: '/tmp/none',
+        },
         { question: 'hi', messages: [{ role: 'user', content: 'hi' }] }
       )
     )
     const last = events.at(-1)
     expect(last?.type).toBe('error')
     if (last?.type === 'error') expect(last.message).toContain('boom')
+  })
+  it('[TC-155] Given the model returns no text, then it emits an error event instead of a canned answer', async () => {
+    // A blank completion used to be rendered as "I don't have enough information to answer
+    // that" — a knowledge-base verdict standing in for a model failure.
+    const events = await collect(
+      streamChatTurn(
+        { llmProvider: fakeProvider(''), toolExecutor: emptyToolExecutor, baseDir: '/tmp/none' },
+        { question: 'hi', messages: [{ role: 'user', content: 'hi' }] }
+      )
+    )
+
+    expect(events.some(e => e.type === 'answer')).toBe(false)
+    const last = events.at(-1)
+    expect(last?.type).toBe('error')
+    if (last?.type === 'error') {
+      expect(last.message).toContain('empty_response')
+      expect(last.message).not.toContain("don't have enough information")
+    }
   })
 })
