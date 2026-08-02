@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type SourcePattern, loadAllSourcePatterns } from './ecosystem-config.js'
-import type { EntityKind } from './entity-registry.js'
+import type { EntityKind, EntitySourceKind } from './entity-registry.js'
 
 export interface EntityCandidate {
   kind: EntityKind
@@ -15,7 +15,7 @@ export interface EntityCandidate {
   aliases: string[]
   gloss?: string
   sourceFile: string
-  sourceKind: 'manifest'
+  sourceKind: EntitySourceKind
   contentHash: string
 }
 
@@ -1247,7 +1247,7 @@ export function runOpenApiPathItems(
       aliases: [routePath],
       gloss: 'OpenAPI path item',
       sourceFile: rel,
-      sourceKind: 'manifest',
+      sourceKind: 'source-pattern',
       contentHash: hash,
     })
     let resolved: unknown = item
@@ -1270,7 +1270,7 @@ export function runOpenApiPathItems(
         aliases: [name],
         gloss: 'OpenAPI operation',
         sourceFile: rel,
-        sourceKind: 'manifest',
+        sourceKind: 'source-pattern',
         contentHash: hash,
       })
     }
@@ -1398,7 +1398,7 @@ export async function runSourcePatterns(
       aliases: [...new Set(aliases)],
       gloss: hit.gloss ?? rule.gloss,
       sourceFile: rel,
-      sourceKind: 'manifest',
+      sourceKind: 'source-pattern',
       contentHash: hash,
     })
     if (opts.phase === 'app' && candidates.length > before) {

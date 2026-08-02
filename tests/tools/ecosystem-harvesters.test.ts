@@ -1122,6 +1122,32 @@ describe('harvestRepoEntities', () => {
     // Same name from two sources — registry upsert merges them by (kind, name).
     expect(result.candidates.filter(c => c.canonicalName === 'edge-worker')).toHaveLength(2)
   })
+
+  it('[TC-35] Given manifests and in-source declarations, when harvested, then provenance separates them', async () => {
+    await writePackage(scanDir, { name: 'billing-api', dependencies: { express: '4' } })
+    await writeFile(path.join(scanDir, 'fly.toml'), 'app = "billing-prod"\n')
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'routes.ts'),
+      ["app.get('/invoices/:id', handler)", "db.exec('CREATE TABLE invoices (id TEXT)')"].join('\n')
+    )
+
+    const result = await harvestRepoEntities(scanDir)
+    const provenanceOf = (name: string) =>
+      result.candidates.find(c => c.canonicalName === name)?.sourceKind
+
+    // Declared identity — a person wrote these strings to name the thing.
+    expect(provenanceOf('billing-api')).toBe('manifest')
+    expect(provenanceOf('billing-prod')).toBe('manifest')
+    // Found by a source_pattern over ordinary source — real names, but incidental.
+    expect(provenanceOf('GET /invoices/:id')).toBe('source-pattern')
+    expect(provenanceOf('invoices')).toBe('source-pattern')
+
+    // The boundary is total: every candidate declares one side or the other.
+    expect(
+      result.candidates.every(c => c.sourceKind === 'manifest' || c.sourceKind === 'source-pattern')
+    ).toBe(true)
+  })
 })
 
 describe('multi-language package harvest', () => {

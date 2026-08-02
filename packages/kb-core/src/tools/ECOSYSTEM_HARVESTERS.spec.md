@@ -13,7 +13,7 @@ description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML source_patterns drive tier-4 route and app harvest.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-08-02T00:00:00Z
+timestamp: 2026-08-02T02:00:00Z
 ---
 
 ### Intro
@@ -30,8 +30,9 @@ The pattern engine loads those rules. It emits entity candidates for the
 this specification (§4a / harvester tiers).
 
 Tier-4 harvest writes registry rows for later use. Those rows can have kind
-`api`, `module`, `model`, or `surface`. Tier-4 harvest does not control query
-results today. You can inspect the registry with `kb entities`.
+`api`, `module`, `model`, or `surface`, and carry `sourceKind: source-pattern`.
+Tier-4 harvest does not control query results today. You can inspect the registry
+with `kb entities`.
 
 ### Definitions
 
@@ -45,8 +46,14 @@ results today. You can inspect the registry with `kb entities`.
   selects it by id. Examples: `regex`, `class_method_prefix_join`,
   `rails_resources_crud`. This is not a free-form join DSL.
 - **Entity candidate**: A record that a harvester emits. Fields: `kind`,
-  `canonicalName`, `aliases`, optional `gloss`, `sourceFile`,
-  `sourceKind: manifest`, `contentHash`. A candidate carries no weight.
+  `canonicalName`, `aliases`, optional `gloss`, `sourceFile`, `sourceKind`,
+  `contentHash`. A candidate carries no weight.
+- **Provenance (`sourceKind`)**: Which extraction path produced the name.
+  `manifest` = parsed from a file that declares identity, taking the identity it
+  declares. `source-pattern` = found by a YAML `source_pattern` run over ordinary
+  source. The emitting module is the boundary: `ecosystem-harvesters.ts` emits
+  `manifest`, `pattern-engine.ts` emits `source-pattern`. This records where a
+  name came from; it is not a ranking and implies no trust ordering.
 - **Kind rubric**: The ordered `kind_rules` list in the ecosystem YAML. The
   first matching rule sets the kind. `library` is the fallback when none match.
 - **Hand-assigned weight**: A `confidence`, `weight`, or `score` constant written
@@ -117,7 +124,8 @@ results today. You can inspect the registry with `kb entities`.
 | FR-29 | [NEW] Reject an unknown `strategy` id at config load. Do not run the harvest for that config. |
 | FR-30 | [NEW] Allow a contributor to add a simple regex source pattern in YAML without a TypeScript change. |
 | FR-31 | Keep package kind classification on YAML `frameworks` and `kind_rules` (unchanged path). |
-| FR-32 | [NEW] Reject a `confidence` / `weight` / `score` key on any `kind_rule` or `source_pattern` at config load. Harvest rules carry no hand-assigned weights. |
+| FR-32 | Reject a `confidence` / `weight` / `score` key on any `kind_rule` or `source_pattern` at config load. Harvest rules carry no hand-assigned weights. |
+| FR-33 | [NEW] Record provenance on every candidate: manifest parsing emits `sourceKind: manifest`, pattern-engine harvest emits `sourceKind: source-pattern`. |
 
 ### QA Test Cases
 
@@ -157,6 +165,7 @@ results today. You can inspect the registry with `kb entities`.
 | TC-32 | FR-28 | `typescript.yaml` includes `class_method_prefix_join` for Nest | Route harvest emits a joined Nest method path (`GET /orders/:id`). |
 | TC-33 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
 | TC-34 | FR-32 | `source_pattern` or `kind_rule` carrying `confidence` / `weight` / `score` | Config load throws. Message names the offending key. |
+| TC-35 | FR-33 | Repo with a package manifest, an infra manifest, a route decorator, and a table declaration | Manifest-derived candidates are `sourceKind: manifest`; route and model candidates are `sourceKind: source-pattern`. |
 
 ### Related docs
 

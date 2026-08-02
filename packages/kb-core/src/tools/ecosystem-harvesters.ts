@@ -23,7 +23,7 @@ import {
   loadPackageEcosystemConfig,
   loadTypescriptEcosystemConfig,
 } from './ecosystem-config.js'
-import type { EntityKind } from './entity-registry.js'
+import type { EntityKind, EntitySourceKind } from './entity-registry.js'
 import {
   type NextRouteHit,
   type PrismaSchemaAtom,
@@ -61,7 +61,7 @@ export interface EntityCandidate {
   gloss?: string
   /** File the candidate was extracted from, repo-relative. */
   sourceFile: string
-  sourceKind: 'manifest'
+  sourceKind: EntitySourceKind
   contentHash: string
 }
 

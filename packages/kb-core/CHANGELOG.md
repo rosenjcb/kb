@@ -1,5 +1,27 @@
 # @kb/core
 
+## 1.6.3
+
+### Patch Changes
+
+- Record real provenance on harvested entity candidates.
+
+  `sourceKind` was typed as the literal `'manifest'` and hardcoded at all 27 emit
+  sites, including the ones inside `pattern-engine.ts` that are by definition not
+  manifests. A field that looked like it recorded where a name came from recorded
+  nothing.
+
+  It now carries the extraction path it actually took: `manifest` for names parsed
+  out of a file that declares identity (`package.json` `name`, `fly.toml` `app`,
+  Backstage catalog entries, `.proto` `service`, OpenAPI `info.title`), and
+  `source-pattern` for names found by running a YAML `source_pattern` over ordinary
+  source (route decorators, `CREATE TABLE`, class declarations, Next.js paths). The
+  emitting module is the boundary, asserted by TC-35.
+
+  This is a fact about extraction, not a ranking — no trust ordering is implied and
+  no query behavior changes. On this repo the split is 5 manifest-declared names
+  against 116 pattern-scraped ones.
+
 ## 1.6.2
 
 ### Patch Changes

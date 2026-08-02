@@ -30,6 +30,27 @@ export type EntityKind =
   /** ORM model / table / schema atom (not a deployable service). */
   | 'model'
 
+/**
+ * Where a harvested name came from — a fact about the extraction path, not a
+ * judgment about the name.
+ *
+ * - `manifest`: parsed out of a file whose job is to declare identity, taking the
+ *   identity it declares — `package.json` `name`, `fly.toml` `app`, a Backstage
+ *   catalog entry, a `.proto` `service`, an OpenAPI `info.title`. A person wrote
+ *   that string in order to name the thing.
+ * - `source-pattern`: found by running a YAML `source_pattern` through the pattern
+ *   engine over ordinary source — route decorators, `CREATE TABLE`, class
+ *   declarations, Next.js file paths. The name is real but incidental; nobody
+ *   declared it as an entity of the organization.
+ *
+ * The boundary is the emitting module: `ecosystem-harvesters.ts` emits `manifest`,
+ * `pattern-engine.ts` emits `source-pattern` (asserted by TC-35).
+ *
+ * `manual` is the third value, reserved for curated rows, which re-harvest never
+ * overwrites.
+ */
+export type EntitySourceKind = 'manifest' | 'source-pattern'
+
 export type EntityEdgeType = 'belongs_to' | 'owned_by' | 'part_of' | 'depends_on' | 'distinct_from'
 
 export interface EntityRow {
