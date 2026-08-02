@@ -1,49 +1,35 @@
 # @kb/core
 
-## 1.6.3
-
-### Patch Changes
-
-- Record real provenance on harvested entity candidates.
-
-  `sourceKind` was typed as the literal `'manifest'` and hardcoded at all 27 emit
-  sites, including the ones inside `pattern-engine.ts` that are by definition not
-  manifests. A field that looked like it recorded where a name came from recorded
-  nothing.
-
-  It now carries the extraction path it actually took: `manifest` for names parsed
-  out of a file that declares identity (`package.json` `name`, `fly.toml` `app`,
-  Backstage catalog entries, `.proto` `service`, OpenAPI `info.title`), and
-  `source-pattern` for names found by running a YAML `source_pattern` over ordinary
-  source (route decorators, `CREATE TABLE`, class declarations, Next.js paths). The
-  emitting module is the boundary, asserted by TC-35.
-
-  This is a fact about extraction, not a ranking — no trust ordering is implied and
-  no query behavior changes. On this repo the split is 5 manifest-declared names
-  against 116 pattern-scraped ones.
-
 ## 1.6.2
 
 ### Patch Changes
 
-- Remove hand-assigned weights from the ecosystem harvesters and entity registry.
+- Drop hand-assigned weights from the ecosystem harvesters, and record real
+  provenance in their place.
 
   Harvest rules described _what_ a manifest or source pattern declares and also
   carried a `confidence` constant typed in by the rule author. Nothing read those
   numbers back except one debug line in `kb entities`, so they encoded an opinion
-  that no experiment could falsify while looking like measured signal.
+  no experiment could falsify while looking like measured signal.
 
   - `kind_rules` and `source_patterns` no longer accept `confidence`; config load
     rejects `confidence` / `weight` / `score` on any rule.
   - `classifyPackageKind` / `classifyFromSignals` return an `EntityKind` instead of
     a `{ kind, confidence }` pair; `EntityCandidate` drops `confidence`.
   - `EntityRegistry` drops the confidence arguments on `upsertEntity`, `addAlias`,
-    and `linkFact`, and the unused `weight` argument on `addEdge`.
+    and `linkFact`, and the never-passed `weight` on `addEdge`.
   - Migration 18 drops `entities.confidence`, `entity_aliases.confidence`,
     `entity_links.confidence`, and `entity_edges.weight`.
 
-  Harvest output is unchanged: the same entities, aliases, edges, and collisions
-  are produced, with no number attached.
+  `sourceKind` was separately typed as the literal `'manifest'` and hardcoded at
+  all 27 emit sites, including those inside `pattern-engine.ts`, so a field that
+  appeared to record where a name came from recorded nothing. It now carries the
+  extraction path taken: `manifest` for names parsed from a file that declares
+  identity, `source-pattern` for names found by a YAML `source_pattern` run over
+  ordinary source. The emitting module is the boundary.
+
+  Harvest output is otherwise unchanged: the same entities, aliases, edges, and
+  collisions are produced, with no number attached and their origin recorded.
 
 ## 1.6.1
 
