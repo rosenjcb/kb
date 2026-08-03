@@ -994,6 +994,12 @@ describe('multi-suite parallel batch', () => {
     expect(argv).not.toContain('--sequential')
   })
 
+  it('[TC-255] buildChildArgv forwards --from-snapshot to every multi-suite child', () => {
+    const argv = buildChildArgv('raylib', { fromSnapshot: true, autoScore: true })
+    expect(argv).toContain('--from-snapshot')
+    expect(buildChildArgv('raylib', { autoScore: true })).not.toContain('--from-snapshot')
+  })
+
   it('[TC-238] buildMultiSuiteChildEnv keeps shared multi-base attach URL by default', () => {
     const env = buildMultiSuiteChildEnv({
       PATH: '/usr/bin',

@@ -47,6 +47,7 @@ See companion doc for full vocabulary where applicable.
 | FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-16 | Multi-suite harvest shares one multi-base kb-server by default: children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; `--per-suite-server` restores ephemeral per-child servers; `--skip-scan` is forwarded to children |
+| FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
 
 ### QA Test Cases
 
@@ -306,6 +307,7 @@ See companion doc for full vocabulary where applicable.
 | TC-252 | FR-16 | buildKbRemoteEnv passes through host and default port | pass |
 | TC-253 | FR-16 | buildEvalOfflineEnv clears remote connection vars | pass |
 | TC-254 | FR-16 | allocateFreePort yields distinct ports for concurrent callers | pass |
+| TC-255 | FR-17 | buildChildArgv forwards --from-snapshot to every multi-suite child | pass |
 
 ### Related docs
 

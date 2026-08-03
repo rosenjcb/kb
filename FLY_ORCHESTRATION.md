@@ -264,6 +264,32 @@ Using a non-Tigris S3 endpoint (R2/MinIO/AWS): set the same `BUCKET_NAME` +
 thin AWS-CLI wrapper you can point anywhere (or swap for `rclone`/`gsutil` in one
 place).
 
+## Consume a published snapshot locally (evaluation without a rebuild)
+
+The published snapshots are not only for the serving node — they are the cheapest
+way to get a fully built index onto a laptop or a CI box.
+[`scripts/snapshot-pull.mjs`](scripts/snapshot-pull.mjs) is the read-only consumer
+side of the same contract the serving entrypoint uses (`latest.json` → immutable
+version prefix → sha256-verified adopt):
+
+```bash
+pnpm run snapshot:pull                      # default base → local base eval-kb
+pnpm run snapshot:pull -- --base raylib     # → eval-raylib
+pnpm run snapshot:pull -- --all             # every base in bases.json
+pnpm run snapshot:pull -- --base raylib --list          # published versions
+pnpm run snapshot:pull -- --base raylib --no-import     # download + verify only
+
+# Or in one step from the eval runner:
+pnpm run eval -- --suite raylib --from-snapshot
+```
+
+It reads with the same S3 credentials the builder uses (`BUCKET_NAME` + `AWS_*`),
+or resolves them from `FLY_API_TOKEN` via the Fly extension API for `--app`
+(default `kb-demo`). It never writes to the bucket, never flips a pointer, and
+never rolls a machine — a pull cannot affect what the demo serves. See
+[`EVALUATION.md`](EVALUATION.md) § Evaluating on a published snapshot for when a
+snapshot-backed eval is valid and when you still need a local rebuild.
+
 ## Operate
 
 ```bash
@@ -291,6 +317,7 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performa
 | [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: deploy builder + recreate scheduler + deploy serving + seed all bases |
 | [`scripts/fly/roll-serving.mjs`](scripts/fly/roll-serving.mjs) | health-gated rolling restart via Fly Machines API |
 | [`scripts/fly/lib.sh`](scripts/fly/lib.sh) | shared config + S3 transport helpers |
+| [`scripts/snapshot-pull.mjs`](scripts/snapshot-pull.mjs) | `pnpm run snapshot:pull` — read-only consumer: adopt a published snapshot locally for evaluation |
 | [`scripts/fly/FLY.spec.md`](scripts/fly/FLY.spec.md) | behavioral spec (region co-location, complete publish/pull, default-first boot) |
 
 ## Related docs

@@ -277,6 +277,7 @@ export function buildChildArgv(suite, args) {
   if (args.hypothesis) argv.push('--hypothesis', args.hypothesis)
   if (args.forceInit) argv.push('--force-init')
   if (args.skipCapture) argv.push('--skip-init')
+  if (args.fromSnapshot) argv.push('--from-snapshot')
   if (args.skipScan) argv.push('--skip-scan')
   if (args.skipControl) argv.push('--skip-control')
   if (args.queryTrace) argv.push('--trace')
@@ -480,6 +481,9 @@ function parseArgs(argv) {
     scoresFile: null,
     skipCapture: false,
     skipScan: false,
+    // Adopt the snapshot Fly.io is already serving instead of building an index
+    // locally (scripts/snapshot-pull.mjs). Implies --skip-scan.
+    fromSnapshot: false,
     perSuiteServer: false,
     autoScore: true, // on by default; disable with --manual-score
     autoScoreFile: null,
@@ -542,6 +546,7 @@ function parseArgs(argv) {
     else if (a === '--manual-score') out.autoScore = false
     else if (a === '--skip-init') out.skipCapture = true
     else if (a === '--skip-scan') out.skipScan = true
+    else if (a === '--from-snapshot') out.fromSnapshot = true
     else if (a === '--per-suite-server') out.perSuiteServer = true
     else if (a === '--force-init') out.forceInit = true
     else if (a === '--skip-control') out.skipControl = true
@@ -608,6 +613,9 @@ Session:
   --force-init            Delete the base, then kb init from scratch (not just scan)
   --skip-scan             Skip eval-index scan (reuse existing index; still queries). Forced scan
                           after a fresh init.
+  --from-snapshot         Adopt the snapshot Fly.io is serving for this suite (download + verify +
+                          kb-server import) instead of indexing locally. Implies --skip-scan.
+                          Needs snapshot bucket creds or FLY_API_TOKEN — see scripts/snapshot-pull.mjs.
 
 Target repo (for clone + git metadata):
   --repo URL              Override suite YAML repo_url (https or git@; single-suite only)
@@ -1150,6 +1158,32 @@ async function main() {
     if (!args.base && fs.existsSync(initLogPath)) base = readBaseFromInitLog(initLogPath) || base
   }
 
+  // --from-snapshot: adopt the index Fly.io already serves for this suite instead of
+  // building one here. After the import the session has docs, so the plan below
+  // resolves to query-only (init/scan both skipped).
+  let snapshotPullMs = null
+  if (args.fromSnapshot && !args.skipCapture) {
+    const startedAt = Date.now()
+    try {
+      const { pullSnapshotForBase } = await import('./snapshot-pull.mjs')
+      const pulled = await pullSnapshotForBase({
+        base: suiteId,
+        into: base,
+        force: args.forceInit,
+      })
+      snapshotPullMs = Date.now() - startedAt
+      console.error(
+        `[eval] adopted snapshot ${pulled.base}@${pulled.version} into base "${pulled.localBase}"`
+      )
+    } catch (e) {
+      console.error(`[eval] --from-snapshot failed: ${e instanceof Error ? e.message : e}`)
+      process.exit(1)
+    }
+    // The snapshot IS the index — never rebuild it, and never wipe it afterwards.
+    args.skipScan = true
+    args.forceInit = false
+  }
+
   const hasDocs = sessionHasDocs(targetCwd, base)
   const { needsInit, wipeBase, evalMode } = resolveEvalInitPlan({
     forceInit: args.forceInit,
@@ -1191,6 +1225,9 @@ async function main() {
     query_durations_ms: [],
     query_total_duration_ms: null,
   }
+  // Snapshot adoption happens before this record exists; fold its cost in so the
+  // artifact still shows where the (much cheaper) index came from.
+  if (snapshotPullMs != null) runTiming.command_durations_ms.snapshot_pull = snapshotPullMs
 
   let evalServer = null
   if (!args.skipCapture) {
