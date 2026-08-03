@@ -554,6 +554,109 @@ const MIGRATIONS: Migration[] = [
         ON entity_links(entity_id);
     `,
   },
+  {
+    // Drop the hand-assigned weights from the entity registry. Every value these
+    // columns ever held was a constant typed into ecosystem YAML or a default in
+    // the registry — never a measurement — and nothing but a debug print ever read
+    // one back. A harvest rule now records only *what* a manifest declares; how far
+    // to trust a name is a question for measured signal at query time, not a number
+    // chosen when the rule was written.
+    //
+    // Every database reaching this migration has had 17 applied, so the columns
+    // exist and each DROP is total.
+    version: 18,
+    name: 'drop_entity_registry_weights',
+    sql: `
+      ALTER TABLE entities      DROP COLUMN confidence;
+      ALTER TABLE entity_aliases DROP COLUMN confidence;
+      ALTER TABLE entity_links  DROP COLUMN confidence;
+      ALTER TABLE entity_edges  DROP COLUMN weight;
+    `,
+  },
+  {
+    // Retrieval telemetry records a categorical evidence label, not a float. The
+    // old `confidence REAL` held the output of a hand-tuned blend that four
+    // separate consumers each re-thresholded with their own invented cut-point;
+    // the label is decided once now (`core/evidence-label`) and compared as an
+    // ordered category.
+    //
+    // Recreated rather than altered: no production code path writes these tables
+    // (the recorder has no callers), the readers only aggregate `status` and
+    // `next_action` and never read the dropped column, and DROP/CREATE is the one
+    // form that is correct whether or not the table exists in a given database.
+    version: 19,
+    name: 'retrieval_events_evidence_label',
+    sql: `
+      DROP TABLE IF EXISTS retrieval_checkpoint_events;
+      CREATE TABLE retrieval_checkpoint_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        method TEXT NOT NULL,
+        detail TEXT,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_stage
+        ON retrieval_checkpoint_events(stage, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_checkpoint_events_fingerprint
+        ON retrieval_checkpoint_events(query_fingerprint, created_at DESC);
+
+      DROP TABLE IF EXISTS retrieval_lane_routing_events;
+      CREATE TABLE retrieval_lane_routing_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_fingerprint TEXT NOT NULL,
+        primary_lane TEXT NOT NULL,
+        routed_lanes_json TEXT NOT NULL,
+        route_reason TEXT NOT NULL,
+        used_fallback INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        next_action TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_lane
+        ON retrieval_lane_routing_events(primary_lane, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_retrieval_lane_routing_events_fingerprint
+        ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
+    `,
+  },
+  {
+    // Facts carry an evidence *kind*, not a confidence float. The float was a
+    // per-write-site constant standing in for "what kind of fact is this"
+    // (0.3 an import edge, 0.7 an `extends` edge, 0.6 a doc sentence); the label
+    // says that outright and the ranking weight moves to one table in
+    // `core/fact-evidence`. Storing the label means those weights can be retuned
+    // and re-measured without reindexing a single fact.
+    //
+    // Existing rows are mapped back through the constants they were written with,
+    // so ranking is unchanged across the migration. Anything unrecognized lands on
+    // `curated`, matching the old `?? 0.8` default.
+    version: 20,
+    name: 'facts_evidence_kind',
+    sql: `
+      ALTER TABLE facts ADD COLUMN evidence TEXT NOT NULL DEFAULT 'curated';
+
+      UPDATE facts SET evidence = CASE
+        WHEN confidence <= 0.40  THEN 'incidental'
+        WHEN confidence <= 0.575 THEN 'contextual'
+        WHEN confidence <= 0.625 THEN 'descriptive'
+        WHEN confidence <= 0.675 THEN 'declarative'
+        WHEN confidence <= 0.75  THEN 'definitional'
+        ELSE 'curated'
+      END;
+
+      ALTER TABLE facts DROP COLUMN confidence;
+    `,
+  },
 ]
 
 /**

@@ -29,7 +29,7 @@ Segments join with ` · ` (middle dot):
 | **Leads** | top 3 unique `metadata.title` values (rank order) | `leads: Language \| Extensions, TsMorphIndexer, …` |
 | **Walk** | parsed from `retrieval.detail` | `walk: 24p/20h/6 ponds` |
 | **Stop** | `stop:` token in `retrieval.detail` | `stop: budget_exhausted` |
-| **Conf** | last finite checkpoint `confidence` | `conf: 0.71` |
+| **Evidence** | last checkpoint `evidence` label | `evidence: moderate` |
 
 Optional segments omitted when data missing.
 

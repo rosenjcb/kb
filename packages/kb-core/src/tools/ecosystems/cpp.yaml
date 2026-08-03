@@ -3,8 +3,8 @@
 #
 # Package identity is inherently weak vs npm/Cargo/go.mod. Prefer named
 # project()/vcpkg/conan/xmake atoms when present; Makefile and compile_commands
-# are not strong identity. Many repos are libraries (raylib-style) → low-confidence
-# library fallback is the common case, not a failure.
+# are not strong identity. Many repos are libraries (raylib-style) → the library
+# fallback is the common case, not a failure.
 #
 # Emits: one entity candidate per discoverable project/package atom.
 # Does not emit: HTTP routes or in-code symbols (see symbols/ / routes/).
@@ -82,29 +82,24 @@ frameworks:
 # Avoid as primary (do not add): raw sockets / asio alone (too common as a
 # transitive/util dep); libcurl alone; Boost.Asio without Beast/HTTP layer.
 
-# First matching rule wins. Confidence is capped low by design — C/C++ deps are
+# First matching rule wins. Rules carry no weights — C/C++ deps are
 # often header-only, system-installed, or undeclared in-repo. Match keys document
-# intended signals for a future harvester; do not treat scores like npm's 0.9s.
+# intended signals for a future harvester.
 kind_rules:
   - kind: service
-    confidence: 0.7
     match:
       any_dependency_group: server
   - kind: surface
-    confidence: 0.65
     match:
       any_dependency_group: surface
   - kind: cli
-    confidence: 0.65
     match:
       any_dependency_group: cli
   - kind: library
-    confidence: 0.45
     match:
       has_installable_headers: true # public include/ or install(FILES …)
       without_dependency_group: server
   - kind: library
-    confidence: 0.4
     match: {} # fallback — most C/C++ repos (raylib-style libraries)
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -119,7 +114,7 @@ symbols:
 routes:
   status: partial
   note: >
-    Crow CROW_ROUTE and Drogon ADD_METHOD_TO macros. Confidence ~0.5; capped.
+    Crow CROW_ROUTE and Drogon ADD_METHOD_TO macros.
   planned_frameworks: []
 
 app_classes:
@@ -134,7 +129,6 @@ models:
 source_patterns:
   - id: crow_route
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Crow route
@@ -150,7 +144,6 @@ source_patterns:
         - .hpp
   - id: drogon_add_method
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Drogon route

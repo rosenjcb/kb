@@ -78,7 +78,7 @@ flowchart TD
    from `CHAT_WEAK_RETRIEVAL_REFUSAL` (step 9), which is a real retrieval verdict.
 
 10. **Orchestration footer** — `printReadDocumentsOrchestrationFooter()` prints `retrieval>`,
-   `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`confidence>` rows,
+   `matches>`, `sources>`, `timing>`. Use `--verbose` for `summary>`/`evidence>` rows,
    `--debug` for per-document provenance.
 
 11. **Presentation** — wire stays `answer` + `sources[]`; text surfaces use

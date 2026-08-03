@@ -1,3 +1,4 @@
+import type { EvidenceLabel } from '../core/evidence-label'
 import { isEnvTrue } from '../config/env-boolean.js'
 import type { LLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
@@ -70,7 +71,8 @@ export interface QueryResponse {
       stage?: string
       status?: string
       nextAction?: string
-      confidence?: number
+      /** Categorical evidence strength — see `core/evidence-label`. */
+      evidence?: EvidenceLabel
     }>
     /** Out-of-band curator audit — kept/dropped/re-queried decisions. Never injected into context. */
     curation?: CurationRecord

@@ -177,7 +177,7 @@ describe('SQLite KB index integration', () => {
       stage: 'hybrid_primary',
       status: idx < 24 ? ('hit' as const) : ('miss' as const),
       nextAction: idx < 24 ? ('return' as const) : ('advance' as const),
-      confidence: idx < 24 ? 0.86 : 0.2,
+      evidence: idx < 24 ? ('strong' as const) : ('none' as const),
       method: 'hybrid' as const,
       detail: 'fts+vector-rerank',
       surface: 'reader' as const,
@@ -218,7 +218,7 @@ describe('SQLite KB index integration', () => {
       stage: 'hybrid_primary',
       status: idx < 6 ? ('hit' as const) : ('miss' as const),
       nextAction: idx < 6 ? ('return' as const) : ('advance' as const),
-      confidence: idx < 6 ? 0.7 : 0.15,
+      evidence: idx < 6 ? ('strong' as const) : ('none' as const),
       method: 'hybrid' as const,
       detail: 'fts+vector-rerank',
       surface: 'reader' as const,
@@ -322,7 +322,7 @@ describe('SQLite KB index integration', () => {
       },
       sourceKind: 'import_code',
       sourceRef: 'code:src/tools/code-graph-indexer.ts@TsMorphIndexer',
-      confidence: 0.95,
+      evidence: 'strong' as const,
     })
     const importFact = indexer.upsertFact({
       factText: 'src/cli/init-cli.ts imports src/tools/code-graph-indexer.ts',
@@ -333,7 +333,7 @@ describe('SQLite KB index integration', () => {
       },
       sourceKind: 'import_code',
       sourceRef: 'code:src/cli/init-cli.ts@import',
-      confidence: 0.95,
+      evidence: 'strong' as const,
     })
 
     expect(indexer.relinkCodeImportEdges()).toBeGreaterThan(0)
@@ -388,7 +388,7 @@ describe('SQLite KB index integration', () => {
       usedFallback: false,
       status: 'hit',
       nextAction: 'return',
-      confidence: 0.82,
+      evidence: 'strong' as const,
       surface: 'reader',
     })
 
@@ -400,7 +400,7 @@ describe('SQLite KB index integration', () => {
       usedFallback: true,
       status: 'miss',
       nextAction: 'advance',
-      confidence: 0.25,
+      evidence: 'weak' as const,
       surface: 'reader',
     })
 
@@ -430,7 +430,7 @@ describe('SQLite KB index integration', () => {
         usedFallback: true,
         status: i < 3 ? 'hit' : 'miss',
         nextAction: i < 3 ? 'return' : 'advance',
-        confidence: i < 3 ? 0.75 : 0.2,
+        evidence: i < 3 ? ('strong' as const) : ('none' as const),
         surface: 'reader',
       })
     }
@@ -444,7 +444,7 @@ describe('SQLite KB index integration', () => {
         usedFallback: false,
         status: i < 10 ? 'hit' : 'miss',
         nextAction: i < 10 ? 'return' : 'advance',
-        confidence: i < 10 ? 0.8 : 0.3,
+        evidence: i < 10 ? ('strong' as const) : ('weak' as const),
         surface: 'reader',
       })
     }

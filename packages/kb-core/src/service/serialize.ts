@@ -4,6 +4,7 @@
  * retrieval representation.
  */
 
+import { type EvidenceLabel, isEvidenceAtLeast } from '@kb/core/core/evidence-label.js'
 import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
@@ -38,7 +39,7 @@ export interface QueryResponseBody {
     /** Best-effort LLM stages that failed and were skipped; retrieval still succeeded. */
     degraded?: LLMFailure[]
   }
-  confidence?: number
+  evidence?: EvidenceLabel
   /**
    * Why no answer came back. Present only when synthesis was attempted and failed, so
    * `answer: null` alone never has to be interpreted — a provider outage is legible as
@@ -117,7 +118,7 @@ export interface McpQueryResponseBody {
   answer: string | null
   /** Compact citations, `path (symbol, …)` — open these files to verify the answer. */
   sources: string[]
-  confidence?: number
+  evidence?: EvidenceLabel
   /** Actionable caveats: verify hints, answer/evidence path mismatches. */
   notes?: string[]
   /**
@@ -131,7 +132,8 @@ export interface McpQueryResponseBody {
 const MCP_MAX_SOURCES = 5
 const MCP_MAX_SYMBOLS_PER_SOURCE = 3
 /** Below this, tell the caller to verify the cited files before relying on the answer. */
-const MCP_VERIFY_CONFIDENCE_BELOW = 0.7
+/** Answers below this evidence bar carry a verify note in the MCP payload. */
+const MCP_VERIFY_EVIDENCE_FLOOR: EvidenceLabel = 'strong'
 
 /** File extensions that make a token in prose read as a source-file reference. */
 const FILE_REF_EXTENSIONS = new Set([
@@ -242,17 +244,17 @@ function formatMcpSources(results: QuerySource[]): string[] {
 /**
  * Map an `IntentResult` to the trimmed MCP `kb_query` payload: answer + top
  * cited files, no fact dump, no retrieval metadata. Adds `notes` when the
- * answer needs verification (mid/low confidence) or when the prose names files
- * absent from the evidence.
+ * answer needs verification (evidence below `MCP_VERIFY_EVIDENCE_FLOOR`) or when
+ * the prose names files absent from the evidence.
  */
 export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseBody {
   const full = serializeQueryResult(result)
   const sources = formatMcpSources(full.results)
   const notes: string[] = []
 
-  if (typeof full.confidence === 'number' && full.confidence < MCP_VERIFY_CONFIDENCE_BELOW) {
+  if (full.evidence && !isEvidenceAtLeast(full.evidence, MCP_VERIFY_EVIDENCE_FLOOR)) {
     notes.push(
-      `Confidence ${full.confidence.toFixed(2)} — verify the cited sources before relying on this answer.`
+      `Retrieval evidence was ${full.evidence} — verify the cited sources before relying on this answer.`
     )
   }
 
@@ -284,7 +286,7 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
     status: full.status,
     answer: full.answer,
     sources,
-    ...(typeof full.confidence === 'number' ? { confidence: full.confidence } : {}),
+    ...(full.evidence ? { evidence: full.evidence } : {}),
     ...(notes.length > 0 ? { notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
   }
@@ -305,7 +307,7 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
       detail: data.retrieval?.detail,
       ...(degraded && degraded.length > 0 ? { degraded } : {}),
     },
-    ...(typeof result.confidence === 'number' ? { confidence: result.confidence } : {}),
+    ...(result.evidence ? { evidence: result.evidence } : {}),
     ...(data.answerError ? { answerError: data.answerError } : {}),
     ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
   }

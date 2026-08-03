@@ -46,8 +46,8 @@ with a Makefile/CMakeLists and no package-manager manifest. Kind fallback
 
 - **`Makefile` / `makefile`** — ubiquitous, especially in C libraries. Targets
   (`all`, `install`, `$(NAME).a`) are **not** stable package identity. Role:
-  `weak_package`. Use only when nothing stronger exists; confidence must stay
-  low; prefer directory basename over a guessed `TARGET`.
+  `weak_package`. Use only when nothing stronger exists; prefer the directory
+  basename over a guessed `TARGET`.
 - **`compile_commands.json`** — clangd / IDE compilation database. Lists
   translation units and flags. **Never an entity.** Role: `companion`. May
   later help *locate* sources, not name packages.
@@ -56,7 +56,7 @@ with a Makefile/CMakeLists and no package-manager manifest. Kind fallback
   `/usr/lib/pkgconfig`. Do not scan the system; only harvest committed
   `*.pc` under the repo.
 
-## Kind rubric — inherently low confidence
+## Kind rubric — inherently weak signals
 
 Dep signals are noisier than npm:
 
@@ -65,18 +65,20 @@ Dep signals are noisier than npm:
 - Boost as a monolith (`boost` Conan package) vs component names
 - CMake `find_package` names ≠ vcpkg port names ≠ include paths
 
-Cap confidence below TS/Go/Rust equivalents even when a framework token matches.
+A C/C++ signal is weaker evidence than its TS/Go/Rust equivalent. Where a rule
+would only be right some of the time, leave it out rather than writing it down
+with a discount attached — harvest rules carry no weights.
 
-| Signal | Kind | Confidence | Notes |
-|--------|------|------------|--------|
-| crow / oatpp / pistache / drogon / cpprestsdk / grpc / boost.beast | `service` | ≤0.7 | Best available server signal |
-| qt / gtk / imgui / wxwidgets | `surface` | ≤0.65 | GUI / immediate-mode UI |
-| cli11 / cxxopts / boost.program_options | `cli` | ≤0.65 | |
-| public headers / install(FILES) rules, no server deps | `library` | ~0.45 | |
-| else (typical) | `library` | 0.4 | raylib-style default |
+| Signal | Kind | Notes |
+|--------|------|--------|
+| crow / oatpp / pistache / drogon / cpprestsdk / grpc / boost.beast | `service` | Best available server signal |
+| qt / gtk / imgui / wxwidgets | `surface` | GUI / immediate-mode UI |
+| cli11 / cxxopts / boost.program_options | `cli` | |
+| public headers / install(FILES) rules, no server deps | `library` | |
+| else (typical) | `library` | raylib-style default |
 
-Do **not** invent high-confidence kinds from `add_executable` alone — almost every
-CMake tutorial builds an exe for a library demo.
+Do **not** infer a kind from `add_executable` alone — almost every CMake tutorial
+builds an exe for a library demo.
 
 ## Frameworks — include vs avoid
 

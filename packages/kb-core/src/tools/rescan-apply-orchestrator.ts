@@ -1,3 +1,4 @@
+import { type EvidenceLabel, isEvidenceAtLeast } from '../core/evidence-label'
 import path from 'node:path'
 import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { renderDiffBundle, renderTextDiff } from '../core/git-diff-preview'
@@ -11,7 +12,8 @@ export interface RescanCandidateClaim {
   text: string
   topic: string
   sourcePaths: string[]
-  confidence: number
+  /** How substantial the claim text is. Categorical — see `core/evidence-label`. */
+  substance: EvidenceLabel
 }
 
 export interface RescanEvidenceResult {
@@ -20,7 +22,7 @@ export interface RescanEvidenceResult {
   equivalentDocs: string[]
   contradictionDocs: string[]
   contradictionFacts: string[]
-  evidenceScore: number
+  evidence: EvidenceLabel
 }
 
 export interface RescanPlannedMutation {
@@ -188,7 +190,7 @@ function extractClaims(
         text: snippet,
         topic,
         sourcePaths,
-        confidence: estimateConfidence(snippet),
+        substance: assessClaimSubstance(snippet),
       })
       if (claimMap.size >= maxClaims) break
     }
@@ -227,7 +229,7 @@ function gatherEvidence(
           equivalentDocs: [],
           contradictionDocs: [],
           contradictionFacts: [],
-          evidenceScore: 0,
+          evidence: 'none' as const,
         }
       }
       const equivalentDocs: string[] = []
@@ -261,20 +263,18 @@ function gatherEvidence(
           contradictionFacts.push(candidateFact.slice(0, 240))
         }
       }
-      const evidenceScore = clamp(
-        (equivalentDocs.length > 0 ? 0.75 : 0) +
-          Math.min(supportDocs.length, 4) * 0.05 -
-          Math.min(contradictionDocs.length, 2) * 0.1,
-        0,
-        1
-      )
+      const evidence = assessDocEvidence({
+        equivalentDocs: equivalentDocs.length,
+        supportDocs: supportDocs.length,
+        contradictionDocs: contradictionDocs.length,
+      })
       const result = {
         claimId: claim.claimId,
         supportDocs: dedup(supportDocs),
         equivalentDocs: dedup(equivalentDocs),
         contradictionDocs: dedup(contradictionDocs),
         contradictionFacts: dedup(contradictionFacts),
-        evidenceScore,
+        evidence,
       }
       onProgress?.({
         stage: 'gather-evidence',
@@ -336,7 +336,11 @@ function planMutations(
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
-    if (e.supportDocs.length >= 2 && e.evidenceScore >= 0.2 && e.contradictionDocs.length === 0) {
+    if (
+      e.supportDocs.length >= 2 &&
+      isEvidenceAtLeast(e.evidence, 'moderate') &&
+      e.contradictionDocs.length === 0
+    ) {
       return {
         claimId: claim.claimId,
         action: 'noop',
@@ -348,8 +352,8 @@ function planMutations(
     const contradictionFact = e.contradictionFacts[0]
     if (
       e.contradictionDocs.length > 0 &&
-      claim.confidence >= 0.6 &&
-      e.evidenceScore >= 0.45 &&
+      isEvidenceAtLeast(claim.substance, 'moderate') &&
+      isEvidenceAtLeast(e.evidence, 'strong') &&
       isSafeReplacementFact(contradictionFact)
     ) {
       if (!targetDocId) {
@@ -369,16 +373,16 @@ function planMutations(
         oldFact: contradictionFact,
         newFact: claim.text,
         rationale:
-          'Contradicting evidence exists and new claim confidence/evidence pass threshold.',
+          'Contradicting evidence exists; the claim is substantial and an equivalent doc was found.',
         expectedPostcondition:
           'Contradicting statement is removed/replaced and new claim is retrievable.',
       }
     }
-    if (claim.confidence < 0.65) {
+    if (!isEvidenceAtLeast(claim.substance, 'moderate')) {
       return {
         claimId: claim.claimId,
         action: 'noop',
-        rationale: 'Claim confidence is below write threshold and does not justify a write.',
+        rationale: 'Claim text is too thin to justify a write.',
         expectedPostcondition: 'No KB mutation should be required.',
       }
     }
@@ -479,7 +483,7 @@ async function applyMutations(input: {
             triplet: placeholderTripletFromFactText(mutation.newFact),
             sourceKind: 'import_code',
             sourceRef: 'rescan',
-            confidence: 0.8,
+            evidence: 'curated',
           })
           writtenDocIds.push(result.id)
         }
@@ -567,12 +571,35 @@ function isSafeReplacementFact(value: string | undefined): value is string {
   return true
 }
 
-function estimateConfidence(text: string): number {
+/**
+ * How substantial a candidate claim's text is, by length. Length is a weak proxy
+ * and always was — the old form dressed it as 0.35 / 0.55 / 0.7 / 0.85 and then
+ * compared it against 0.6 and 0.65, so only the moderate/strong boundary ever
+ * changed an outcome. The categories say that outright.
+ */
+function assessClaimSubstance(text: string): EvidenceLabel {
   const tokenCount = text.split(/\s+/).filter(Boolean).length
-  if (tokenCount < 8) return 0.35
-  if (tokenCount >= 20) return 0.85
-  if (tokenCount >= 12) return 0.7
-  return 0.55
+  if (tokenCount < 8) return 'none'
+  if (tokenCount >= 20) return 'strong'
+  if (tokenCount >= 12) return 'moderate'
+  return 'weak'
+}
+
+/**
+ * How strongly the existing KB already speaks to a claim.
+ * `strong` — an equivalent doc already states it.
+ * `moderate` — several docs support it and nothing contradicts it.
+ * `weak` — some support exists.
+ */
+function assessDocEvidence(counts: {
+  equivalentDocs: number
+  supportDocs: number
+  contradictionDocs: number
+}): EvidenceLabel {
+  if (counts.equivalentDocs > 0) return 'strong'
+  if (counts.supportDocs >= 4 && counts.contradictionDocs === 0) return 'moderate'
+  if (counts.supportDocs > 0) return 'weak'
+  return 'none'
 }
 
 function extractClaimSnippets(content: string): string[] {
@@ -645,10 +672,6 @@ function slugify(value: string): string {
 
 function dedup<T>(values: T[]): T[] {
   return Array.from(new Set(values))
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }
 
 function clampPositiveInt(value: number | undefined, fallback: number): number {

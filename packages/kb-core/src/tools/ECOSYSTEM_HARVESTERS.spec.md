@@ -13,7 +13,7 @@ description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML source_patterns drive tier-4 route and app harvest.
 tags: [indexing, entities, ontology, harvester, spec]
-timestamp: 2026-08-01T21:30:00Z
+timestamp: 2026-08-02T02:00:00Z
 ---
 
 ### Intro
@@ -30,8 +30,9 @@ The pattern engine loads those rules. It emits entity candidates for the
 this specification (§4a / harvester tiers).
 
 Tier-4 harvest writes registry rows for later use. Those rows can have kind
-`api`, `module`, `model`, or `surface`. Tier-4 harvest does not control query
-results today. You can inspect the registry with `kb entities`.
+`api`, `module`, `model`, or `surface`, and carry `sourceKind: source-pattern`.
+Tier-4 harvest does not control query results today. You can inspect the registry
+with `kb entities`.
 
 ### Definitions
 
@@ -45,10 +46,20 @@ results today. You can inspect the registry with `kb entities`.
   selects it by id. Examples: `regex`, `class_method_prefix_join`,
   `rails_resources_crud`. This is not a free-form join DSL.
 - **Entity candidate**: A record that a harvester emits. Fields: `kind`,
-  `canonicalName`, `aliases`, optional `gloss`, `sourceFile`,
-  `sourceKind: manifest`, `confidence`, `contentHash`.
+  `canonicalName`, `aliases`, optional `gloss`, `sourceFile`, `sourceKind`,
+  `contentHash`. A candidate carries no weight.
+- **Provenance (`sourceKind`)**: Which extraction path produced the name.
+  `manifest` = parsed from a file that declares identity, taking the identity it
+  declares. `source-pattern` = found by a YAML `source_pattern` run over ordinary
+  source. The emitting module is the boundary: `ecosystem-harvesters.ts` emits
+  `manifest`, `pattern-engine.ts` emits `source-pattern`. This records where a
+  name came from; it is not a ranking and implies no trust ordering.
 - **Kind rubric**: The ordered `kind_rules` list in the ecosystem YAML. The
-  first matching rule sets the kind.
+  first matching rule sets the kind. `library` is the fallback when none match.
+- **Hand-assigned weight**: A `confidence`, `weight`, or `score` constant written
+  into a harvest rule by its author. Rules must not carry one; config load rejects
+  the key. A rule either describes the thing in front of it or it does not, and a
+  rule too weak to act on is deleted rather than discounted.
 - **Infra tier**: Harvest from compose, `fly.toml`, and Backstage files. This
   tier is not tied to one language. See `ecosystems/infra.yaml`.
 - **`model` kind**: An ORM model, table, or schema name. It is not a
@@ -75,6 +86,7 @@ results today. You can inspect the registry with `kb entities`.
 - Ambiguity lanes and ontology assembly (plan phases 4–6)
 - Query rules that use new route and model entities (follow-up work)
 - A free-form YAML join DSL (named strategies only)
+- Weights of any kind on harvest rules or emitted candidates (FR-32)
 - Full Gradle, Mill, vcpkg, and Conan identity (Maven, CMake, and sbt first)
 
 ### Functional Requirements
@@ -82,7 +94,7 @@ results today. You can inspect the registry with `kb entities`.
 | ID   | Requirement |
 |------|-------------|
 | FR-1 | Load each ecosystem YAML. Keep frameworks, kind rules, and `symbols` / `routes` coverage. |
-| FR-2 | Set package kind from YAML `kind_rules`. Use the first match. Give lower confidence to weaker signals. |
+| FR-2 | [UPDATED] Set package kind from YAML `kind_rules`. Use the first match; fall back to `library`. Emit no weight. |
 | FR-3 | Harvest workspace packages. Keep identity, aliases, gloss, and `part_of` edges to the root package. |
 | FR-4 | If there are no workspace members, harvest the root `package.json`. If there is no package manifest, emit no candidates. |
 | FR-5 | Harvest compose service keys, Fly app names, and Backstage catalog entries as set in `infra.yaml`. |
@@ -101,7 +113,7 @@ results today. You can inspect the registry with `kb entities`.
 | FR-18 | Harvest C# projects from `*.csproj` with the YAML kind rubric. A `.sln` `part_of` edge is optional. |
 | FR-19 | Harvest Scala projects from `build.sbt` `name :=` with the YAML kind rubric. |
 | FR-20 | Harvest Kubernetes, Helm, Procfile, OpenAPI, and protobuf candidates as `service` or `api`. |
-| FR-21 | [UPDATED] Harvest tier-4 HTTP routes as low-confidence `api` entities from YAML `source_patterns`. Harvest Next.js pages as `surface`. Reject file-path false matches. |
+| FR-21 | Harvest tier-4 HTTP routes as `api` entities from YAML `source_patterns`. Harvest Next.js pages as `surface`. Reject file-path false matches. |
 | FR-22 | [UPDATED] Harvest tier-4 app classes as `module` and ORM models as `model` from YAML `source_patterns`. Do not emit kind `service` for those atoms. |
 | FR-23 | Harvest extra route and model patterns: Nest method verbs, Hono, Go 1.22 ServeMux, Sinatra/Grape, Tapir `.in`, Drogon, GraphQL roots/types, Drizzle/Mongoose/Sequelize, EF `ToTable`, Exposed, Persistent lines. |
 | FR-24 | Join Spring and Nest class/controller prefixes with method paths. Expand Rails `resources` to CRUD verbs. Harvest Symfony YAML routes, Slim maps, Flask MethodView `add_url_rule`, Django `include()` prefixes, tRPC procedures, OpenAPI path items, Room `tableName`, Hibernate XML, and Persistent TH blocks. |
@@ -111,7 +123,9 @@ results today. You can inspect the registry with `kb entities`.
 | FR-28 | [NEW] Run each source pattern through a named strategy in the pattern engine (`regex`, join strategies, and specialized parsers). |
 | FR-29 | [NEW] Reject an unknown `strategy` id at config load. Do not run the harvest for that config. |
 | FR-30 | [NEW] Allow a contributor to add a simple regex source pattern in YAML without a TypeScript change. |
-| FR-31 | [NEW] Keep package kind classification on YAML `frameworks` and `kind_rules` (unchanged path). |
+| FR-31 | Keep package kind classification on YAML `frameworks` and `kind_rules` (unchanged path). |
+| FR-32 | Reject a `confidence` / `weight` / `score` key on any `kind_rule` or `source_pattern` at config load. Harvest rules carry no hand-assigned weights. |
+| FR-33 | [NEW] Record provenance on every candidate: manifest parsing emits `sourceKind: manifest`, pattern-engine harvest emits `sourceKind: source-pattern`. |
 
 ### QA Test Cases
 
@@ -119,7 +133,7 @@ results today. You can inspect the registry with `kb entities`.
 |---------|-------------|----------|------------------|
 | TC-1 | FR-1 | Load `typescript.yaml` | Frameworks include express, react, and commander. Kind rules are present. Symbols and routes status is `partial`. |
 | TC-2 | FR-1 | Load `infra.yaml` | Compose files, `fly.toml`, and `catalog-info.yaml` are configured. |
-| TC-3 | FR-2 | Package with express, bin, react, main, or empty fields | Kinds are service, cli, surface, or library. Empty package confidence is below 0.5. |
+| TC-3 | FR-2 | Package with express, bin, react, main, or empty fields | Kinds are service, cli, surface, or library. An empty package falls back to `library`. |
 | TC-4 | FR-3 | pnpm workspace with client (bin), server (express), and core (main) | Candidates are cli, service, and library. Aliases exist. `part_of` points to root. |
 | TC-5 | FR-4 | Solo package with fastify; empty directory | One service candidate for the package. Empty directory yields zero candidates. |
 | TC-6 | FR-5 | Compose, fly, and Backstage files are present | Candidates exist for service keys, app name, and catalog name. A `belongs_to` edge exists. |
@@ -134,7 +148,7 @@ results today. You can inspect the registry with `kb entities`.
 | TC-15 | FR-14 | Gemfile with rails and no gemspec | Candidate kind is `service`. Name is the scan directory basename. |
 | TC-16 | FR-15 | Multi-module pom with a spring-boot-starter-web member | Parent and payments candidates exist. Payments kind is `service`. A `part_of` edge exists. |
 | TC-17 | FR-16 | `billing.cabal` with servant | Candidate kind is `service`. |
-| TC-18 | FR-17 | `CMakeLists.txt` with `project(raylib)` | Candidate kind is `library`. Confidence is low. |
+| TC-18 | FR-17 | `CMakeLists.txt` with `project(raylib)` | Candidate kind is `library`. |
 | TC-19 | FR-18 | Sdk.Web csproj and `.sln` | Candidate kind is `service`. A `part_of` edge points to the solution name. |
 | TC-20 | FR-19 | `build.sbt` with name storefront and play | Candidate kind is `service`. |
 | TC-21 | FR-20 | Kubernetes Deployment or Ingress, Helm Chart, and Procfile | Candidates have kind `service` or `api`. |
@@ -150,6 +164,8 @@ results today. You can inspect the registry with `kb entities`.
 | TC-31 | FR-29 | Source pattern with `strategy: not_a_real_strategy` | Config load throws. Message names the unknown strategy. |
 | TC-32 | FR-28 | `typescript.yaml` includes `class_method_prefix_join` for Nest | Route harvest emits a joined Nest method path (`GET /orders/:id`). |
 | TC-33 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
+| TC-34 | FR-32 | `source_pattern` or `kind_rule` carrying `confidence` / `weight` / `score` | Config load throws. Message names the offending key. |
+| TC-35 | FR-33 | Repo with a package manifest, an infra manifest, a route decorator, and a table declaration | Manifest-derived candidates are `sourceKind: manifest`; route and model candidates are `sourceKind: source-pattern`. |
 
 ### Related docs
 

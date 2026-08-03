@@ -59,40 +59,33 @@ frameworks:
   cli:
     - symfony/console
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 kind_rules:
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: service
-    confidence: 0.65
     match:
       composer_type: project
       without_bin: true
   - kind: cli
-    confidence: 0.85
     match:
       has_bin: true # composer.json `bin` array
   - kind: cli
-    confidence: 0.8
     match:
       has_artisan: true # root `artisan` PHP script (Laravel)
   - kind: cli
-    confidence: 0.7
     match:
       any_dependency_group: cli
       without_dependency_group: server
   - kind: surface
-    confidence: 0.75
     match:
       any_dependency_group: frontend
   - kind: library
-    confidence: 0.8
     match:
       composer_type: library
   - kind: library
-    confidence: 0.4
     match: {} # fallback — any composer.json with no stronger signal
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -108,7 +101,6 @@ routes:
   note: >
     Best-effort Laravel Route::get/post/…/resource, Symfony #[Route]/@Route
     and config/routes*.yaml `path:` entries, plus Slim $app->get/map.
-    Confidence ~0.5; capped.
   planned_frameworks:
     - laravel # routes/web.php, routes/api.php, routes/*.php
     - symfony # attribute + YAML
@@ -127,7 +119,6 @@ source_patterns:
   - id: laravel_route_facade
     kind: api
     gloss: Laravel Route facade
-    confidence: 0.5
     filter: plausible_http_route
     strategy: rails_resources_crud
     join_style: laravel
@@ -136,7 +127,6 @@ source_patterns:
         - .php
   - id: symfony_route_attr
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Symfony Route attribute
@@ -148,7 +138,6 @@ source_patterns:
         - .php
   - id: symfony_route_annotation
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Symfony Route annotation
@@ -160,7 +149,6 @@ source_patterns:
         - .php
   - id: slim_verb_methods
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Slim route
@@ -172,7 +160,6 @@ source_patterns:
         - .php
   - id: slim_map_methods
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Slim map
@@ -187,7 +174,6 @@ source_patterns:
   - id: symfony_yaml_routes
     kind: api
     gloss: Symfony YAML route
-    confidence: 0.5
     filter: plausible_http_route
     strategy: symfony_yaml_routes
     files:
@@ -196,7 +182,6 @@ source_patterns:
         - .yml
   - id: php_app_suffix
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: PHP application class
@@ -208,7 +193,6 @@ source_patterns:
         - .php
   - id: eloquent_model
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Eloquent model
@@ -220,7 +204,6 @@ source_patterns:
         - .php
   - id: doctrine_entity_class
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Doctrine entity
@@ -232,7 +215,6 @@ source_patterns:
         - .php
   - id: doctrine_table
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Doctrine table
@@ -246,7 +228,6 @@ source_patterns:
         - .php
   - id: eloquent_table_prop
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Eloquent $table

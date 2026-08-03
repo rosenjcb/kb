@@ -1,5 +1,61 @@
 # @kb/core
 
+## 1.6.2
+
+### Patch Changes
+
+- Remove hand-assigned numbers from the harvester and express every assessment as
+  a label.
+
+  **Harvest rules carry no weights.** Every `kind_rule` and `source_pattern` had a
+  `confidence` constant typed in by its author, read by nothing but one debug line
+  in `kb entities`. Removed from YAML, code, and schema; config load now rejects
+  `confidence` / `weight` / `score` on any rule, so a rule too weak to act on gets
+  deleted rather than discounted. `classifyPackageKind` / `classifyFromSignals`
+  return an `EntityKind` instead of a `{ kind, confidence }` pair, and
+  `EntityRegistry` drops the confidence arguments plus the never-passed `weight` on
+  `addEdge`.
+
+  **Candidates record real provenance.** `sourceKind` was typed as the literal
+  `'manifest'` and hardcoded at all 27 emit sites, including those inside
+  `pattern-engine.ts` that are by definition not manifests. It now carries the
+  extraction path taken: `manifest` for names parsed from a file that declares
+  identity, `source-pattern` for names found by a YAML `source_pattern` run over
+  ordinary source.
+
+  **Retrieval assessments are categorical.** A `confidence` float came out of a
+  hand-tuned blend and four modules each re-interpreted it with their own
+  cut-point: chat refused below `0.45`, the MCP serializer warned below `0.7`, the
+  checkpoint orchestrator used `0.55` / `0.45`, the rescan writer `0.6` / `0.65`.
+  New `core/evidence-label` defines one ordered vocabulary (`none` / `weak` /
+  `moderate` / `strong`); the category is decided once, where the metrics are
+  known, and consumers compare labels. Both live cut-points — the chat refusal
+  floor and the MCP verify note — are reproduced exactly, pinned by a test that
+  sweeps the metric space against the original formula.
+  `IntentResult.confidence` → `evidence` across REST/MCP payloads, checkpoints,
+  trace lanes, and telemetry; `KB_CHAT_RETRIEVAL_MIN_CONFIDENCE` and
+  `KB_INTENT_LOOP_CONFIDENCE_THRESHOLD` take labels, falling back to the default
+  rather than silently disabling the gate.
+
+  **Facts carry an evidence kind, not a confidence float.** Per-fact `confidence`
+  was a per-write-site constant standing in for _what kind of fact this is_ — 0.3
+  an import edge, 0.7 an `extends` edge, 0.6 a doc sentence. Facts now store a
+  label (`incidental`, `contextual`, `descriptive`, `declarative`, `definitional`,
+  `curated`) and the ranking weight lives in one table in `core/fact-evidence`.
+  The MCP `upsert_fact` tool takes the label as an enum, so an extractor can assign
+  it semantically. Because the label is what is stored, the weights can be retuned
+  and re-measured without reindexing.
+
+  Migrations 18–20 drop the entity-registry weight columns, recreate the retrieval
+  telemetry tables with `evidence TEXT`, and map existing `facts.confidence` values
+  back through the constants they were written with.
+
+  Behavior is unchanged throughout: harvest produces the same entities, aliases,
+  edges, and collisions; every migrated fact resolves to the exact ranking weight
+  it had before; and both retrieval gates keep their existing boundaries. The
+  weights are inherited guesses, not results — they are what the ablation harness
+  (#207) exists to test.
+
 ## 1.6.1
 
 ### Patch Changes

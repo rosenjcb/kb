@@ -249,7 +249,7 @@ export async function ingestSourceMarkdownFilesAsFacts(
             triplet,
             sourceKind: 'import_doc',
             sourceRef,
-            confidence: 0.55,
+            evidence: 'contextual',
             gitRepo: input.gitRepo,
           })
           segmentsUpserted += 1

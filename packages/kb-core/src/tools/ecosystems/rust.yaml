@@ -67,7 +67,8 @@ frameworks:
 # Avoid as primary (do not add): iron, nickel, gotham (abandoned / niche);
 # iced as default surface (desktop GUI exists but rare as “app surface” signal).
 
-# First matching rule wins. Confidence drops when the signal is weak.
+# First matching rule wins. Rules carry no weights — if a signal is too weak to
+# act on, leave the rule out rather than discounting it.
 # Match keys document intended signals for the future Rust harvester.
 #
 # Target discovery (Cargo Book — cargo-targets):
@@ -78,38 +79,30 @@ frameworks:
 kind_rules:
   # gRPC-first → api (before broad server→service so tonic lands as api)
   - kind: api
-    confidence: 0.85
     match:
       any_dependency: [tonic]
       without_dependency_group: frontend
   - kind: service
-    confidence: 0.9
     match:
       any_dependency_group: server
   - kind: surface
-    confidence: 0.75
     match:
       any_dependency_group: frontend
   - kind: cli
-    confidence: 0.85
     match:
       has_bin_target: true
       without_dependency_group: server
   - kind: cli
-    confidence: 0.8
     match:
       any_dependency_group: cli
   - kind: library
-    confidence: 0.8
     match:
       has_lib_target: true
       without_bin_target: true
   - kind: library
-    confidence: 0.55
     match:
       has_lib_target: true # lib+bin with no stronger dep signal
   - kind: library
-    confidence: 0.4
     match: {} # fallback
 
 # Declared coverage gaps — not harvested yet (tier-4 in ECOSYSTEM_HARVESTERS.spec.md §4a).
@@ -124,7 +117,7 @@ routes:
   status: partial
   note: >
     Best-effort axum .route("/…", get|post|…) and actix/rocket
-    #[get]/#[post] macros. Confidence ~0.5; capped. Prefer axum Router::route /
+    #[get]/#[post] macros. Prefer axum Router::route /
     method routers and actix-web #[get]/#[post]/web::resource macros; Rocket route
     attributes similar. tonic service methods are contract-tier (proto), not
     HTTP route strings.
@@ -145,7 +138,6 @@ models:
 source_patterns:
   - id: rocket_verb_attrs
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Rocket route
@@ -157,7 +149,6 @@ source_patterns:
         - .rs
   - id: axum_route
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Axum route
@@ -169,7 +160,6 @@ source_patterns:
         - .rs
   - id: actix_resource
     kind: api
-    confidence: 0.5
     filter: plausible_http_route
     strategy: regex
     gloss: Actix resource
@@ -181,7 +171,6 @@ source_patterns:
         - .rs
   - id: rust_app_structs
     kind: module
-    confidence: 0.55
     filter: plausible_type_name
     strategy: regex
     gloss: Rust application struct
@@ -193,7 +182,6 @@ source_patterns:
         - .rs
   - id: seaorm_entity
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: SeaORM entity
@@ -205,7 +193,6 @@ source_patterns:
         - .rs
   - id: diesel_table
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: Diesel table
@@ -217,7 +204,6 @@ source_patterns:
         - .rs
   - id: seaorm_table_name
     kind: model
-    confidence: 0.55
     filter: plausible_model_name
     strategy: regex
     gloss: SeaORM table_name

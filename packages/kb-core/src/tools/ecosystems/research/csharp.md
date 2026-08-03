@@ -26,7 +26,7 @@ libraries that use ASP.NET Core APIs without `Sdk.Web`.
 Parse as XML (MSBuild). Do not invoke `dotnet` / MSBuild for harvest — static
 read only. Honor `Directory.Build.props` ancestors for inherited
 `PackageReference` / properties when cheap; skip conditioned items that need
-full evaluation if ambiguous (lower confidence).
+full evaluation if ambiguous (skip rather than guess).
 
 Sources: [MSBuild project SDKs](https://learn.microsoft.com/en-us/dotnet/core/project-sdk/overview),
 [ASP.NET Core Web SDK](https://learn.microsoft.com/en-us/aspnet/core/razor-pages/web-sdk),

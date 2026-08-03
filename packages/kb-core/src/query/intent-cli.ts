@@ -150,8 +150,8 @@ export function formatIntentResult(
 
   const lines: string[] = []
   lines.push(formatOrchestrationMetaLine('status', result.status))
-  if (typeof result.confidence === 'number') {
-    lines.push(formatOrchestrationMetaLine('confidence', result.confidence.toFixed(2)))
+  if (result.evidence) {
+    lines.push(formatOrchestrationMetaLine('evidence', result.evidence))
   }
   if (result.recommendedAction) {
     lines.push(formatOrchestrationMetaLine('next', result.recommendedAction))
@@ -182,8 +182,8 @@ export function printIntentResult(
   }
 
   printer.metadata('Status', result.status)
-  if (typeof result.confidence === 'number') {
-    printer.metadata('Confidence', result.confidence.toFixed(2))
+  if (result.evidence) {
+    printer.metadata('Evidence', result.evidence)
   }
   if (result.recommendedAction) {
     printer.metadata('Next', result.recommendedAction)
@@ -357,8 +357,8 @@ export function printReadDocumentsOrchestrationFooter(
   if (verbose) {
     printer.metadata('Summary', buildSummary(results))
     printer.metadata('Status', result.status)
-    if (typeof result.confidence === 'number') {
-      printer.metadata('Confidence', result.confidence.toFixed(2))
+    if (result.evidence) {
+      printer.metadata('Evidence', result.evidence)
     }
   }
 
@@ -782,8 +782,8 @@ function formatReadDocumentsHumanResult(
   if (verbose) {
     lines.push(formatOrchestrationMetaLine('summary', buildSummary(results)))
     lines.push(formatOrchestrationMetaLine('status', result.status))
-    if (typeof result.confidence === 'number') {
-      lines.push(formatOrchestrationMetaLine('confidence', result.confidence.toFixed(2)))
+    if (result.evidence) {
+      lines.push(formatOrchestrationMetaLine('evidence', result.evidence))
     }
   }
 

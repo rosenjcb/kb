@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type SourcePattern, loadAllSourcePatterns } from './ecosystem-config.js'
-import type { EntityKind } from './entity-registry.js'
+import type { EntityKind, EntitySourceKind } from './entity-registry.js'
 
 export interface EntityCandidate {
   kind: EntityKind
@@ -15,8 +15,7 @@ export interface EntityCandidate {
   aliases: string[]
   gloss?: string
   sourceFile: string
-  sourceKind: 'manifest'
-  confidence: number
+  sourceKind: EntitySourceKind
   contentHash: string
 }
 
@@ -95,7 +94,6 @@ export async function walkSourceFiles(
 }
 
 const ROUTE_CAP = 200
-const OPENAPI_PATH_CONFIDENCE = 0.75
 const APP_CONCEPT_CAP = 160
 const MODEL_CAP = 160
 
@@ -865,7 +863,7 @@ function pushUniqueCandidate(
 
 /**
  * Tier-4 in-code route/decorator harvest — best-effort regex + Next.js
- * filesystem routes, low confidence, capped. Never load-bearing.
+ * filesystem routes. Never load-bearing for entity identity.
  * Next.js `page` files emit `surface`; API/route handlers emit `api`.
  */
 /** Django `path('api/', include('users.urls'))` → module key `users.urls`. */
@@ -1249,8 +1247,7 @@ export function runOpenApiPathItems(
       aliases: [routePath],
       gloss: 'OpenAPI path item',
       sourceFile: rel,
-      sourceKind: 'manifest',
-      confidence: OPENAPI_PATH_CONFIDENCE,
+      sourceKind: 'source-pattern',
       contentHash: hash,
     })
     let resolved: unknown = item
@@ -1273,8 +1270,7 @@ export function runOpenApiPathItems(
         aliases: [name],
         gloss: 'OpenAPI operation',
         sourceFile: rel,
-        sourceKind: 'manifest',
-        confidence: OPENAPI_PATH_CONFIDENCE,
+        sourceKind: 'source-pattern',
         contentHash: hash,
       })
     }
@@ -1402,8 +1398,7 @@ export async function runSourcePatterns(
       aliases: [...new Set(aliases)],
       gloss: hit.gloss ?? rule.gloss,
       sourceFile: rel,
-      sourceKind: 'manifest',
-      confidence: rule.confidence,
+      sourceKind: 'source-pattern',
       contentHash: hash,
     })
     if (opts.phase === 'app' && candidates.length > before) {

@@ -1,3 +1,9 @@
+import {
+  type EvidenceLabel,
+  assessResultCount,
+  isEvidenceAtLeast,
+} from '../core/evidence-label'
+
 export type RetrievalCheckpointStage = 'hybrid_primary' | 'lexical_recovery' | 'query_rewrite_retry'
 
 export type RetrievalCheckpointStatus = 'hit' | 'miss' | 'error'
@@ -5,28 +11,28 @@ export type RetrievalCheckpointStatus = 'hit' | 'miss' | 'error'
 export interface RetrievalCheckpointRecord {
   stage: RetrievalCheckpointStage
   status: RetrievalCheckpointStatus
-  confidence: number
+  /** How much usable evidence this stage produced. Categorical — see `core/evidence-label`. */
+  evidence: EvidenceLabel
   reason: string
   nextAction: 'return' | 'advance'
   method: 'hybrid' | 'lexical' | 'lexical-fallback'
   detail?: string
 }
 
+/**
+ * How much evidence a stage must produce before the pipeline stops advancing.
+ * The primary stage is held to a higher bar than the recovery stages, which is
+ * the entire distinction the old `highConfidenceThreshold` / `mediumConfidenceThreshold`
+ * pair encoded — as two floats that had to be compared against a third.
+ */
 export interface RetrievalCheckpointConfig {
-  highConfidenceThreshold: number
-  mediumConfidenceThreshold: number
+  primaryStageFloor: EvidenceLabel
+  recoveryStageFloor: EvidenceLabel
 }
 
 const DEFAULT_CONFIG: RetrievalCheckpointConfig = {
-  highConfidenceThreshold: 0.55,
-  mediumConfidenceThreshold: 0.45,
-}
-
-export function estimateConfidence(totalResults: number): number {
-  if (totalResults <= 0) return 0
-  if (totalResults === 1) return 0.55
-  if (totalResults === 2) return 0.72
-  return 0.86
+  primaryStageFloor: 'weak',
+  recoveryStageFloor: 'weak',
 }
 
 export function buildCheckpointRecord(input: {
@@ -43,14 +49,14 @@ export function buildCheckpointRecord(input: {
     ...input.config,
   }
 
-  const confidence = estimateConfidence(input.totalResults)
+  const evidence = assessResultCount(input.totalResults)
   const status = input.status ?? (input.totalResults > 0 ? 'hit' : 'miss')
-  const nextAction = decideNextAction(input.stage, status, confidence, config)
+  const nextAction = decideNextAction(input.stage, status, evidence, config)
 
   return {
     stage: input.stage,
     status,
-    confidence,
+    evidence,
     reason: input.reason,
     nextAction,
     method: input.method,
@@ -61,7 +67,7 @@ export function buildCheckpointRecord(input: {
 function decideNextAction(
   stage: RetrievalCheckpointStage,
   status: RetrievalCheckpointStatus,
-  confidence: number,
+  evidence: EvidenceLabel,
   config: RetrievalCheckpointConfig
 ): 'return' | 'advance' {
   if (stage === 'query_rewrite_retry') {
@@ -72,9 +78,7 @@ function decideNextAction(
     return 'advance'
   }
 
-  if (stage === 'hybrid_primary') {
-    return confidence >= config.highConfidenceThreshold ? 'return' : 'advance'
-  }
-
-  return confidence >= config.mediumConfidenceThreshold ? 'return' : 'advance'
+  const floor =
+    stage === 'hybrid_primary' ? config.primaryStageFloor : config.recoveryStageFloor
+  return isEvidenceAtLeast(evidence, floor) ? 'return' : 'advance'
 }

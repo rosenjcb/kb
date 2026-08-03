@@ -49,7 +49,7 @@ scripts pollute if over-trusted.
 `routes.status: not_implemented`. Planned enrichment only:
 
 - **Play** — parse `conf/routes` (method + path + controller action)
-- **http4s** — `HttpRoutes` / path DSL (AST; lower confidence)
+- **http4s** — `HttpRoutes` / path DSL (AST; weaker signal)
 
 Tapir endpoints are OpenAPI-adjacent; defer until interface-contract tier (plan
 §4a tier 3) is clearer. Never promote routes to top-level deployable entities.

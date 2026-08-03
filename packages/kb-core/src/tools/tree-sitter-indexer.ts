@@ -684,7 +684,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
                 sourceRef,
                 `${rel} imports ${targetRel}`,
                 { subject: rel, predicate: 'imports', object: targetRel },
-                0.3
+                'incidental'
               )
               stats.edges++
             }
@@ -728,7 +728,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
                 sourceRef,
                 factText,
                 { subject: name, predicate: 'exported_from', object: rel },
-                0.65,
+                'declarative',
                 sourceText
               )
               stats.symbols++
@@ -748,7 +748,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
                     edgeRef,
                     `${name} extends ${base} in ${rel}`,
                     { subject: name, predicate: 'extends', object: base },
-                    0.7
+                    'definitional'
                   )
                   stats.edges++
                 }
@@ -760,7 +760,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
                     edgeRef,
                     `${name} implements ${iface} in ${rel}`,
                     { subject: name, predicate: 'implements', object: iface },
-                    0.7
+                    'definitional'
                   )
                   stats.edges++
                 }
@@ -789,7 +789,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
                   constRef,
                   `${constName} is a constant with value ${valueText} in ${rel}`,
                   { subject: constName, predicate: 'defined_in', object: rel },
-                  0.6,
+                  'descriptive',
                   decl.text
                 )
                 stats.symbols++

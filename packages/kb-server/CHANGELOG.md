@@ -1,5 +1,12 @@
 # kb-server
 
+## 1.5.4
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@1.6.2
+
 ## 1.5.3
 
 ### Patch Changes

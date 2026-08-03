@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { type EvidenceLabel, assessRetrievalEvidence } from '../core/evidence-label'
+import { factEvidenceWeight } from '../core/fact-evidence'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
@@ -44,7 +46,8 @@ interface LoopCheckpoint {
   stage: string
   status: 'continue' | 'stop'
   nextAction: string
-  confidence: number
+  /** How much usable evidence this pass gathered. Categorical — see `core/evidence-label`. */
+  evidence: EvidenceLabel
 }
 
 interface LoopMetrics {
@@ -220,13 +223,13 @@ export class FactsQueryResearchOrchestrator {
             frontierConcepts: frontierConcepts.length,
             activePonds: ponds.filter(pond => !pond.exhausted).length,
           } satisfies LoopMetrics)
-        const exhaustedConfidence =
-          scoredFacts.size > 0 ? computeCheckpointConfidence(exhaustedMetrics) : 0
+        const exhaustedEvidence =
+          scoredFacts.size > 0 ? assessRetrievalEvidence(exhaustedMetrics) : 'none'
         checkpoints.push({
           stage: `pass_${iter + 1}`,
           status: 'stop',
           nextAction: 'frontier_exhausted',
-          confidence: exhaustedConfidence,
+          evidence: exhaustedEvidence,
         })
         stopReason =
           sufficiency.decision === 'answerable'
@@ -277,7 +280,7 @@ export class FactsQueryResearchOrchestrator {
         activePonds,
       }
       sufficiency = this.assessSufficiency({ scoredFacts, conceptCoverage })
-      const confidence = computeCheckpointConfidence(metrics)
+      const evidence = assessRetrievalEvidence(metrics)
       const hasMeaningfulGain = hasMeaningfulProgress(previousMetrics, metrics)
       plateauCount = hasMeaningfulGain ? 0 : plateauCount + 1
 
@@ -349,7 +352,7 @@ export class FactsQueryResearchOrchestrator {
         stage: `pass_${iter + 1}`,
         status,
         nextAction,
-        confidence,
+        evidence,
       })
 
       if (status === 'stop') {
@@ -436,7 +439,7 @@ export class FactsQueryResearchOrchestrator {
           1,
           overlapScore * 0.20 +
             graphProximityScore * 0.60 +
-            row.confidence * 0.20 +
+            factEvidenceWeight(row.evidence) * 0.20 +
             frontierBoost +
             anchorBoost +
             repoBoost -
@@ -448,7 +451,7 @@ export class FactsQueryResearchOrchestrator {
           1,
           overlapScore * 0.45 +
             semanticScore * 0.35 +
-            row.confidence * 0.20 +
+            factEvidenceWeight(row.evidence) * 0.20 +
             frontierBoost +
             anchorBoost +
             repoBoost -
@@ -588,7 +591,7 @@ export class FactsQueryResearchOrchestrator {
           stage: checkpoint.stage,
           status: checkpoint.status,
           nextAction: checkpoint.nextAction,
-          confidence: checkpoint.confidence,
+          evidence: checkpoint.evidence,
         })),
         discovered,
         returned: [...returnedIds],
@@ -853,13 +856,6 @@ function averageTopScores(scores: Map<string, { row: FactRow; score: number }>):
   return top.length > 0 ? top.reduce((sum, value) => sum + value, 0) / top.length : 0
 }
 
-function computeCheckpointConfidence(metrics: LoopMetrics): number {
-  const blended = metrics.avgTop * 0.75 + metrics.conceptCoverage * 0.25
-  const floorFromStrongSingleFact =
-    metrics.uniqueFacts > 0 && metrics.avgTop >= 0.65 ? Math.min(0.6, metrics.avgTop) : 0
-  return clampFloat(Math.max(blended, floorFromStrongSingleFact), 0, 1)
-}
-
 function hasMeaningfulProgress(previous: LoopMetrics | undefined, current: LoopMetrics): boolean {
   if (!previous) return true
   // Require at least one new high-quality (score >= RELEVANT_FACT_SCORE) fact — prevents iterating on junk
@@ -890,10 +886,6 @@ function isUnlimited(limit: number): boolean {
 
 function withinLimit(current: number, limit: number): boolean {
   return isUnlimited(limit) || current < limit
-}
-
-function clampFloat(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }
 
 export function buildFactsLoopFingerprint(query: string): string {

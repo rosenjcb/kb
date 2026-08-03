@@ -44,7 +44,6 @@ export interface KindRuleMatch {
 
 export interface KindRule {
   kind: EntityKind
-  confidence: number
   match: KindRuleMatch
 }
 
@@ -88,7 +87,6 @@ export interface SourcePattern {
   id: string
   kind: EntityKind
   gloss?: string
-  confidence: number
   filter: PatternFilter
   strategy: PatternStrategy
   /** Which harvest entrypoint runs this rule. Default from `kind`. */
@@ -165,37 +163,31 @@ export interface InfraEcosystemConfig {
     files: string[]
     services_key: string
     kind: EntityKind
-    confidence: number
   }
   fly: {
     file: string
     app_pattern: string
     kind: EntityKind
-    confidence: number
   }
   backstage: {
     file: string
     kind_map: Record<string, EntityKind | string> & { default: EntityKind | string }
-    confidence: number
     belongs_to_keys: string[]
   }
   kubernetes: {
     dirs: string[]
     kinds: string[]
     kind_map: Record<string, EntityKind | string> & { default: EntityKind | string }
-    confidence: number
     skip_template_marker: string
   }
   helm: {
     file: string
     name_key: string
     kind: EntityKind
-    confidence: number
   }
   procfile: {
     file: string
     kind: EntityKind
-    confidence: number
   }
   symbols: CoverageSection
   routes: CoverageSection
@@ -248,6 +240,23 @@ function defaultPhaseForKind(kind: EntityKind): PatternPhase {
   return 'routes'
 }
 
+/**
+ * Harvest rules describe *what* a manifest or pattern declares — never how much
+ * to trust it. A hand-typed `confidence` is an unfalsifiable guess: nobody can
+ * demonstrate 0.6 is wrong, so it never gets corrected, and any retrieval stage
+ * that reads it silently bakes the guess into every experiment downstream. If a
+ * rule's evidence is too weak to act on, delete the rule instead of discounting it.
+ */
+function rejectHandAssignedWeight(obj: Record<string, unknown>, context: string): void {
+  for (const key of ['confidence', 'weight', 'score'] as const) {
+    if (obj[key] !== undefined) {
+      throw new Error(
+        `${context} sets "${key}" — harvest rules must not carry hand-assigned weights. Drop the key; if the signal is too weak to trust, remove the rule.`
+      )
+    }
+  }
+}
+
 /** Validate one source_pattern object (tests and loaders). */
 export function parseSourcePattern(raw: unknown, context = 'source_pattern'): SourcePattern {
   return asSourcePattern(raw, context)
@@ -260,6 +269,7 @@ function asSourcePattern(raw: unknown, context: string): SourcePattern {
   const obj = raw as Record<string, unknown>
   const id = String(obj.id ?? '')
   if (!id) throw new Error(`source_pattern missing id in ${context}`)
+  rejectHandAssignedWeight(obj, `${context}(${id})`)
   const kind = asKind(obj.kind, `${context}(${id}).kind`)
   const strategyRaw = obj.strategy === undefined ? 'regex' : String(obj.strategy)
   if (!STRATEGY_SET.has(strategyRaw)) {
@@ -287,7 +297,6 @@ function asSourcePattern(raw: unknown, context: string): SourcePattern {
   const pattern: SourcePattern = {
     id,
     kind,
-    confidence: Number(obj.confidence ?? (kind === 'api' || kind === 'surface' ? 0.5 : 0.55)),
     filter: filterRaw as PatternFilter,
     strategy,
     phase,
@@ -430,10 +439,10 @@ export function loadPackageEcosystemConfig(id: string): PackageEcosystemConfig {
   const kind_rules: KindRule[] = Array.isArray(raw.kind_rules)
     ? raw.kind_rules.map((rule, i) => {
         const r = rule as Record<string, unknown>
+        rejectHandAssignedWeight(r, `${id}.kind_rules[${i}]`)
         const match = (r.match ?? {}) as KindRuleMatch
         return {
           kind: asKind(r.kind, `${id}.kind_rules[${i}]`),
-          confidence: Number(r.confidence),
           match,
         }
       })
@@ -521,16 +530,13 @@ export function loadInfraEcosystemConfig(): InfraEcosystemConfig {
     compose: {
       ...compose,
       kind: asKind(compose.kind, 'infra.compose.kind'),
-      confidence: Number(compose.confidence),
     },
     fly: {
       ...fly,
       kind: asKind(fly.kind, 'infra.fly.kind'),
-      confidence: Number(fly.confidence),
     },
     backstage: {
       ...backstage,
-      confidence: Number(backstage.confidence),
       kind_map: {
         ...backstage.kind_map,
         default: asKind(backstage.kind_map.default, 'infra.backstage.kind_map.default'),
@@ -538,7 +544,6 @@ export function loadInfraEcosystemConfig(): InfraEcosystemConfig {
     },
     kubernetes: {
       ...kubernetes,
-      confidence: Number(kubernetes.confidence),
       skip_template_marker: String(kubernetes.skip_template_marker ?? '{{'),
       kind_map: {
         ...kubernetes.kind_map,
@@ -549,12 +554,10 @@ export function loadInfraEcosystemConfig(): InfraEcosystemConfig {
       ...helm,
       name_key: String(helm.name_key ?? 'name'),
       kind: asKind(helm.kind, 'infra.helm.kind'),
-      confidence: Number(helm.confidence),
     },
     procfile: {
       ...procfile,
       kind: asKind(procfile.kind, 'infra.procfile.kind'),
-      confidence: Number(procfile.confidence),
     },
     symbols: asCoverage(raw.symbols, 'infra.symbols'),
     routes: asCoverage(raw.routes, 'infra.routes'),

@@ -3,6 +3,7 @@
  * All queries are synchronous (node:sqlite).
  */
 
+import { type FactEvidenceKind, asFactEvidenceKind } from '../core/fact-evidence'
 import { DatabaseSync } from 'node:sqlite'
 import { runMigrations } from '../core/db-migrations'
 
@@ -11,12 +12,12 @@ export interface CodeSymbol {
   name: string
   path: string | null
   subkind: string | null
-  confidence: number
+  evidence: FactEvidenceKind
 }
 
 export interface CodeSymbolNeighbor {
   predicate: string
-  confidence: number
+  evidence: FactEvidenceKind
   symbol: CodeSymbol
 }
 
@@ -34,7 +35,7 @@ function rowToSymbol(r: Record<string, unknown>): CodeSymbol {
     name: r.subject as string,
     path: (r.object as string | null) ?? null,
     subkind: null,
-    confidence: r.confidence as number,
+    evidence: asFactEvidenceKind(r.evidence),
   }
 }
 
@@ -101,7 +102,7 @@ export class CodeGraphStore {
     const limit = opts.limit ?? 20
     const rows = this.db
       .prepare(
-        `SELECT f.id, f.subject, f.object, f.confidence
+        `SELECT f.id, f.subject, f.object, f.evidence
          FROM facts_fts fts
          JOIN facts f ON f.id = fts.fact_id
          WHERE facts_fts MATCH ?
@@ -119,7 +120,7 @@ export class CodeGraphStore {
     const limit = opts.limit ?? 50
     const rows = this.db
       .prepare(
-        `SELECT f2.id, f2.subject, f2.object, f2.predicate, f2.confidence
+        `SELECT f2.id, f2.subject, f2.object, f2.predicate, f2.evidence
          FROM fact_edges fe
          JOIN facts f2 ON f2.id = fe.to_fact_id
          WHERE fe.from_fact_id = ?
@@ -130,7 +131,7 @@ export class CodeGraphStore {
       .all(factId, limit) as Record<string, unknown>[]
     return rows.map(r => ({
       predicate: r.predicate as string,
-      confidence: r.confidence as number,
+      evidence: asFactEvidenceKind(r.evidence),
       symbol: rowToSymbol(r),
     }))
   }
@@ -143,7 +144,7 @@ export class CodeGraphStore {
     const query = terms.join(' OR ')
     const rows = this.db
       .prepare(
-        `SELECT f.id, f.subject, f.object, f.confidence
+        `SELECT f.id, f.subject, f.object, f.evidence
          FROM facts_fts fts
          JOIN facts f ON f.id = fts.fact_id
          WHERE facts_fts MATCH ?

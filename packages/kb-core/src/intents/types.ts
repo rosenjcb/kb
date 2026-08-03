@@ -1,3 +1,4 @@
+import type { EvidenceLabel } from '../core/evidence-label'
 export type ConsumerIntent = 'query_truth'
 
 export interface ConsumerIntentEnvelope {
@@ -11,7 +12,8 @@ export interface IntentResult {
   explanation?: string
   recommendedAction?: string
   provenance?: string[]
-  confidence?: number
+  /** Categorical evidence strength from retrieval — see `core/evidence-label`. */
+  evidence?: EvidenceLabel
   data?: unknown
   errorCode?: string
 }

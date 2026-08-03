@@ -11,7 +11,7 @@ describe('serializeQueryResult', () => {
     const result: IntentResult = {
       status: 'accepted',
       recommendedAction: 'read_facts',
-      confidence: 0.82,
+      evidence: 'strong' as const,
       data: {
         answer: '  Base resolution walks up for a .kb file.  ',
         results: [
@@ -33,7 +33,7 @@ describe('serializeQueryResult', () => {
 
     expect(body.status).toBe('accepted')
     expect(body.answer).toBe('Base resolution walks up for a .kb file.')
-    expect(body.confidence).toBe(0.82)
+    expect(body.evidence).toBe('strong')
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
     expect(body.results).toHaveLength(1)
     expect(body.results[0]).toMatchObject({
@@ -51,7 +51,7 @@ describe('serializeQueryResult', () => {
     const body = serializeQueryResult({ status: 'accepted', data: { results: [] } })
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
-    expect(body.confidence).toBeUndefined()
+    expect(body.evidence).toBeUndefined()
   })
 
   it('[TC-39] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
@@ -112,7 +112,7 @@ describe('serializeMcpQueryResult', () => {
   it('[TC-112] trims to answer + citations and drops retrieval metadata and the fact dump', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
-      confidence: 0.9,
+      evidence: 'strong' as const,
       data: {
         answer: 'Login flows through `login.ts` and `session.ts`.',
         results: [factItem('src/auth/login.ts', 'loginHandler'), factItem('src/auth/session.ts')],
@@ -123,14 +123,14 @@ describe('serializeMcpQueryResult', () => {
       status: 'accepted',
       answer: 'Login flows through `login.ts` and `session.ts`.',
       sources: ['src/auth/login.ts (loginHandler)', 'src/auth/session.ts'],
-      confidence: 0.9,
+      evidence: 'strong',
     })
   })
 
-  it('[TC-113] adds a verify note when confidence is below the threshold', () => {
+  it('[TC-113] adds a verify note when evidence is below the floor', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
-      confidence: 0.5,
+      evidence: 'weak' as const,
       data: {
         answer: 'Something about `login.ts`.',
         results: [factItem('src/auth/login.ts')],
@@ -138,7 +138,7 @@ describe('serializeMcpQueryResult', () => {
       },
     })
     expect(body.notes).toEqual([
-      'Confidence 0.50 — verify the cited sources before relying on this answer.',
+      'Retrieval evidence was weak — verify the cited sources before relying on this answer.',
     ])
   })
 

@@ -377,7 +377,7 @@ See companion doc for full vocabulary where applicable.
 | TC-261 | FR-24 | prints minimal intent help with only the supported commands | pass |
 | TC-262 | FR-24 | renders orchestration footer through printer helpers | pass |
 | TC-263 | FR-24 | prints non-read_facts results without treating them as query results | pass |
-| TC-264 | FR-24 | derives query confidence from retrieval checkpoints instead of a fixed router default | pass |
+| TC-264 | FR-24 | derives query evidence from retrieval checkpoints instead of a fixed router default | pass |
 | TC-265 | FR-24 | keeps query rewrite/session fallback scoped to query only | pass |
 | TC-266 | FR-24 | enriches query answers with the LLM | pass |
 | TC-267 | FR-24 | replaces insufficient LLM answer with deterministic fallback from documents | pass |

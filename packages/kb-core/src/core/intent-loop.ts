@@ -6,6 +6,7 @@
  *   - Carryover of confidence, provenance, and retrieval depth across iterations
  */
 
+import { type EvidenceLabel, isEvidenceAtLeast, parseEvidenceLabel } from './evidence-label'
 import dayjs from 'dayjs'
 import { DefaultIntentRouter } from '../intents/router'
 import type { ConsumerIntentEnvelope, IntentResult } from '../intents/types'
@@ -15,16 +16,16 @@ import type { ToolExecutor } from './tool-registry'
 import type { LLMProvider } from './types'
 
 const DEFAULT_INTENT_LOOP_MAX_ITERATIONS = parseEnvInt('KB_INTENT_LOOP_MAX_ITERATIONS', 3)
-const DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD = parseEnvFloat(
-  'KB_INTENT_LOOP_CONFIDENCE_THRESHOLD',
-  0.7
+const DEFAULT_INTENT_LOOP_EVIDENCE_FLOOR: EvidenceLabel = parseEvidenceLabel(
+  process.env.KB_INTENT_LOOP_EVIDENCE_FLOOR,
+  'strong'
 )
 
 export interface IntentLoopConfig {
   /** Maximum number of iterations. Default: 3. */
   maxIterations?: number
-  /** Stop early when confidence reaches this threshold. Default: 0.7. */
-  confidenceThreshold?: number
+  /** Stop early once retrieval evidence reaches this label. Default: `strong`. */
+  evidenceFloor?: EvidenceLabel
   /** Optional provider used by callers that also collect token telemetry. */
   provider?: LLMProvider
   /** Active KB base directory (`.kb-index.sqlite` parent). */
@@ -47,7 +48,7 @@ export async function runIntentLoop(
   config: IntentLoopConfig = {}
 ): Promise<IntentLoopResult> {
   const maxIterations = config.maxIterations ?? DEFAULT_INTENT_LOOP_MAX_ITERATIONS
-  const confidenceThreshold = config.confidenceThreshold ?? DEFAULT_INTENT_LOOP_CONFIDENCE_THRESHOLD
+  const evidenceFloor = config.evidenceFloor ?? DEFAULT_INTENT_LOOP_EVIDENCE_FLOOR
   const { collector } = config
   const router = new DefaultIntentRouter(toolExecutor, config.provider, config.kbStorageDir, collector)
   const providerName = config.provider?.name ?? 'gemini'
@@ -92,7 +93,7 @@ export async function runIntentLoop(
   while (iterations < maxIterations) {
     const intent = envelope.intent
 
-    if ((result.confidence ?? 0) >= confidenceThreshold) break
+    if (result.evidence && isEvidenceAtLeast(result.evidence, evidenceFloor)) break
     if (result.status === 'error') break
 
     if (intent === 'query_truth') {
@@ -119,14 +120,6 @@ function parseEnvInt(name: string, fallback: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isFinite(parsed) || parsed < 1) return fallback
-  return parsed
-}
-
-function parseEnvFloat(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) return fallback
-  const parsed = Number.parseFloat(raw)
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) return fallback
   return parsed
 }
 

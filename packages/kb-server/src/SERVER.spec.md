@@ -176,7 +176,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-110 | FR-4 | advertises the verbose flag in the tool schema | pass |
 | TC-111 | FR-4 | verbose:true opts into the full evidence payload | pass |
 | TC-112 | FR-6 | trims to answer + citations and drops retrieval metadata and the fact dump | pass |
-| TC-113 | FR-6 | adds a verify note when confidence is below the threshold | pass |
+| TC-113 | FR-6 | adds a verify note when evidence is below the floor | pass |
 | TC-114 | FR-6 | dedupes citations per file, folds in symbols, and caps the list at 5 | pass |
 | TC-115 | FR-6 | flags answer file references that match no cited source path | pass |
 | TC-116 | FR-6 | notes when sources exist but no answer was synthesized | pass |

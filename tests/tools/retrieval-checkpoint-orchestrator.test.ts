@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildCheckpointRecord,
-  estimateConfidence,
-} from '@kb/core/tools/retrieval-checkpoint-orchestrator.js'
+import { buildCheckpointRecord } from '@kb/core/tools/retrieval-checkpoint-orchestrator.js'
+import { assessResultCount } from '@kb/core/core/evidence-label.js'
 
 describe('retrieval-checkpoint-orchestrator', () => {
-  it('[TC-86] Given result counts, then estimateConfidence returns deterministic bands', () => {
-    expect(estimateConfidence(0)).toBe(0)
-    expect(estimateConfidence(1)).toBe(0.55)
-    expect(estimateConfidence(2)).toBe(0.72)
-    expect(estimateConfidence(3)).toBe(0.86)
+  it('[TC-86] Given result counts, then assessResultCount returns deterministic labels', () => {
+    expect(assessResultCount(0)).toBe('none')
+    expect(assessResultCount(1)).toBe('weak')
+    expect(assessResultCount(2)).toBe('moderate')
+    expect(assessResultCount(3)).toBe('strong')
   })
 
-  it('[TC-87] Given high-confidence hybrid hit, then next action is return', () => {
+  it('[TC-87] Given a strong hybrid hit, then next action is return', () => {
     const record = buildCheckpointRecord({
       stage: 'hybrid_primary',
       totalResults: 3,
@@ -25,7 +23,7 @@ describe('retrieval-checkpoint-orchestrator', () => {
     expect(record.nextAction).toBe('return')
   })
 
-  it('[TC-88] Given low-confidence lexical stage, then next action advances to rewrite retry', () => {
+  it('[TC-88] Given a lexical stage with no evidence, then next action advances to rewrite retry', () => {
     const record = buildCheckpointRecord({
       stage: 'lexical_recovery',
       totalResults: 0,

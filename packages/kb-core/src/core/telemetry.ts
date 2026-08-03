@@ -6,6 +6,7 @@
  * When --debug is passed, live stage summaries are printed to stderr.
  */
 
+import type { EvidenceLabel } from './evidence-label'
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
@@ -62,12 +63,12 @@ export interface QueryRetrievalTrace {
   factsReturned?: number
   /** Per-pass loop trace lines (frontier / merge / hop counts), in order. */
   hops: string[]
-  /** Per-pass checkpoint decisions (status + confidence). */
+  /** Per-pass checkpoint decisions (status + evidence label). */
   checkpoints?: Array<{
     stage?: string
     status?: string
     nextAction?: string
-    confidence?: number
+    evidence?: EvidenceLabel
   }>
   /** Post-retrieval curator audit, when curation ran. */
   curation?: QueryCurationTrace
@@ -236,7 +237,7 @@ export function summarizeQueryRetrievalTrace(retrieval: {
   method?: string
   detail?: string
   traceDetail?: string
-  checkpoints?: Array<{ stage?: string; status?: string; nextAction?: string; confidence?: number }>
+  checkpoints?: Array<{ stage?: string; status?: string; nextAction?: string; evidence?: EvidenceLabel }>
   curation?: {
     evaluated?: number
     dropped?: unknown[]

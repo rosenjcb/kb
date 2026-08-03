@@ -5,6 +5,7 @@ import {
   listEcosystemIds,
   loadCommonEcosystemConfig,
   loadInfraEcosystemConfig,
+  loadPackageEcosystemConfig,
   loadTypescriptEcosystemConfig,
   parseSourcePattern,
 } from '@kb/core/tools/ecosystem-config.js'
@@ -115,11 +116,41 @@ describe('ecosystem YAML configs', () => {
         id: 'bad',
         kind: 'api',
         strategy: 'not_a_real_strategy',
-        confidence: 0.5,
         filter: 'none',
         files: { extensions: ['.ts'] },
       })
     ).toThrow(/Unknown strategy "not_a_real_strategy"/)
+  })
+
+  it('[TC-34] Given a source_pattern carrying a hand-assigned weight, when parsed, then load throws', () => {
+    for (const key of ['confidence', 'weight', 'score']) {
+      expect(() =>
+        parseSourcePattern({
+          id: 'weighted',
+          kind: 'api',
+          strategy: 'regex',
+          pattern: '@Route\\(([^)]+)\\)',
+          filter: 'none',
+          files: { extensions: ['.ts'] },
+          [key]: 0.5,
+        })
+      ).toThrow(new RegExp(`sets "${key}"`))
+    }
+  })
+
+  it('[TC-34] Given shipped ecosystem YAML, when loaded, then no rule carries a weight', () => {
+    // The guard above only fires on parse; this asserts the shipped configs are
+    // actually clean, so the rule is enforced in-repo and not just in theory.
+    for (const id of listEcosystemIds()) {
+      if (id === 'infra') continue
+      const config = loadPackageEcosystemConfig(id)
+      for (const rule of config.kind_rules) {
+        expect(rule).not.toHaveProperty('confidence')
+      }
+      for (const pattern of config.source_patterns) {
+        expect(pattern).not.toHaveProperty('confidence')
+      }
+    }
   })
 
   it('[TC-32] Given Nest class_method_prefix_join in YAML, when harvested, then joined method routes emit', async () => {
@@ -145,25 +176,26 @@ describe('ecosystem YAML configs', () => {
   })
 
   it('[TC-33] Given package.json with express, when classified, then YAML kind_rules set service', () => {
-    const { kind, confidence } = classifyPackageKind({
-      name: 'payments-api',
-      dependencies: { express: '4' },
-    })
-    expect(kind).toBe('service')
-    expect(confidence).toBeGreaterThanOrEqual(0.9)
+    expect(
+      classifyPackageKind({
+        name: 'payments-api',
+        dependencies: { express: '4' },
+      })
+    ).toBe('service')
   })
 })
 
 describe('classifyPackageKind', () => {
   it('[TC-3] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
-    expect(classifyPackageKind({ dependencies: { express: '4' } }).kind).toBe('service')
-    expect(classifyPackageKind({ bin: { kb: './bin/kb' } }).kind).toBe('cli')
+    expect(classifyPackageKind({ dependencies: { express: '4' } })).toBe('service')
+    expect(classifyPackageKind({ bin: { kb: './bin/kb' } })).toBe('cli')
     expect(
-      classifyPackageKind({ name: '@kb/server', bin: { 'kb-server': './dist/bin/kb-server' } }).kind
+      classifyPackageKind({ name: '@kb/server', bin: { 'kb-server': './dist/bin/kb-server' } })
     ).toBe('service')
-    expect(classifyPackageKind({ dependencies: { react: '18' } }).kind).toBe('surface')
-    expect(classifyPackageKind({ main: 'index.js' }).kind).toBe('library')
-    expect(classifyPackageKind({}).confidence).toBeLessThan(0.5)
+    expect(classifyPackageKind({ dependencies: { react: '18' } })).toBe('surface')
+    expect(classifyPackageKind({ main: 'index.js' })).toBe('library')
+    // Nothing matched → the `library` fallback, with no weight attached to say so.
+    expect(classifyPackageKind({})).toBe('library')
   })
 })
 
@@ -359,7 +391,6 @@ describe('harvestContractManifests', () => {
     const result = await harvestContractManifests(scanDir)
     const byName = new Map(result.candidates.map(c => [c.canonicalName, c]))
     expect(byName.get('Payments API')?.kind).toBe('api')
-    expect(byName.get('Payments API')?.confidence).toBeGreaterThanOrEqual(0.85)
     expect(byName.get('acme.billing.BillingService')?.kind).toBe('api')
     expect(byName.get('acme.billing.BillingService')?.aliases).toContain('BillingService')
     expect(byName.get('Catalog API')?.kind).toBe('api')
@@ -535,7 +566,6 @@ describe('harvestRouteDecorators', () => {
     expect(names).not.toContain('GET /should-not-appear')
     expect(names).not.toContain('mitmproxy/data/foo.pem')
     expect(result.candidates.every(c => c.kind === 'api' || c.kind === 'surface')).toBe(true)
-    expect(result.candidates.every(c => c.confidence === 0.5)).toBe(true)
   })
 })
 
@@ -997,7 +1027,6 @@ describe('harvestAppConcepts', () => {
       id: 'demo_route_yaml_only',
       kind: 'api',
       gloss: 'Demo route',
-      confidence: 0.5,
       filter: 'plausible_http_route',
       strategy: 'regex',
       pattern: '@DemoRoute\\s*\\(\\s*[\'"]([^\'"]+)[\'"]',
@@ -1092,6 +1121,32 @@ describe('harvestRepoEntities', () => {
     const result = await harvestRepoEntities(scanDir)
     // Same name from two sources — registry upsert merges them by (kind, name).
     expect(result.candidates.filter(c => c.canonicalName === 'edge-worker')).toHaveLength(2)
+  })
+
+  it('[TC-35] Given manifests and in-source declarations, when harvested, then provenance separates them', async () => {
+    await writePackage(scanDir, { name: 'billing-api', dependencies: { express: '4' } })
+    await writeFile(path.join(scanDir, 'fly.toml'), 'app = "billing-prod"\n')
+    await mkdir(path.join(scanDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(scanDir, 'src', 'routes.ts'),
+      ["app.get('/invoices/:id', handler)", "db.exec('CREATE TABLE invoices (id TEXT)')"].join('\n')
+    )
+
+    const result = await harvestRepoEntities(scanDir)
+    const provenanceOf = (name: string) =>
+      result.candidates.find(c => c.canonicalName === name)?.sourceKind
+
+    // Declared identity — a person wrote these strings to name the thing.
+    expect(provenanceOf('billing-api')).toBe('manifest')
+    expect(provenanceOf('billing-prod')).toBe('manifest')
+    // Found by a source_pattern over ordinary source — real names, but incidental.
+    expect(provenanceOf('GET /invoices/:id')).toBe('source-pattern')
+    expect(provenanceOf('invoices')).toBe('source-pattern')
+
+    // The boundary is total: every candidate declares one side or the other.
+    expect(
+      result.candidates.every(c => c.sourceKind === 'manifest' || c.sourceKind === 'source-pattern')
+    ).toBe(true)
   })
 })
 
@@ -1233,7 +1288,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('service')
   })
 
-  it('[TC-18] Given CMakeLists.txt project(), when harvested, then low-confidence library candidate', async () => {
+  it('[TC-18] Given CMakeLists.txt project(), when harvested, then library candidate', async () => {
     await writeFile(
       path.join(scanDir, 'CMakeLists.txt'),
       [
@@ -1245,7 +1300,6 @@ describe('multi-language package harvest', () => {
     const result = await harvestCppEcosystem(scanDir)
     expect(result.candidates[0]?.canonicalName).toBe('raylib')
     expect(result.candidates[0]?.kind).toBe('library')
-    expect(result.candidates[0]?.confidence).toBeLessThanOrEqual(0.45)
   })
 
   it('[TC-19] Given *.csproj Sdk.Web, when harvested, then project is a service with sln part_of', async () => {
