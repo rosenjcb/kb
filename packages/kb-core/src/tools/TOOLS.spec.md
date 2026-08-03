@@ -157,6 +157,7 @@ See companion doc for full vocabulary where applicable.
 | TC-86 | FR-14 | Given result counts, then assessResultCount returns deterministic labels | pass |
 | TC-87 | FR-14 | Given a strong hybrid hit, then next action is return | pass |
 | TC-88 | FR-14 | Given a lexical stage with no evidence, then next action advances to rewrite retry | pass |
+| TC-36 | FR-14 | Given the retrieval metric space, then chat-refusal and MCP-verify boundaries match the pre-label formula | pass |
 | TC-89 | FR-14 | Given rewrite retry stage, then next action always returns | pass |
 | TC-90 | FR-15 | Given a new document input, then should write markdown file and index table entry | pass |
 | TC-91 | FR-15 | Given duplicate document titles without overwrite, then should create a unique suffixed file id | pass |

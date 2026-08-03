@@ -70,10 +70,19 @@ export function parseEvidenceLabel(raw: string | undefined, fallback: EvidenceLa
  * The single place a retrieval pass's metrics become a category.
  *
  * `avgTop` is the mean score of the top-ranked facts and `conceptCoverage` the
- * share of query concepts touched — both measured. The boundaries below are the
- * one set of cut-points in the system, replacing the blend
- * (`avgTop * 0.75 + conceptCoverage * 0.25`) and the four downstream thresholds
- * that each re-interpreted its output.
+ * share of query concepts touched — both measured, both real observations.
+ *
+ * The blend and the two cut-points below are inherited verbatim from the float
+ * this function replaced, so the categorical form draws exactly the same line
+ * the chat gate drew before: a turn is answered iff
+ * `avgTop * 0.75 + conceptCoverage * 0.25 >= 0.45`, or `avgTop >= 0.65`.
+ *
+ * Deliberately not re-derived. An earlier draft of this function used tidier
+ * boundaries (`avgTop >= 0.45 || conceptCoverage >= 0.6`) and, on a sweep of the
+ * metric space, changed the answer/refuse verdict on **17% of it** — mostly
+ * answering turns whose top facts scored near zero but which touched many
+ * concepts. Representation changes must not move behavior; retuning these
+ * numbers is a separate, measured decision (#207).
  */
 export function assessRetrievalEvidence(metrics: {
   uniqueFacts: number
@@ -81,11 +90,18 @@ export function assessRetrievalEvidence(metrics: {
   conceptCoverage: number
 }): EvidenceLabel {
   if (metrics.uniqueFacts <= 0) return 'none'
-  // A single decisive fact is strong evidence even when coverage is thin — this
-  // preserves the old `floorFromStrongSingleFact` behavior without the floor math.
-  if (metrics.avgTop >= 0.65) return 'strong'
-  if (metrics.avgTop >= 0.45 || metrics.conceptCoverage >= 0.6) return 'moderate'
-  if (metrics.avgTop > 0 || metrics.conceptCoverage > 0) return 'weak'
+  const blended = metrics.avgTop * 0.75 + metrics.conceptCoverage * 0.25
+  // 0.7 was the MCP verify-note cut-point, 0.45 the chat refusal floor. Both are
+  // reproduced exactly, so the two live gates keep their existing boundaries.
+  //
+  // The old code also carried a `floorFromStrongSingleFact` term that lifted
+  // confidence to 0.6 whenever `avgTop >= 0.65`. It is dropped rather than
+  // ported: `avgTop >= 0.65` already forces `blended >= 0.4875`, so the floor
+  // could only ever raise a value that had already cleared 0.45, and 0.6 never
+  // reached 0.7. It never changed a verdict at either gate.
+  if (blended >= 0.7) return 'strong'
+  if (blended >= 0.45) return 'moderate'
+  if (blended > 0) return 'weak'
   return 'none'
 }
 

@@ -29,10 +29,13 @@
   checkpoint orchestrator used `0.55` / `0.45`, the rescan writer `0.6` / `0.65`.
   New `core/evidence-label` defines one ordered vocabulary (`none` / `weak` /
   `moderate` / `strong`); the category is decided once, where the metrics are
-  known, and consumers compare labels. `IntentResult.confidence` → `evidence`
-  across REST/MCP payloads, checkpoints, trace lanes, and telemetry;
-  `KB_CHAT_RETRIEVAL_MIN_CONFIDENCE` and `KB_INTENT_LOOP_CONFIDENCE_THRESHOLD` take
-  labels, falling back to the default rather than silently disabling the gate.
+  known, and consumers compare labels. Both live cut-points — the chat refusal
+  floor and the MCP verify note — are reproduced exactly, pinned by a test that
+  sweeps the metric space against the original formula.
+  `IntentResult.confidence` → `evidence` across REST/MCP payloads, checkpoints,
+  trace lanes, and telemetry; `KB_CHAT_RETRIEVAL_MIN_CONFIDENCE` and
+  `KB_INTENT_LOOP_CONFIDENCE_THRESHOLD` take labels, falling back to the default
+  rather than silently disabling the gate.
 
   **Facts carry an evidence kind, not a confidence float.** Per-fact `confidence`
   was a per-write-site constant standing in for _what kind of fact this is_ — 0.3
@@ -49,8 +52,9 @@
 
   Behavior is unchanged throughout: harvest produces the same entities, aliases,
   edges, and collisions; every migrated fact resolves to the exact ranking weight
-  it had before. The weights are inherited guesses, not results — they are what the
-  ablation harness (#207) exists to test.
+  it had before; and both retrieval gates keep their existing boundaries. The
+  weights are inherited guesses, not results — they are what the ablation harness
+  (#207) exists to test.
 
 ## 1.6.1
 
