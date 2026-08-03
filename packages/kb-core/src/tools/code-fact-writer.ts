@@ -3,6 +3,7 @@
  * facts table and manage incremental file state.
  */
 
+import type { FactEvidenceKind } from '../core/fact-evidence'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FactTriplet, SqliteKbIndexer } from './sqlite-kb-index.js'
 
@@ -42,7 +43,7 @@ export function upsertCodeFileFact(
   sourceRef: string,
   factText: string,
   triplet: FactTriplet,
-  confidence: number,
+  evidence: FactEvidenceKind,
   sourceText?: string,
   gitRepo?: string
 ): 'inserted' | 'updated' {
@@ -51,7 +52,7 @@ export function upsertCodeFileFact(
     triplet,
     sourceKind: 'import_code',
     sourceRef,
-    confidence,
+    evidence,
     sourceText,
     gitRepo,
   })

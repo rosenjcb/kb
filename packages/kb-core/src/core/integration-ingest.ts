@@ -10,6 +10,7 @@
  * - always                     → `is_repo`         (subject=slug, object=gitUrl)
  */
 
+import type { FactEvidenceKind } from './fact-evidence'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { SqliteKbIndexer } from '../tools/sqlite-kb-index.js'
@@ -28,7 +29,8 @@ export interface IntegrationIngestResult {
   serviceRefFacts: number
 }
 
-const INTEGRATION_CONFIDENCE = 0.6
+/** Integration payloads are ordinary statements about their subject. */
+const INTEGRATION_EVIDENCE: FactEvidenceKind = 'descriptive'
 
 async function readJsonFile(filePath: string): Promise<Record<string, unknown> | null> {
   try {
@@ -80,7 +82,7 @@ export async function ingestIntegrationSignals(
       triplet: { subject: slug, predicate: 'is_repo', object: input.gitUrl ?? slug },
       sourceKind: 'import_doc',
       sourceRef: `${refPrefix}repo`,
-      confidence: INTEGRATION_CONFIDENCE,
+      evidence: INTEGRATION_EVIDENCE,
       gitRepo: slug,
     })
 
@@ -94,7 +96,7 @@ export async function ingestIntegrationSignals(
           triplet: { subject: name, predicate: 'package_name_of', object: slug },
           sourceKind: 'import_doc',
           sourceRef: `${refPrefix}package`,
-          confidence: INTEGRATION_CONFIDENCE,
+          evidence: INTEGRATION_EVIDENCE,
           gitRepo: slug,
         })
       }
@@ -111,7 +113,7 @@ export async function ingestIntegrationSignals(
           triplet: { subject: slug, predicate: 'depends_on', object: dep },
           sourceKind: 'import_doc',
           sourceRef: `${refPrefix}dep:${dep}`,
-          confidence: INTEGRATION_CONFIDENCE,
+          evidence: INTEGRATION_EVIDENCE,
           gitRepo: slug,
         })
         result.dependencyFacts += 1
@@ -136,7 +138,7 @@ export async function ingestIntegrationSignals(
             triplet: { subject: slug, predicate: 'references_service', object: host },
             sourceKind: 'import_doc',
             sourceRef: `${refPrefix}env:${host}`,
-            confidence: INTEGRATION_CONFIDENCE,
+            evidence: INTEGRATION_EVIDENCE,
             gitRepo: slug,
           })
           result.serviceRefFacts += 1

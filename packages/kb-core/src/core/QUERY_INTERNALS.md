@@ -69,18 +69,18 @@ Scoring differs by `source_kind` because identifier-name text overlap is unrelia
 
 **Doc facts** (`import_doc`, `submit`):
 ```
-score = overlapScore × 0.45 + semanticScore × 0.35 + confidence × 0.20 + boosts
+score = overlapScore × 0.45 + semanticScore × 0.35 + evidenceWeight × 0.20 + boosts
 ```
 
 **Code facts** (`import_code`):
 ```
-score = overlapScore × 0.20 + graphProximityScore × 0.60 + confidence × 0.20 + boosts
+score = overlapScore × 0.20 + graphProximityScore × 0.60 + evidenceWeight × 0.20 + boosts
 ```
 
 - `overlapScore` — fraction of query tokens present in the fact text.
 - `semanticScore` — deterministic hash-based cosine similarity (lexical proxy, not neural embeddings).
 - `graphProximityScore` — max score of the frontier parent that led to this code fact via BFS traversal. Zero when the fact was found only by text search. This is the primary discriminator for code facts: a function discovered via graph traversal from a high-scoring doc fact scores 0.55–0.80; a function matched only by identifier name overlap scores 0.25–0.39.
-- `confidence` — per-fact quality signal written at ingest. It is a **static lookup table, not a measurement**: every value is a constant chosen per fact shape at the write site. Doc-side writers are flat per ingest path (`import_doc` `0.6`, scan `0.55`, integrations `0.6`, rescan `0.8`). Code-side varies by predicate — `imports` `0.3`, `defined_in` `0.6`, `exported_from` `0.65`, `extends` / `implements` `0.7` — so it does change ordering: an import edge is ranked below an inheritance edge by construction. That ordering may well be right, but it was asserted rather than measured, and no test pins it. This is the last hand-picked number left in scoring; removing or re-deriving it moves retrieval results, so it waits for the ablation harness (see #207).
+- `evidence` — what kind of evidence the fact is, stored as a label and turned into a weight by the single table in [`core/fact-evidence.ts`](./fact-evidence.ts): `incidental` 0.3 (a bare import edge), `contextual` 0.55, `descriptive` 0.6, `declarative` 0.65 (an export), `definitional` 0.7 (`extends` / `implements`), `curated` 0.8. An import edge therefore ranks below an inheritance edge by construction. Those weights are inherited from the pre-label constants and are **asserted, not measured** — retuning them needs no reindex (the label is what is stored), which is what makes them testable once the ablation harness lands (see #207).
 - `boosts` — anchor boost +0.10, frontier boost +0.06.
 
 Facts scoring below `MIN_FACT_SCORE` (0.20) are dropped from the final result set (reserved anchor and per-source-kind minimum facts bypass this floor).

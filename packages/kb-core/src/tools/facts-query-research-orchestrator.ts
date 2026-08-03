@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { type EvidenceLabel, assessRetrievalEvidence } from '../core/evidence-label'
+import { factEvidenceWeight } from '../core/fact-evidence'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { QueryResponse, QueryResult } from './facts-document-reader'
 import { type FactsSufficiencyJudge, shouldCallJudge } from './facts-sufficiency-judge'
@@ -438,7 +439,7 @@ export class FactsQueryResearchOrchestrator {
           1,
           overlapScore * 0.20 +
             graphProximityScore * 0.60 +
-            row.confidence * 0.20 +
+            factEvidenceWeight(row.evidence) * 0.20 +
             frontierBoost +
             anchorBoost +
             repoBoost -
@@ -450,7 +451,7 @@ export class FactsQueryResearchOrchestrator {
           1,
           overlapScore * 0.45 +
             semanticScore * 0.35 +
-            row.confidence * 0.20 +
+            factEvidenceWeight(row.evidence) * 0.20 +
             frontierBoost +
             anchorBoost +
             repoBoost -

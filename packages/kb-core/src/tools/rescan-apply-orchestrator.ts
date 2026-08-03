@@ -483,7 +483,7 @@ async function applyMutations(input: {
             triplet: placeholderTripletFromFactText(mutation.newFact),
             sourceKind: 'import_code',
             sourceRef: 'rescan',
-            confidence: 0.8,
+            evidence: 'curated',
           })
           writtenDocIds.push(result.id)
         }

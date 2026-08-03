@@ -39,12 +39,12 @@ describe('graph-query-expansion', () => {
 
   it('[TC-2] Given facts in DB, then query expansion appends matching subject/object terms', () => {
     db.prepare(
-      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
-       VALUES ('f1','kb query retrieves via read_facts','kb query retrieves via read_facts','submit','general',0.8,NULL,datetime('now'),datetime('now'),'kb query','retrieves_via','read_facts')`
+      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, evidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
+       VALUES ('f1','kb query retrieves via read_facts','kb query retrieves via read_facts','submit','general','curated',NULL,datetime('now'),datetime('now'),'kb query','retrieves_via','read_facts')`
     ).run()
     db.prepare(
-      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
-       VALUES ('f2','SQLite stores config','sqlite stores config','submit','general',0.8,NULL,datetime('now'),datetime('now'),'SQLite','stores','config')`
+      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, evidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
+       VALUES ('f2','SQLite stores config','sqlite stores config','submit','general','curated',NULL,datetime('now'),datetime('now'),'SQLite','stores','config')`
     ).run()
 
     const expanded = expandQueryWithGraph('config json', db)
@@ -61,7 +61,7 @@ describe('graph-query-expansion', () => {
   it('[TC-4] Given exported symbols in facts, then expansion appends matching symbol names', () => {
     // Insert an exported_from fact so the FTS expansion picks up 'router'
     db.prepare(
-      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, confidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
+      `INSERT INTO facts (id, fact_text, normalized_text, source_kind, lane_id, evidence, tombstoned_at, created_at, updated_at, subject, predicate, object)
        VALUES ('f-router','router is a Function exported from src/router.ts','router is a function exported from src/router.ts','import_code','general',0.65,NULL,datetime('now'),datetime('now'),'router','exported_from','src/router.ts')`
     ).run()
     db.prepare(

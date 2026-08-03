@@ -629,6 +629,34 @@ const MIGRATIONS: Migration[] = [
         ON retrieval_lane_routing_events(query_fingerprint, created_at DESC);
     `,
   },
+  {
+    // Facts carry an evidence *kind*, not a confidence float. The float was a
+    // per-write-site constant standing in for "what kind of fact is this"
+    // (0.3 an import edge, 0.7 an `extends` edge, 0.6 a doc sentence); the label
+    // says that outright and the ranking weight moves to one table in
+    // `core/fact-evidence`. Storing the label means those weights can be retuned
+    // and re-measured without reindexing a single fact.
+    //
+    // Existing rows are mapped back through the constants they were written with,
+    // so ranking is unchanged across the migration. Anything unrecognized lands on
+    // `curated`, matching the old `?? 0.8` default.
+    version: 20,
+    name: 'facts_evidence_kind',
+    sql: `
+      ALTER TABLE facts ADD COLUMN evidence TEXT NOT NULL DEFAULT 'curated';
+
+      UPDATE facts SET evidence = CASE
+        WHEN confidence <= 0.40  THEN 'incidental'
+        WHEN confidence <= 0.575 THEN 'contextual'
+        WHEN confidence <= 0.625 THEN 'descriptive'
+        WHEN confidence <= 0.675 THEN 'declarative'
+        WHEN confidence <= 0.75  THEN 'definitional'
+        ELSE 'curated'
+      END;
+
+      ALTER TABLE facts DROP COLUMN confidence;
+    `,
+  },
 ]
 
 /**

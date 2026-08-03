@@ -5,6 +5,11 @@
  * Markdown documents are written by `kb init` / rescan via `SqliteDocumentWriter`.
  */
 
+import {
+  FACT_EVIDENCE_KINDS,
+  type FactEvidenceKind,
+  asFactEvidenceKind,
+} from '../core/fact-evidence'
 import path from 'node:path'
 import { getKbHomeDir } from '@kb/core/storage/base-selection.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
@@ -118,7 +123,15 @@ export function createKBToolsRegistry(
           description: 'Source channel for this fact',
         },
         sourceRef: { type: 'string', description: 'Optional source provenance' },
-        confidence: { type: 'number', description: 'Optional confidence between 0 and 1' },
+        evidence: {
+          type: 'string',
+          enum: [...FACT_EVIDENCE_KINDS],
+          description:
+            'What kind of evidence this fact is: incidental (a bare structural reference), ' +
+            'contextual (picked up in passing), descriptive (an ordinary statement about the subject), ' +
+            'declarative (the subject explicitly declares it), definitional (part of what the subject is), ' +
+            'curated (asserted deliberately). Defaults to curated when omitted.',
+        },
       },
       required: ['factText', 'sourceKind'],
       additionalProperties: false,
@@ -130,7 +143,7 @@ export function createKBToolsRegistry(
       triplet?: { subject?: string; predicate?: string; object?: string }
       sourceKind: 'import_doc' | 'import_code'
       sourceRef?: string
-      confidence?: number
+      evidence?: FactEvidenceKind
     }
     const t = payload.triplet
     const triplet =
@@ -145,7 +158,7 @@ export function createKBToolsRegistry(
       triplet,
       sourceKind: payload.sourceKind,
       sourceRef: payload.sourceRef,
-      confidence: payload.confidence,
+      evidence: asFactEvidenceKind(payload.evidence),
     })
   })
 

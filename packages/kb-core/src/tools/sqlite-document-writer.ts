@@ -490,7 +490,7 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
         triplet: placeholderTripletFromFactText(factText),
         sourceKind,
         sourceRef,
-        confidence: 0.6,
+        evidence: 'descriptive',
       })
     }
   }

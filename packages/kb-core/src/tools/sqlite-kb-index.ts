@@ -1,4 +1,9 @@
 import type { EvidenceLabel } from '../core/evidence-label'
+import {
+  DEFAULT_FACT_EVIDENCE,
+  type FactEvidenceKind,
+  factEvidenceWeightSql,
+} from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -129,7 +134,8 @@ export interface FactUpsertInput {
   triplet?: FactTriplet
   sourceKind: 'import_doc' | 'import_code'
   sourceRef?: string
-  confidence?: number
+  /** What kind of evidence this fact is — see `core/fact-evidence`. */
+  evidence?: FactEvidenceKind
   supersedesFactId?: string
   /** Raw source code snippet for import_code facts — stored and served to the LLM instead of verbose fact_text. */
   sourceText?: string
@@ -144,7 +150,7 @@ export interface FactRow {
   source_kind: string
   source_ref: string | null
   lane_id?: string
-  confidence: number
+  evidence: FactEvidenceKind
   supersedes_fact_id: string | null
   tombstoned_at: string | null
   created_at: string
@@ -254,10 +260,10 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo'
+  'id, fact_text, normalized_text, source_kind, source_ref, evidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.confidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text, f.git_repo'
+  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.evidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text, f.git_repo'
 
 export class SqliteKbIndexer {
   private readonly db: DatabaseSync
@@ -425,7 +431,7 @@ export class SqliteKbIndexer {
         .prepare(
           `
           UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, confidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?,
+          SET fact_text = ?, source_kind = ?, source_ref = ?, evidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?,
               git_repo = COALESCE(?, git_repo)
           WHERE id = ?
         `
@@ -434,7 +440,7 @@ export class SqliteKbIndexer {
           factText,
           input.sourceKind,
           input.sourceRef ?? null,
-          input.confidence ?? 0.8,
+          input.evidence ?? DEFAULT_FACT_EVIDENCE,
           now,
           subject,
           predicate,
@@ -453,7 +459,7 @@ export class SqliteKbIndexer {
       .prepare(
         `
         INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, confidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo
+          id, fact_text, normalized_text, source_kind, source_ref, evidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
       `
@@ -464,7 +470,7 @@ export class SqliteKbIndexer {
         normalized,
         input.sourceKind,
         input.sourceRef ?? null,
-        input.confidence ?? 0.8,
+        input.evidence ?? DEFAULT_FACT_EVIDENCE,
         input.supersedesFactId ?? null,
         now,
         now,
@@ -603,7 +609,7 @@ export class SqliteKbIndexer {
 
   /**
    * Query-closure retrieval: union all facts touching any concept in frontier,
-   * ranked by concept match strength first, then confidence/recency.
+   * ranked by concept match strength first, then evidence weight/recency.
    */
   searchFactsByConceptFrontier(conceptIds: string[], limit = 20): FactRow[] {
     const normalized = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
@@ -622,7 +628,7 @@ export class SqliteKbIndexer {
           WHERE fc.concept_id IN (${placeholders})
           GROUP BY fc.fact_id
         ) m ON m.fact_id = f.id
-        ORDER BY m.match_count DESC, f.confidence DESC, f.updated_at DESC
+        ORDER BY m.match_count DESC, ${factEvidenceWeightSql('f.evidence')} DESC, f.updated_at DESC
         LIMIT ?
       `
       )
