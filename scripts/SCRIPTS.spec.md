@@ -31,6 +31,7 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Changeset consistency gate enforces version bump policy on PRs |
 | FR-2 | Node version check enforces engines.node before install |
 | FR-3 | Snapshot puller adopts a published Fly.io snapshot locally: resolve base from `scripts/fly/bases.json`, follow `latest.json` to an immutable version, download the prefix with SigV4-signed reads, verify the manifest sha256, then `kb-server import` into `eval-<base>` — refusing to clobber a locally built index without `--force` |
+| FR-4 | The snapshot download never depends on `ListObjectsV2` to find the required objects: when the listing comes back short, the manifest is fetched by its fixed key and the index files it names in `contents.index` are fetched by exact key. Only a prefix unreadable by both LIST and direct GET fails the pull |
 
 ### QA Test Cases
 
@@ -99,6 +100,11 @@ See companion doc for full vocabulary where applicable.
 | TC-61 | FR-3 | asks Fly only for AddOn fields that exist in the schema | pass |
 | TC-62 | FR-3 | distinguishes a redacted add-on environment from a missing bucket | pass |
 | TC-63 | FR-3 | falls back to the org listing when the app has no add-ons | pass |
+| TC-64 | FR-4 | recovers a prefix whose LIST is empty but whose objects all GET | pass |
+| TC-65 | FR-4 | recovers a partial LIST that omits the manifest | pass |
+| TC-66 | FR-4 | leaves a healthy LIST alone and still pulls aux objects | pass |
+| TC-67 | FR-4 | still fails when the prefix is absent by LIST and by GET | pass |
+| TC-68 | FR-4 | takes index file names from the manifest, always including the primary | pass |
 
 ### Related docs
 
