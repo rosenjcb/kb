@@ -25,6 +25,42 @@ Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source
 - No publish step inside eval-run (artifacts only)
 - Artifact: `~/.kb/evaluations/<run-name>/artifact.json` by default
 
+## Grab the Fly snapshot instead of rebuilding (prefer this)
+
+The Fly demo publishes a built, sha256-stamped index per suite repo every day
+(`FLY_ORCHESTRATION.md`). Adopting it costs a download; rebuilding the same index
+locally costs minutes-to-hours of CPU. **When a current published index is good
+enough — most query-side / scoring / regression work — pull it. Only rebuild when
+the eval is specifically about indexing, or when the suite needs code newer than
+the last daily build.**
+
+```bash
+# One-liner: pull the snapshot Fly is serving for the suite, then run the eval on it
+pnpm run eval -- --suite raylib --from-snapshot
+
+# Or adopt snapshots first (base eval-<name>), then evaluate however you like
+pnpm run snapshot:pull -- --base raylib          # → base eval-raylib
+pnpm run snapshot:pull -- --all                  # every base in scripts/fly/bases.json
+pnpm run eval -- --suite raylib --skip-scan
+```
+
+`--from-snapshot` downloads the immutable version `latest.json` points at, verifies
+the manifest sha256, `kb-server import`s it into `eval-<suite>`, and implies
+`--skip-scan` — no init, no reindex. It records `command_durations_ms.snapshot_pull`
+in the artifact so a snapshot-backed run is distinguishable from a locally built one.
+
+Credentials (one of):
+- `BUCKET_NAME` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ `AWS_ENDPOINT_URL_S3`
+  for a non-Tigris store), or
+- `FLY_API_TOKEN` — the script reads the bucket keys back from the Fly extension API
+  for `--app` (default `kb-demo`).
+
+Useful flags: `--list` (published versions), `--version <v>` (pin one), `--no-import`
+(download only), `--into <base>`, `--force` (replace a locally built index),
+`--json`. Suite ids and Fly base names are the same strings, so `--suite` and
+`--base` are interchangeable here; suites with no published base (e.g. `generic`)
+must still be built locally.
+
 ## Automated runner (single entry)
 
 From kb repo root (`pnpm run build` first):

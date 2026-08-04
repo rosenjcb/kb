@@ -100,6 +100,53 @@ pnpm run eval -- --all-suites --per-suite-server    # legacy: one kb-server per 
 | `pnpm run eval -- --all-suites` | All 10 benchmark suites (parallel by default) |
 | `pnpm run eval:entities -- --suite kb` | Dump harvested ontology entities for `eval-kb` (no query) |
 | `pnpm run eval:entities -- --all-suites` | Entity totals / kind breakdown for every suite id |
+| `pnpm run eval -- --suite raylib --from-snapshot` | Adopt the published Fly snapshot, then evaluate (no index build) |
+| `pnpm run snapshot:pull -- --base raylib` | Just adopt the snapshot into `eval-raylib` |
+
+## Evaluating on a published snapshot (`pnpm run snapshot:pull`)
+
+The Fly.io demo rebuilds every suite repo daily and publishes an immutable,
+sha256-stamped index per base ([`FLY_ORCHESTRATION.md`](FLY_ORCHESTRATION.md)).
+An eval that only exercises the **query side** does not need to reproduce that
+work: adopt the published artifact instead. A pull is a download plus a verify;
+the equivalent local build is minutes to hours of indexing per suite.
+
+```bash
+pnpm run eval -- --suite raylib --from-snapshot     # pull + verify + import, then evaluate
+pnpm run snapshot:pull -- --base raylib             # adopt only → base eval-raylib
+pnpm run snapshot:pull -- --all                     # every published base
+pnpm run snapshot:pull -- --base raylib --list      # published versions, newest last
+pnpm run snapshot:pull -- --base raylib --version 20260803T101112Z   # pin one
+```
+
+What `--from-snapshot` does, in order: read `snapshots/<base>/latest.json`,
+download that immutable version prefix, check the index sha256 against the
+manifest, `kb-server import` it into `eval-<suite>`, then run the eval with
+`--skip-scan` (it also cancels `--force-init`, so the adopted index is never
+wiped). The pull duration lands in the artifact as
+`run.timing.command_durations_ms.snapshot_pull`, so a snapshot-backed run is
+never mistaken for a locally built one.
+
+**When *not* to use it.** Rebuild locally when the eval is about indexing itself
+(harvest counts, scan cost, graph coverage), when you are measuring changes to
+indexing code, or when the suite needs commits newer than the last daily build —
+the snapshot is at most a day old and is `--no-repos` (serve-only), so it carries
+no working trees. Snapshot-backed and locally built runs remain comparable on the
+query axes; treat structural/indexing metrics as properties of the snapshot's
+build, not of your checkout.
+
+**Credentials.** Either `BUCKET_NAME` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
+(+ `AWS_ENDPOINT_URL_S3` for a non-Tigris store), or `FLY_API_TOKEN`, from which
+the script reads the bucket keys back from the Fly extension API for `--app`
+(default `kb-demo`). Nothing is written to disk, and the puller only ever reads:
+it never publishes, prunes, or rolls a machine.
+
+Safety rails: a base that already holds the same snapshot is left alone; an older
+snapshot is replaced automatically; a **locally built** index is never clobbered
+without `--force`; a digest mismatch fails the run instead of importing.
+`--no-import` downloads and verifies only. Suite ids and Fly base names are the
+same strings, so `--suite` and `--base` are interchangeable — suites with no
+published base (e.g. `generic`) must still be built locally.
 
 **Entity harvest report.** After index or scan, report what the entity-index cycle harvested — not only query scores. Read `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases`) with `scripts/eval-entities.mjs`:
 
