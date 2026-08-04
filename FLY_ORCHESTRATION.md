@@ -45,10 +45,15 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 > **Region co-location is load-bearing.** Builder writes snapshots to Tigris from
 > `iad`; serving from `ams` has been observed to `LIST`/`GET` a *partial* object
 > set for the same prefix (e.g. only `.kb-index.sqlite` + one manifest — no
-> `kb-snapshot.json`), which crash-loops the snapshot-only boot. Keep
-> `primary_region` identical on both apps. Publish also waits for required
-> objects to be readable before flipping `latest.json`, and serve retries
-> incomplete pulls.
+> `kb-snapshot.json`), which crash-loops the snapshot-only boot. In the worst
+> observed case (builder placed in `lax`, serving in `iad`) LIST returned the
+> prefix as **entirely empty** while every key still `head-object`ed 200 — so
+> `aws s3 cp --recursive` downloaded nothing at all. Keep `primary_region`
+> identical on both apps, and remember that **`fly machine run -c` does not
+> honor `primary_region`** — pass `--region` explicitly on every command that
+> creates a builder machine. Publish also waits for required objects to be
+> readable before flipping `latest.json`; serve retries incomplete pulls and
+> then refetches the required objects by exact key, bypassing LIST entirely.
 
 Both run the **same image** ([`Dockerfile.fly`](Dockerfile.fly)); the Fly config
 picks the command and VM size.
@@ -147,9 +152,12 @@ fly secrets set -a kb-demo-builder \
     SERVE_APP=kb-demo \
     FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
 
-# 4. Seed all bases (cold build) + create the daily scheduler machine (4GB)
+# 4. Seed all bases (cold build) + create the daily scheduler machine (8GB)
+#    --region MUST match fly.toml's primary_region (see the co-location note
+#    above); `fly machine run -c` ignores the toml's primary_region.
 fly machine run . -c fly.builder.toml -a kb-demo-builder \
-    --schedule daily --restart no --vm-size performance-2x --vm-memory 4096 \
+    --schedule daily --restart no \
+    --region iad --vm-size performance-4x --vm-memory 8192 \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -164,7 +172,8 @@ To seed immediately without waiting for the first schedule tick, run the machine
 once on demand (the first full cold build of ~10 repos takes a while):
 
 ```bash
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performance-2x --vm-memory 4096 \
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm \
+    --region iad --vm-size performance-4x --vm-memory 8192 \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -299,7 +308,8 @@ fly machine list -a kb-demo-builder # the scheduled machine (stopped between run
 curl -sS https://kb-demo.fly.dev/healthz   # ok:true when serving a snapshot
 
 # Force a refresh now (outside the daily schedule):
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm --vm-size performance-2x --vm-memory 4096 \
+fly machine run . -c fly.builder.toml -a kb-demo-builder --rm \
+    --region iad --vm-size performance-4x --vm-memory 8192 \
     bash /app/scripts/fly/refresh.sh
 ```
 

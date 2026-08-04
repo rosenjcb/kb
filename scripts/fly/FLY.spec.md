@@ -5,9 +5,11 @@ sources:
   - ./lib.sh
   - ./serve-entrypoint.sh
   - ./refresh.sh
+  - ./deploy.sh
   - ./roll-serving.mjs
   - ../../fly.toml
   - ../../fly.builder.toml
+  - ../../.github/workflows/fly-deploy.yml
   - ../../FLY_ORCHESTRATION.md
 tests: []
 description: >-
@@ -38,6 +40,10 @@ from crash-looping the public demo. Architecture narrative:
 - **Required objects**: `kb-snapshot.json` and `.kb-index.sqlite` — the minimum
   set that must be readable before a prefix is considered publishable or
   adoptable.
+- **Short LIST**: A `ListObjectsV2` response that omits objects the same
+  credentials can `head-object`/`GET` by exact key. Observed on Tigris whenever
+  the reading region differs from the writing region, up to and including an
+  *empty* listing for a fully-populated prefix.
 - **Default base**: The base named in `bases.json` (`default`) / `KB_BASE`;
   required for the serving process to listen.
 - **Optional base**: Any non-default base in `bases.json`; skipped when its
@@ -48,9 +54,11 @@ from crash-looping the public demo. Architecture narrative:
 ## In Scope
 
 - Object-store pull/push completeness checks and retries (`lib.sh`)
+- LIST-free recovery of required objects on the adopt path (`lib.sh`)
 - Serving boot order: default base first, then optional bases
 - Builder publish gate before pointer flip
-- Serving ↔ builder region co-location (`primary_region`)
+- Serving ↔ builder region co-location — both the declared `primary_region`
+  **and** the region builder machines are actually created in
 - Health-gated serving roll timeout headroom
 
 ## Out of Scope
@@ -65,6 +73,8 @@ from crash-looping the public demo. Architecture narrative:
 | ID | Requirement |
 |------|-------------|
 | FR-1 | [NEW] Serving and builder apps declare the same Fly `primary_region` so snapshot LIST/GET and publish share one region |
+| FR-8 | [NEW] Every command that creates a builder machine passes `--region` explicitly, sourced from `fly.builder.toml`'s `primary_region` — `fly machine run -c` does not inherit it, so declaring the region alone does not place the machine |
+| FR-9 | [NEW] A snapshot pull that cannot assemble the required objects from the LIST-driven recursive copy refetches them by exact key (manifest at its fixed name, index files named by the manifest's `contents.index`) before failing the attempt |
 | FR-2 | [NEW] After uploading an immutable snapshot prefix, the builder does not flip `latest.json` until every required object is readable via head-object (not LIST alone) |
 | FR-3 | [NEW] Snapshot pull retries until required objects are present locally (or attempts are exhausted); aws progress must not pollute captured stdout (e.g. version strings) |
 | FR-4 | [NEW] Serving boot adopts the default base and binds `/healthz` before importing optional bases |
@@ -77,6 +87,10 @@ from crash-looping the public demo. Architecture narrative:
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|---------|------------------|
 | TC-1 | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
+| TC-10 | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
+| TC-11 | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
+| TC-12 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
+| TC-13 | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
 | TC-2 | FR-2 | Upload succeeds but `kb-snapshot.json` never becomes head-able within wait budget | `s3_push_prefix` fails; pointer not written |
 | TC-3 | FR-2 | Upload of a complete local snapshot dir | Required objects head-able; caller may flip `latest.json` |
 | TC-4 | FR-3 | Pull of a prefix that temporarily LIST/GETs only `.kb-index.sqlite` | Retries; success only once `kb-snapshot.json` is local too, else non-zero |

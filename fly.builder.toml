@@ -19,15 +19,26 @@
 #   fly secrets set -a kb-demo-builder GEMINI_API_KEY=... \
 #       SERVE_APP=kb-demo \
 #       FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
-#   # Create the daily, run-to-completion machine (this is the scheduler):
+#   # Create the daily, run-to-completion machine (this is the scheduler).
+#   # --region is NOT optional and is NOT read from this file: `fly machine
+#   # run -c` ignores primary_region below and places the machine near the
+#   # caller. A builder in a different region than kb-demo makes Tigris hand
+#   # the serving node a stale LIST view of the prefix it just published
+#   # (keys head-object 200, `s3 cp --recursive` copies nothing) — see the
+#   # region note in fly.toml. scripts/fly/deploy.sh reads it from here.
 #   fly machine run . -c fly.builder.toml -a kb-demo-builder \
-#       --schedule daily --restart no --vm-memory 4096 \
+#       --schedule daily --restart no \
+#       --region iad --vm-size performance-4x --vm-memory 8192 \
 #       bash /app/scripts/fly/refresh.sh
 #
 # Full model + operations: FLY_ORCHESTRATION.md
 
 app = "kb-demo-builder"
 # Keep builder + serving + Tigris traffic in one region (see fly.toml note).
+# NOTE: this is honored by `fly deploy -c`, but NOT by `fly machine run -c` —
+# and the builder's only machine is created by `fly machine run`. Every such
+# call must pass `--region` explicitly (scripts/fly/deploy.sh and
+# .github/workflows/fly-deploy.yml parse it out of this line).
 primary_region = "iad"
 
 [build]

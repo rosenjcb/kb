@@ -94,7 +94,9 @@ require_bucket() {
 # .kb-index.sqlite + one manifest) while the writer region sees the full prefix
 # — which made the serving node crash-loop with "no kb-snapshot.json". Always
 # verify these before flipping latest.json and after every download.
-SNAPSHOT_REQUIRED_FILES=(kb-snapshot.json .kb-index.sqlite)
+SNAPSHOT_MANIFEST_FILE="kb-snapshot.json"
+SNAPSHOT_INDEX_FILE=".kb-index.sqlite"
+SNAPSHOT_REQUIRED_FILES=("$SNAPSHOT_MANIFEST_FILE" "$SNAPSHOT_INDEX_FILE")
 
 # True when every required snapshot file exists under <dir>.
 snapshot_dir_complete() {
@@ -131,9 +133,69 @@ s3_wait_prefix_complete() {
   return 1
 }
 
+# GET one object by EXACT key — never LIST — into <dest>/<relpath>.
+#   s3_get_object <version-prefix> <relpath> <dest-dir>
+s3_get_object() {
+  local prefix="$1" rel="$2" dest="$3"
+  mkdir -p "$(dirname "$dest/$rel")"
+  _s3 cp --no-progress "s3://${BUCKET_NAME}/${prefix}/${rel}" "$dest/$rel" >&2
+}
+
+# Index file names a snapshot carries, one per line, read from its ALREADY
+# DOWNLOADED manifest (`contents.index` = the sqlite plus any WAL/SHM). The
+# primary index is always included so a manifest that predates the field (or
+# fails to parse) still yields a usable key list.
+snapshot_manifest_index_files() {
+  node -e '
+    const fs = require("fs");
+    const primary = process.argv[2];
+    let files = [];
+    try {
+      const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      if (Array.isArray(m?.contents?.index)) {
+        files = m.contents.index.filter(f => typeof f === "string" && f.length > 0);
+      }
+    } catch {}
+    if (!files.includes(primary)) files.unshift(primary);
+    // Trailing newline is load-bearing: `read` discards an unterminated last
+    // line, which would silently skip the only entry in the common case.
+    process.stdout.write(files.map(f => f + "\n").join(""));
+  ' "$1" "$SNAPSHOT_INDEX_FILE" 2>/dev/null || printf '%s\n' "$SNAPSHOT_INDEX_FILE"
+}
+
+# LIST-free fetch of the required objects into <dest>.
+#
+# `aws s3 cp --recursive` enumerates with ListObjectsV2, so it can only copy
+# what LIST reports. Tigris replicates its LIST index separately from object
+# data: when the writer and reader regions differ, a freshly published prefix
+# has been observed head-object/GET-ing 200 for every key while LIST returns
+# the prefix as EMPTY — so the recursive copy silently downloads nothing and
+# the serving node crash-loops on a snapshot that is entirely readable.
+#
+# The keys we actually need are derivable without LIST: the manifest sits at a
+# fixed name, and it names its own index files. Fetch those directly.
+#
+# Aux objects (source/ast file manifests, checkpoints/) are NOT recovered here
+# — they are LIST-discovered and only feed the builder's incremental reindex,
+# which regenerates them. A warm build that lands on this path does more work;
+# it does not fail, which is what the LIST-only behavior did.
+s3_pull_required() {
+  local prefix="$1" dest="$2" f
+  mkdir -p "$dest"
+  s3_get_object "$prefix" "$SNAPSHOT_MANIFEST_FILE" "$dest" || return 1
+  # `|| [[ -n "$f" ]]`: belt-and-braces against an unterminated final line.
+  while IFS= read -r f || [[ -n "$f" ]]; do
+    [[ -z "$f" ]] && continue
+    s3_get_object "$prefix" "$f" "$dest" || return 1
+  done < <(snapshot_manifest_index_files "$dest/$SNAPSHOT_MANIFEST_FILE")
+  snapshot_dir_complete "$dest"
+}
+
 # Download an immutable snapshot prefix into a local dir.
 # Progress goes to stderr so callers can safely capture stdout (e.g. version=).
-# Retries on incomplete pulls — partial cross-region views are not rare.
+# Retries on incomplete pulls — partial cross-region views are not rare — and
+# falls back to LIST-free direct GETs of the required objects (see
+# s3_pull_required) before writing an attempt off.
 #   s3_pull_prefix <version-prefix> <local-dir>
 s3_pull_prefix() {
   local prefix="$1" dest="$2"
@@ -146,10 +208,14 @@ s3_pull_prefix() {
     # --no-progress keeps version="$(pull…)" from swallowing aws progress text.
     if ! _s3 cp --recursive --no-progress "s3://${BUCKET_NAME}/${prefix}/" "$dest/" >&2; then
       echo "    ! s3 cp failed for s3://$BUCKET_NAME/$prefix (attempt $i/$attempts)" >&2
-    elif snapshot_dir_complete "$dest"; then
+    fi
+    if snapshot_dir_complete "$dest"; then
       return 0
-    else
-      echo "    ! downloaded s3://$BUCKET_NAME/$prefix incomplete (missing kb-snapshot.json and/or .kb-index.sqlite) attempt $i/$attempts" >&2
+    fi
+    echo "    ! downloaded s3://$BUCKET_NAME/$prefix incomplete (missing kb-snapshot.json and/or .kb-index.sqlite) attempt $i/$attempts — refetching required objects by exact key" >&2
+    if s3_pull_required "$prefix" "$dest"; then
+      echo "    · recovered s3://$BUCKET_NAME/$prefix by direct GET (LIST view was short)" >&2
+      return 0
     fi
     sleep "$sleep_s"
   done
