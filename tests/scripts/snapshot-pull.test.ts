@@ -7,7 +7,9 @@ import {
   canonicalQuery,
   credentialsFromEnv,
   defaultLocalBase,
+  describeAddOnMiss,
   encodeKey,
+  FLY_ADDON_QUERIES,
   parseArgs,
   parseListXml,
   pickTigrisCredentials,
@@ -247,6 +249,63 @@ describe('credential resolution', () => {
         graphql: async () => ({ app: { addOns: { nodes: [] } } }),
       })
     ).rejects.toThrow(/did not yield bucket credentials/)
+  })
+
+  it('[TC-61] asks Fly only for AddOn fields that exist in the schema', () => {
+    // `AddOn` exposes `addOnProvider`, not `type`. Asking for `type` fails GraphQL
+    // validation, which took out both candidate queries and reported as a generic
+    // "did not yield bucket credentials" instead of a schema error.
+    for (const candidate of FLY_ADDON_QUERIES) {
+      expect(candidate.query).not.toMatch(/\btype\b/)
+      expect(candidate.query).toContain('environment')
+    }
+  })
+
+  it('[TC-62] distinguishes a redacted add-on environment from a missing bucket', () => {
+    expect(describeAddOnMiss([])).toMatch(/no storage add-on visible/)
+    expect(describeAddOnMiss([{ name: 'kb-demo-storage', environment: {} }])).toMatch(
+      /kb-demo-storage.*cannot read extension secrets/
+    )
+    expect(describeAddOnMiss([{ name: 'kb-demo-storage', environment: '{}' }])).toMatch(
+      /cannot read extension secrets/
+    )
+    expect(describeAddOnMiss([{ name: 'other', environment: { NOT: 's3' } }])).toMatch(
+      /no storage add-on with S3 keys.*other/
+    )
+  })
+
+  it('[TC-63] falls back to the org listing when the app has no add-ons', async () => {
+    // `fly storage create` attaches the bucket to the organization, so the
+    // app-scoped connection can be empty even though the bucket exists.
+    const creds = await resolveCredentials({
+      app: 'kb-demo',
+      env: { FLY_API_TOKEN: 'tok' },
+      graphql: async (_token, query) =>
+        query.includes('organizations')
+          ? {
+              organizations: {
+                nodes: [
+                  {
+                    slug: 'personal',
+                    addOns: {
+                      nodes: [
+                        {
+                          name: 'kb-demo-storage',
+                          environment: {
+                            BUCKET_NAME: 'kb-demo-storage',
+                            AWS_ACCESS_KEY_ID: 'tid_x',
+                            AWS_SECRET_ACCESS_KEY: 'tsec_x',
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            }
+          : { app: { addOns: { nodes: [] } } },
+    })
+    expect(creds).toMatchObject({ source: 'fly', bucket: 'kb-demo-storage' })
   })
 
   it('[TC-53] ignores extensions that are not the requested bucket', () => {

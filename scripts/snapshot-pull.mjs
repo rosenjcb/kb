@@ -250,21 +250,59 @@ export function pickTigrisCredentials(addOnNodes, { bucketHint = null } = {}) {
   return null
 }
 
+/**
+ * Explain *why* a candidate query produced no credentials, so the operator knows
+ * whether to look at the bucket or at their token. Fly returns the add-on node
+ * with `environment` blanked out when the token is not scoped to read the
+ * extension's secrets (deploy/agent tokens hit this), which is otherwise
+ * indistinguishable from "no bucket here".
+ */
+export function describeAddOnMiss(addOnNodes) {
+  const nodes = (addOnNodes || []).filter(Boolean)
+  if (nodes.length === 0) return 'no storage add-on visible'
+  const named = nodes.map(n => n?.name).filter(Boolean)
+  const blanked = nodes.filter(n => {
+    let envMap = n.environment
+    if (typeof envMap === 'string') {
+      try {
+        envMap = JSON.parse(envMap)
+      } catch {
+        return false
+      }
+    }
+    return envMap && typeof envMap === 'object' && Object.keys(envMap).length === 0
+  })
+  const seen = named.join(', ') || `${nodes.length} add-on(s)`
+  if (blanked.length === nodes.length) {
+    return `found ${seen} but the environment came back empty — this token cannot read extension secrets`
+  }
+  return `no storage add-on with S3 keys (saw ${seen})`
+}
+
 const FLY_GRAPHQL_URL = process.env.FLY_GRAPHQL_URL || 'https://api.fly.io/graphql'
 
-/** App-scoped first (the bucket that app serves from), then org-wide as a fallback. */
+/**
+ * App-scoped first (the bucket that app serves from), then org-wide as a fallback.
+ *
+ * `AddOn` has no `type` field — the provider is `addOnProvider { name }` ("tigris").
+ * Asking for `type` makes the whole query fail validation, which took out both
+ * candidates at once and surfaced as a generic "did not yield bucket credentials".
+ * The org fallback is load-bearing: a storage add-on provisioned with
+ * `fly storage create` is attached to the organization, so the app-scoped
+ * `addOns` connection can come back empty even when the bucket exists.
+ */
 export const FLY_ADDON_QUERIES = [
   {
     label: 'app',
     query:
-      'query($appName: String!) { app(name: $appName) { addOns { nodes { id name type environment } } } }',
+      'query($appName: String!) { app(name: $appName) { addOns { nodes { id name addOnProvider { name } environment } } } }',
     variables: appName => ({ appName }),
     extract: data => data?.app?.addOns?.nodes,
   },
   {
     label: 'org',
     query:
-      'query { organizations { nodes { slug addOns { nodes { id name type environment } } } } }',
+      'query { organizations { nodes { slug addOns { nodes { id name addOnProvider { name } environment } } } } }',
     variables: () => ({}),
     extract: data => (data?.organizations?.nodes || []).flatMap(o => o?.addOns?.nodes || []),
   },
@@ -304,7 +342,7 @@ export async function resolveCredentials({ app, env = process.env, graphql = fly
         bucketHint: env.BUCKET_NAME || null,
       })
       if (creds) return creds
-      failures.push(`${candidate.label}: no storage extension with S3 keys`)
+      failures.push(`${candidate.label}: ${describeAddOnMiss(candidate.extract(data))}`)
     } catch (e) {
       failures.push(`${candidate.label}: ${e instanceof Error ? e.message : e}`)
     }

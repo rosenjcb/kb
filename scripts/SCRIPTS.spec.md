@@ -96,6 +96,9 @@ See companion doc for full vocabulary where applicable.
 | TC-58 | FR-3 | clobbers a locally built index when --force is given | pass |
 | TC-59 | FR-3 | treats a prefix missing a required file as incomplete | pass |
 | TC-60 | FR-3 | matches a reference SigV4 implementation byte for byte | pass |
+| TC-61 | FR-3 | asks Fly only for AddOn fields that exist in the schema | pass |
+| TC-62 | FR-3 | distinguishes a redacted add-on environment from a missing bucket | pass |
+| TC-63 | FR-3 | falls back to the org listing when the app has no add-ons | pass |
 
 ### Related docs
 
