@@ -72,6 +72,23 @@ jobs:
           if [ -n "$scheduler_id" ]; then
             flyctl machine destroy "$scheduler_id" -a kb-demo-builder --force
           fi
+          # --region: `fly machine run` ignores fly.builder.toml's
+          # primary_region too, so without this the scheduler is placed near
+          # the GitHub runner instead of next to the serving app. Builder and
+          # serving MUST share a region — a cross-region Tigris reader gets a
+          # stale LIST view of a freshly published prefix (every key
+          # head-objects 200 while `s3 cp --recursive` copies nothing) and the
+          # demo crash-loops on "downloaded prefix … is incomplete". Read from
+          # the toml so this can never drift from fly.toml's primary_region.
+          builder_region="$(node -e '
+            const fs = require("fs");
+            const m = fs.readFileSync("fly.builder.toml", "utf8").match(/^\s*primary_region\s*=\s*"([^"]+)"/m);
+            process.stdout.write(m ? m[1] : "");
+          ')"
+          if [ -z "$builder_region" ]; then
+            echo "error: could not read primary_region from fly.builder.toml." >&2
+            exit 1
+          fi
           # --vm-size/--vm-memory must match fly.builder.toml's [[vm]] block —
           # `fly machine run` does NOT read it (see fly.builder.toml comment).
           # Previously shared-cpu-2x/4096 here diverged from performance-2x in
@@ -81,6 +98,7 @@ jobs:
           # without this it silently falls back to refresh.sh's own 1800s
           # default instead of the 5400s the toml declares.
           flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
+            --region "$builder_region" \
             --vm-size performance-4x --vm-memory 8192 \
             -e COLD_BUILD_TIMEOUT=5400 \
             --schedule daily --restart no \

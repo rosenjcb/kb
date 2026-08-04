@@ -28,6 +28,26 @@ SEED=1
 BUILDER_VM_SIZE="performance-4x"
 BUILDER_VM_MEMORY="8192"
 
+# Same non-inheritance trap as [[vm]] and [env] below: `fly machine run -c
+# fly.builder.toml` does NOT honor the file's `primary_region` either — it
+# places the machine near whoever ran the command (a laptop, or a GitHub
+# runner). That is not cosmetic: builder and serving MUST share a region or
+# Tigris serves the serving node a stale LIST view of a freshly published
+# prefix — head-object 200s on every key while `aws s3 cp --recursive` copies
+# nothing, and the demo crash-loops on "downloaded prefix … is incomplete".
+# Observed for real: the scheduler landed in `lax`, serving stayed in `iad`.
+# Read it from the toml instead of hard-coding a copy that can drift.
+BUILDER_REGION="$(node -e '
+  const fs = require("fs");
+  const m = fs.readFileSync("fly.builder.toml", "utf8").match(/^\s*primary_region\s*=\s*"([^"]+)"/m);
+  process.stdout.write(m ? m[1] : "");
+')"
+if [[ -z "$BUILDER_REGION" ]]; then
+  echo "error: could not read primary_region from fly.builder.toml." >&2
+  exit 1
+fi
+echo "==> builder region pinned to '$BUILDER_REGION' (must match fly.toml's primary_region)"
+
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"
 # --build-only --push: build and push the image WITHOUT deploying/releasing it.
 # A plain `fly deploy` on an app with no [processes]/[http_service] still
@@ -57,6 +77,7 @@ fi
 # cold builds (brew, kestra) get killed as a false "timeout" well before
 # they'd actually finish.
 fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
+    --region "$BUILDER_REGION" \
     --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
     -e COLD_BUILD_TIMEOUT=5400 \
     --schedule daily --restart no \
@@ -71,6 +92,7 @@ fly deploy -a "$SERVE_APP" -c fly.toml --wait-timeout 15m
 if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
   fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --rm \
+      --region "$BUILDER_REGION" \
       --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
       -e COLD_BUILD_TIMEOUT=5400 \
       bash /app/scripts/fly/refresh.sh

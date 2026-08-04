@@ -1,15 +1,17 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   canonicalQuery,
   credentialsFromEnv,
   defaultLocalBase,
   describeAddOnMiss,
+  downloadPrefix,
   encodeKey,
   FLY_ADDON_QUERIES,
+  manifestIndexFiles,
   parseArgs,
   parseListXml,
   pickTigrisCredentials,
@@ -368,5 +370,99 @@ describe('local adoption', () => {
     expect(snapshotDirComplete(dir)).toBe(true)
     expect(readSnapshotDigest(dir)).toBe('abc')
     expect(readSnapshotDigest(path.join(dir, 'missing'))).toBeNull()
+  })
+})
+
+describe('snapshot download resilience to a short LIST', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  const PREFIX = 'snapshots/kb/20260803T232555Z'
+  const MANIFEST_BODY = JSON.stringify({
+    kind: 'kb-snapshot',
+    schemaVersion: 1,
+    contents: { index: ['.kb-index.sqlite'], includesRepos: false },
+    digest: { algorithm: 'sha256', index: 'deadbeef' },
+  })
+  // What object storage really holds, keyed by full object key.
+  const ORIGIN: Record<string, string> = {
+    [`${PREFIX}/kb-snapshot.json`]: MANIFEST_BODY,
+    [`${PREFIX}/.kb-index.sqlite`]: 'SQLITE',
+    [`${PREFIX}/source-files-manifest.json`]: '{}',
+  }
+
+  /**
+   * Stub fetch so LIST and GET can disagree — the Tigris behavior that took
+   * kb-demo down. `listed` is what ListObjectsV2 admits to; `gettable`
+   * defaults to the full origin.
+   */
+  function stubS3(listed: string[], gettable: Record<string, string> = ORIGIN) {
+    const gets: string[] = []
+    globalThis.fetch = (async (url: string) => {
+      const parsed = new URL(String(url))
+      if (parsed.searchParams.get('list-type') === '2') {
+        const xml = `<ListBucketResult><IsTruncated>false</IsTruncated>${listed
+          .map(k => `<Contents><Key>${k}</Key></Contents>`)
+          .join('')}</ListBucketResult>`
+        return new Response(xml, { status: 200 })
+      }
+      const key = decodeURIComponent(parsed.pathname.replace(/^\/[^/]+\//, ''))
+      gets.push(key)
+      if (!(key in gettable)) return new Response('', { status: 404 })
+      return new Response(gettable[key], { status: 200 })
+    }) as unknown as typeof fetch
+    return gets
+  }
+
+  const outDir = () => path.join(mkdtempSync(path.join(tmpdir(), 'kb-pull-')), 'snap')
+
+  it('[TC-64] recovers a prefix whose LIST is empty but whose objects all GET', async () => {
+    const gets = stubS3([])
+    const dir = outDir()
+    await downloadPrefix(CREDS, PREFIX, dir)
+    expect(snapshotDirComplete(dir)).toBe(true)
+    expect(readFileSync(path.join(dir, '.kb-index.sqlite'), 'utf8')).toBe('SQLITE')
+    // Fetched by exact key, never enumerated.
+    expect(gets).toContain(`${PREFIX}/kb-snapshot.json`)
+    expect(gets).toContain(`${PREFIX}/.kb-index.sqlite`)
+  })
+
+  it('[TC-65] recovers a partial LIST that omits the manifest', async () => {
+    stubS3([`${PREFIX}/.kb-index.sqlite`])
+    const dir = outDir()
+    await downloadPrefix(CREDS, PREFIX, dir)
+    expect(snapshotDirComplete(dir)).toBe(true)
+  })
+
+  it('[TC-66] leaves a healthy LIST alone and still pulls aux objects', async () => {
+    stubS3(Object.keys(ORIGIN))
+    const dir = outDir()
+    await downloadPrefix(CREDS, PREFIX, dir)
+    expect(snapshotDirComplete(dir)).toBe(true)
+    expect(existsSync(path.join(dir, 'source-files-manifest.json'))).toBe(true)
+  })
+
+  it('[TC-67] still fails when the prefix is absent by LIST and by GET', async () => {
+    stubS3([], {})
+    await expect(downloadPrefix(CREDS, PREFIX, outDir())).rejects.toThrow(/missing required objects/)
+  })
+
+  it('[TC-68] takes index file names from the manifest, always including the primary', () => {
+    const dir = outDir()
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'kb-snapshot.json'), MANIFEST_BODY)
+    expect(manifestIndexFiles(dir)).toEqual(['.kb-index.sqlite'])
+
+    writeFileSync(
+      path.join(dir, 'kb-snapshot.json'),
+      JSON.stringify({ contents: { index: ['.kb-index.sqlite', '.kb-index.sqlite-wal'] } })
+    )
+    expect(manifestIndexFiles(dir)).toEqual(['.kb-index.sqlite', '.kb-index.sqlite-wal'])
+
+    // Manifest missing/older than the field: fall back to the primary index.
+    writeFileSync(path.join(dir, 'kb-snapshot.json'), '{}')
+    expect(manifestIndexFiles(dir)).toEqual(['.kb-index.sqlite'])
   })
 })
