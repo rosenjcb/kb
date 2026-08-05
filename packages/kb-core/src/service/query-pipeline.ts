@@ -32,6 +32,7 @@ import {
 } from '@kb/core/query/intent-cli.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
 import { inferQueryScope, type ScopeVerdict } from '@kb/core/query/scope-inference.js'
+import { buildInquiryLanes } from '@kb/core/query/inquiry-lanes.js'
 
 export interface QueryPipelineDeps {
   toolExecutor: ToolExecutor
@@ -180,6 +181,26 @@ export async function runQueryPipeline(
       }
     } catch {
       // Graph augmentation unavailable; fall back to plain retrieval.
+    }
+  }
+
+  // Ontology-typed inquiry lanes: turn the resolved entity into targeted sub-queries
+  // (its owner, its parent, its dependencies, kind-appropriate mechanism probes)
+  // rather than letting the reader guess facets from the question string. Reuses the
+  // stage-0 verdict, so lane targets match the scope disclosure the user is shown.
+  // Deterministic and additive — no lanes means the reader's existing path runs.
+  if (!allFacts) {
+    try {
+      const lanes = buildInquiryLanes({
+        dbPath: kbIndexDbPath(baseDir),
+        query,
+        ...(scope ? { verdict: scope } : {}),
+      })
+      if (lanes.length > 0) {
+        ;(parsed.envelope.payload as { inquiryLanes?: unknown }).inquiryLanes = lanes
+      }
+    } catch {
+      // Lane construction is best-effort; never block the query.
     }
   }
 

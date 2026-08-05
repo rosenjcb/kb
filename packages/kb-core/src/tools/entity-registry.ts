@@ -69,6 +69,14 @@ export interface EntityAliasRow {
   source: string
 }
 
+export interface EntityEdgeRow {
+  edgeType: EntityEdgeType
+  /** Relative to the queried entity: `out` = it is the edge's `from` side. */
+  direction: 'out' | 'in'
+  other: EntityRow
+  gloss?: string
+}
+
 export interface EntityCollision {
   fromEntity: EntityRow
   toEntity: EntityRow
@@ -319,6 +327,42 @@ export class EntityRegistry {
       .prepare('SELECT 1 AS x FROM entity_links WHERE entity_id = ? LIMIT 1')
       .get(entityId) as { x: number } | undefined
     return Boolean(row)
+  }
+
+  /**
+   * All typed edges touching an entity, in both directions, with the neighbor
+   * resolved. `direction` is relative to the queried entity: `out` means the
+   * entity is the edge's `from` side (it depends on / belongs to the neighbor),
+   * `in` means the neighbor points at it (the neighbor is part of it).
+   *
+   * `distinct_from` rows are excluded — they are a disambiguation signal, not a
+   * relationship, and `distinctFromSiblings` is their accessor.
+   */
+  listEdges(entityId: string): EntityEdgeRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT from_entity_id, to_entity_id, edge_type, gloss FROM entity_edges
+         WHERE edge_type != 'distinct_from' AND (from_entity_id = ? OR to_entity_id = ?)`
+      )
+      .all(entityId, entityId) as Array<{
+      from_entity_id: string
+      to_entity_id: string
+      edge_type: string
+      gloss: string | null
+    }>
+    const out: EntityEdgeRow[] = []
+    for (const row of rows) {
+      const outgoing = row.from_entity_id === entityId
+      const other = this.getEntityById(outgoing ? row.to_entity_id : row.from_entity_id)
+      if (!other) continue
+      out.push({
+        edgeType: row.edge_type as EntityEdgeType,
+        direction: outgoing ? 'out' : 'in',
+        other,
+        ...(row.gloss ? { gloss: row.gloss } : {}),
+      })
+    }
+    return out
   }
 
   /** `distinct_from` siblings of an entity (either direction). */

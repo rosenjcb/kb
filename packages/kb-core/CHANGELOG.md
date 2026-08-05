@@ -1,5 +1,19 @@
 # @kb/core
 
+## 1.6.3
+
+### Patch Changes
+
+- Expand queries into ontology-typed inquiry lanes instead of generic LLM-guessed facets.
+
+  When stage-0 scope inference resolves a question to an entity, the query pipeline now
+  derives deterministic sub-queries from the entity graph — its owner, its parent domain,
+  its dependencies, and mechanism probes conditioned on entity kind — and hands them to
+  the deep retrieval fan-out. Lanes need no LLM call and are not gated on query length,
+  so long vague questions get targeted probes too. Questions that resolve to no entity
+  keep the existing LLM expander unchanged. `KB_INQUIRY_LANES=false` (or the existing
+  `KB_ENTITY_SCOPE=false`) disables lanes.
+
 ## 1.6.2
 
 ### Patch Changes

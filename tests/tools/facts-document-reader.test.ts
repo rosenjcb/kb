@@ -315,3 +315,69 @@ describe('FactsDocumentReader — all_facts mode', () => {
     expect(llmCalled).toBe(false)
   })
 })
+
+describe('FactsDocumentReader — ontology-typed inquiry lanes', () => {
+  it('fans out on caller-supplied inquiry lanes instead of calling the LLM expander', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({
+      factText: 'raylib provides window management and input handling',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+    indexer.close()
+
+    let llmCalled = false
+    const llm: LLMProvider = {
+      call: async () => {
+        llmCalled = true
+        return { text: '["should not be used"]', inputTokens: 0, outputTokens: 0 }
+      },
+    } as unknown as LLMProvider
+
+    const reader = new FactsDocumentReader(dbPath, llm)
+    const response = await reader.queryDocuments({
+      query: 'raylib',
+      discoveryDepth: 'deep',
+      includeContent: true,
+      limit: 10,
+      surface: 'query',
+      inquiryLanes: [
+        { facet: 'mechanism', query: 'raylib window management', entityId: 'ent-1' },
+        { facet: 'ownership', query: 'raylib ownership responsibility', entityId: 'ent-1' },
+      ],
+    })
+
+    expect(response.retrieval.detail).toContain('expanded:2')
+    expect(response.retrieval.detail).toContain('facets:mechanism+ownership')
+    expect(llmCalled).toBe(false)
+  })
+
+  it('fans out typed lanes on a long query, which the LLM expander would have skipped', async () => {
+    const dbPath = await createDbPath()
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.upsertFact({
+      factText: 'raylib provides window management and input handling',
+      sourceKind: 'submit',
+      sourceRef: 'test',
+      confidence: 0.9,
+    })
+    indexer.close()
+
+    // Long enough that shouldExpandQuery() is false — the old gate would have
+    // produced a single lane. Typed lanes are not length-gated.
+    const longQuery = 'how does raylib handle window management across platforms today'
+    const reader = new FactsDocumentReader(dbPath, mockLlm(['unused']))
+    const response = await reader.queryDocuments({
+      query: longQuery,
+      discoveryDepth: 'deep',
+      limit: 10,
+      surface: 'query',
+      inquiryLanes: [{ facet: 'mechanism', query: 'raylib window management', entityId: 'ent-1' }],
+    })
+
+    expect(response.retrieval.detail).toContain('expanded:1')
+    expect(response.retrieval.detail).toContain('facets:mechanism')
+  })
+})
