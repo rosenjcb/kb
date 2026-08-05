@@ -7,8 +7,12 @@ sources:
   - ./pattern-engine.ts
   - ./ecosystems/
   - ./ecosystems/common.yaml
+# TC ids are per-spec. entity-graph-edges.test.ts is claimed here and nowhere else;
+# the edge tests must not sit in tests/core/entity-index-cycle.test.ts, which
+# CORE.spec.md claims and which numbers its own TCs from TC-1.
 tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
+  - ../../../../tests/tools/entity-graph-edges.test.ts
 description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML source_patterns drive tier-4 route and app harvest.
