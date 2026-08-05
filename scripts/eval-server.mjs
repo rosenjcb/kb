@@ -6,8 +6,10 @@
  * KB_HOST + KB_PORT + KB_SERVER_API_KEY (or KB_EVAL_SERVER_URL when attaching).
  *
  * Multi-suite batches share one multi-base kb-server (psql/postmaster model): the parent
- * spawns once, children attach via KB_EVAL_SERVER_URL and select `eval-{suite}` per request
- * with `--base` / `X-KB-Base`. Per-base readiness uses `/healthz?base=<slug>`.
+ * spawns once on a placeholder default base (not an `eval-{suite}`), children attach via
+ * KB_EVAL_SERVER_URL and select `eval-{suite}` per request with `--base` / `X-KB-Base`.
+ * Per-base readiness uses `/healthz?base=<slug>`. Eval server env scrubs operator
+ * `KB_GIT_REPOS` / `KB_BASE` so bootstrap never races with offline `eval-index`.
  */
 
 import { spawn } from 'node:child_process'
@@ -77,6 +79,27 @@ export function buildEvalOfflineEnv({ kbHome } = {}) {
   env.NODE_PATH = undefined
   if (kbHome) env.KB_HOME = kbHome
   else env.KB_HOME = undefined
+  return env
+}
+
+/**
+ * Env for a spawned eval kb-server child.
+ * Scrubs the operator's dogfood bootstrap targets so the process does not clone/index
+ * `KB_GIT_REPOS` into the default base while suites offline-init `eval-*` sessions.
+ * @param {{ apiKey?: string, kbHome?: string }} [opts]
+ */
+export function buildEvalServerChildEnv({ apiKey = defaultEvalApiKey(), kbHome } = {}) {
+  const env = {
+    ...process.env,
+    KB_SERVER_API_KEY: apiKey,
+    KB_REINDEX_INTERVAL: '0',
+  }
+  env.KB_GIT_REPOS = undefined
+  env.KB_SERVER_BASE_GIT_REPOS = undefined
+  env.KB_BASE = undefined
+  env.KB_SERVER_BASE_NAME = undefined
+  env.NODE_PATH = undefined
+  if (kbHome) env.KB_HOME = kbHome
   return env
 }
 
@@ -246,12 +269,7 @@ export async function startEvalServer({
 
   const url = `http://${host}:${resolvedPort}`
   const args = ['start', '--base', base, '--port', String(resolvedPort)]
-  const childEnv = {
-    ...process.env,
-    KB_SERVER_API_KEY: apiKey,
-    KB_REINDEX_INTERVAL: '0',
-  }
-  if (kbHome) childEnv.KB_HOME = kbHome
+  const childEnv = buildEvalServerChildEnv({ apiKey, kbHome })
 
   let logFd = null
   if (logPath) {

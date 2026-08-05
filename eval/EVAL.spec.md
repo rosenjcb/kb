@@ -8,7 +8,7 @@ tests:
   - ../tests/eval-server.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-08-02T23:10:00Z
+timestamp: 2026-08-05T19:30:00Z
 ---
 
 ### Intro
@@ -43,10 +43,10 @@ See companion doc for full vocabulary where applicable.
 | FR-10 | Behaviors in resource-loss.test.ts |
 | FR-11 | Behaviors in summary.test.ts |
 | FR-12 | Behaviors in trajectory-loss.test.ts |
-| FR-13 | Behaviors in eval-run.test.ts |
+| FR-13 | Behaviors in eval-run.test.ts; `--force-init` wipes `~/.kb/sessions/<base>` on disk (not via `kb base delete`) before offline `eval-index` init |
 | FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
-| FR-16 | Multi-suite harvest shares one multi-base kb-server by default: children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; `--per-suite-server` restores ephemeral per-child servers; `--skip-scan` is forwarded to children |
+| FR-16 | Multi-suite harvest shares one multi-base kb-server by default: parent boots placeholder default base `_eval-batch` (not an `eval-{suite}`), children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; eval server env scrubs operator `KB_GIT_REPOS` / `KB_BASE`; `--per-suite-server` restores ephemeral per-child servers; `--skip-scan` is forwarded to children |
 | FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
 
 ### QA Test Cases
@@ -308,6 +308,10 @@ See companion doc for full vocabulary where applicable.
 | TC-253 | FR-16 | buildEvalOfflineEnv clears remote connection vars | pass |
 | TC-254 | FR-16 | allocateFreePort yields distinct ports for concurrent callers | pass |
 | TC-255 | FR-17 | buildChildArgv forwards --from-snapshot to every multi-suite child | pass |
+| TC-256 | FR-13 | wipeEvalBaseSession removes ~/.kb/sessions/<base> under KB_HOME | pass |
+| TC-257 | FR-13 | wipeEvalBaseSession is a no-op when the session dir is missing | pass |
+| TC-258 | FR-16 | SHARED_EVAL_BATCH_BASE is the placeholder `_eval-batch` | pass |
+| TC-259 | FR-16 | buildEvalServerChildEnv scrubs operator git/base bootstrap env | pass |
 
 ### Related docs
 

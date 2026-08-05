@@ -228,15 +228,17 @@ Readiness: two consecutive `/healthz?base=<slug>` responses with `ok: true` + `i
 - `initAstLossParser()` must be called once per process before any `computeAstLoss` call.
 - The query harvest pipeline and the MOEL pipeline are independent — neither replaces the other.
 - Do not hardcode question text; always load from `eval/suites/<suite>.yaml`.
-- Multi-suite default: **one** shared multi-base server; children must not strip `KB_EVAL_SERVER_URL`.
+- Multi-suite default: **one** shared multi-base server whose default base is the placeholder `_eval-batch` (not an `eval-{suite}`); children must not strip `KB_EVAL_SERVER_URL`.
 - Non-default bases are serve-only — missing `.kb-index.sqlite` ⇒ `404 unknown_base` (build via init/scan first).
 - Never run offline SQLite writes (eval-index init/scan) against a base the shared server already holds open.
+- `--force-init` wipes `~/.kb/sessions/<base>` on disk (not `kb base delete`); multi-suite parents wipe suite bases before starting the shared server.
 
 ## Gotchas
 
 - `--skip-init` = rescore-only (needs `--run-dir`); `--skip-scan` = reuse index but still query.
 - Auto-score can flake on judge JSON — suite exit 1 with `q*.json` present; retry the suite alone.
 - `kb base use` is client-local; eval never relies on it for remote routing (always pass `--base`).
+- Eval kb-server children scrub operator `KB_GIT_REPOS` / `KB_BASE` so dogfood bootstrap cannot race offline `eval-index`.
 
 ## Related docs
 

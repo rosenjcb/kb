@@ -50,7 +50,11 @@ import {
   assertMultiSuiteArgsOk,
   buildChildArgv,
   buildMultiSuiteChildEnv,
+  SHARED_EVAL_BATCH_BASE,
+  evalSessionDir,
+  wipeEvalBaseSession,
 } from '../scripts/eval-run.mjs'
+import { buildEvalServerChildEnv } from '../scripts/eval-server.mjs'
 
 describe('sanitizeSlugPart', () => {
   it('[TC-162] lowercases and replaces non-alphanumeric with hyphens', () => {
@@ -116,6 +120,60 @@ describe('resolveEvalInitPlan', () => {
       wipeBase: false,
       evalMode: 'all',
     })
+  })
+})
+
+describe('wipeEvalBaseSession', () => {
+  it('[TC-256] wipeEvalBaseSession removes ~/.kb/sessions/<base> under KB_HOME', () => {
+    const kbHome = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-eval-wipe-'))
+    const base = 'eval-raylib'
+    const sessionDir = evalSessionDir(base, kbHome)
+    fs.mkdirSync(sessionDir, { recursive: true })
+    fs.writeFileSync(path.join(sessionDir, '.kb-index.sqlite'), 'x')
+    expect(wipeEvalBaseSession(base, { kbHome })).toBe(true)
+    expect(fs.existsSync(sessionDir)).toBe(false)
+    fs.rmSync(kbHome, { recursive: true, force: true })
+  })
+
+  it('[TC-257] wipeEvalBaseSession is a no-op when the session dir is missing', () => {
+    const kbHome = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-eval-wipe-missing-'))
+    expect(wipeEvalBaseSession('eval-missing', { kbHome })).toBe(false)
+    fs.rmSync(kbHome, { recursive: true, force: true })
+  })
+})
+
+describe('SHARED_EVAL_BATCH_BASE', () => {
+  it('[TC-258] SHARED_EVAL_BATCH_BASE is the placeholder `_eval-batch`', () => {
+    expect(SHARED_EVAL_BATCH_BASE).toBe('_eval-batch')
+  })
+})
+
+describe('buildEvalServerChildEnv', () => {
+  it('[TC-259] buildEvalServerChildEnv scrubs operator git/base bootstrap env', () => {
+    const prev = {
+      KB_GIT_REPOS: process.env.KB_GIT_REPOS,
+      KB_SERVER_BASE_GIT_REPOS: process.env.KB_SERVER_BASE_GIT_REPOS,
+      KB_BASE: process.env.KB_BASE,
+      KB_SERVER_BASE_NAME: process.env.KB_SERVER_BASE_NAME,
+    }
+    process.env.KB_GIT_REPOS = 'https://example.com/dogfood.git'
+    process.env.KB_SERVER_BASE_GIT_REPOS = 'https://example.com/other.git'
+    process.env.KB_BASE = 'dogfood'
+    process.env.KB_SERVER_BASE_NAME = 'dogfood'
+    try {
+      const env = buildEvalServerChildEnv({ apiKey: 'eval-key' })
+      expect(env.KB_SERVER_API_KEY).toBe('eval-key')
+      expect(env.KB_REINDEX_INTERVAL).toBe('0')
+      expect(env.KB_GIT_REPOS).toBeUndefined()
+      expect(env.KB_SERVER_BASE_GIT_REPOS).toBeUndefined()
+      expect(env.KB_BASE).toBeUndefined()
+      expect(env.KB_SERVER_BASE_NAME).toBeUndefined()
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
   })
 })
 

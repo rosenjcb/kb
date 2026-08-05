@@ -276,7 +276,7 @@ pnpm run eval -- --suite kb --auto-score --skip-control
 Every run: `kb scan` on the snapshot clone, then 8× `kb query` (one-shot synthesis — see
 `src/core/QUERY_INTERNALS.md`), then control (unless skipped).
 
-To force a fresh init (e.g. after significant KB changes): `--force-init` (runs `kb base delete --force`, then `kb init`).
+To force a fresh init (e.g. after significant KB changes): `--force-init` (wipes `~/.kb/sessions/<base>` on disk, then offline `eval-index` init).
 
 ### Phase 2: Review Artifacts
 
