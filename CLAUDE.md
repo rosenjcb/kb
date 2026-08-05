@@ -77,6 +77,44 @@ Git hooks: **pre-commit** → staged guard + lint/tests; **pre-push** → `chang
 
 Monorepo layout → [`packages/ARCHITECTURE.md`](packages/ARCHITECTURE.md).
 
+## Local environment / toolchain
+
+A fresh container does not arrive ready. Establish these before running anything,
+and re-establish the shell ones in **every** shell — tool calls do not persist shell
+state between invocations.
+
+- **Node 24 is required** (`engines.node >=24`). `pnpm` hard-fails on anything older
+  with `ERR_PNPM_UNSUPPORTED_ENGINE`, so this blocks lint/test/build entirely:
+
+  ```bash
+  export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm install 24 && nvm use 24
+  ```
+
+- **`node_modules` may be absent** even though `package.json` is present (a bare
+  `tsc --noEmit` then fails with `Cannot find type definition file for 'node'`).
+  Run `pnpm install --frozen-lockfile`.
+
+- **`flyctl` is installed at `~/.fly/bin/flyctl`, which is not on `PATH`.** A bare
+  `command -v flyctl` returns nothing — that is not evidence it is missing. Prepend
+  `export PATH="$HOME/.fly/bin:$PATH"` in the shell that needs it.
+
+  A setup script cannot fix this by ending in `export PATH=...`: the export dies with
+  the script's process and never reaches later shells. To make it stick, have the
+  setup script write to a profile or link into an existing `PATH` entry:
+
+  ```bash
+  ln -sf "$HOME/.fly/bin/flyctl" /usr/local/bin/flyctl
+  echo 'export PATH="$HOME/.fly/bin:$PATH"' >> ~/.bashrc
+  ```
+
+- **Git hooks are slow.** `pre-commit` runs the full Vitest suite (~40s plus
+  startup), which overruns short command timeouts and leaves the commit looking like
+  it failed when it was merely still running. Give a commit several minutes.
+
+- **Verify the resolved LLM provider rather than assuming a key is set.** With no
+  key, `kb-server` falls back to `ollama/mistral` and fails later at synthesis
+  instead of at startup. The server's `server start` log line names the provider.
+
 ## Boolean environment variables
 
 Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
