@@ -17,7 +17,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(baseDir, { recursive: true, force: true })
-  process.env.KB_INQUIRY_LANES = undefined
+  process.env.KB_ENTITY_SCOPE = undefined
 })
 
 /** An empty index still needs the schema, which the indexer creates on open. */
@@ -158,9 +158,9 @@ describe('buildInquiryLanes — additivity', () => {
     ).toEqual([])
   })
 
-  it('honors the KB_INQUIRY_LANES=false kill switch', () => {
+  it('follows the registry switch — KB_ENTITY_SCOPE=false yields no lanes', () => {
     seedServiceGraph()
-    process.env.KB_INQUIRY_LANES = 'false'
+    process.env.KB_ENTITY_SCOPE = 'false'
 
     expect(buildInquiryLanes({ dbPath, query: 'how does checkout work?' })).toEqual([])
   })

@@ -11,8 +11,8 @@
   its dependencies, and mechanism probes conditioned on entity kind — and hands them to
   the deep retrieval fan-out. Lanes need no LLM call and are not gated on query length,
   so long vague questions get targeted probes too. Questions that resolve to no entity
-  keep the existing LLM expander unchanged. `KB_INQUIRY_LANES=false` (or the existing
-  `KB_ENTITY_SCOPE=false`) disables lanes.
+  keep the existing LLM expander unchanged. Lanes follow the registry's existing
+  `KB_ENTITY_SCOPE` switch.
 
 ## 1.6.2
 

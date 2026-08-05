@@ -30,7 +30,6 @@
  * resolves at all.
  */
 
-import { isEnvFalse } from '../config/env-boolean.js'
 import {
   EntityRegistry,
   type EntityKind,
@@ -88,15 +87,6 @@ const KIND_MECHANISM_FACETS: Record<EntityKind, string[]> = {
 
 const GENERIC_MECHANISM_FACETS = ['purpose and responsibilities', 'design and behavior']
 
-/**
- * Kill switches: `KB_INQUIRY_LANES=false` disables lanes specifically, and
- * `KB_ENTITY_SCOPE=false` disables them too — lanes are entity-scope machinery,
- * so killing the registry's influence on retrieval has to kill this with it.
- */
-export function isInquiryLanesEnabled(): boolean {
-  return !isEnvFalse(process.env.KB_INQUIRY_LANES) && isEntityScopeEnabled()
-}
-
 export interface BuildInquiryLanesInput {
   dbPath: string
   /** The user's question, pre-expansion. */
@@ -116,7 +106,9 @@ export interface BuildInquiryLanesInput {
  * caller then runs its existing expansion path unchanged.
  */
 export function buildInquiryLanes(input: BuildInquiryLanesInput): InquiryLane[] {
-  if (!isInquiryLanesEnabled()) return []
+  // Lanes are entity-scope machinery, so they follow the registry's existing
+  // switch — disabling the registry's influence on retrieval disables this too.
+  if (!isEntityScopeEnabled()) return []
   const query = input.query.trim()
   if (!query) return []
 
