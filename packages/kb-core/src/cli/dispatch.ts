@@ -82,6 +82,43 @@ export interface ServerCommandOptions {
   config: KbConfig
   mode?: CmdMode
   sessionId?: string
+  /**
+   * Base this invocation is scoped to — the base the *caller* selected, which on the
+   * REST path is the per-request `X-KB-Base` service. The `kb` client strips `--base`
+   * from argv and puts it on the wire as that header, so without this the server would
+   * fall back to its own default base and silently answer for the wrong one.
+   * Applied only when the args do not already carry an explicit `--base`.
+   */
+  baseName?: string
+}
+
+/**
+ * Top-level commands that accept `--base`. Anything outside this set either has no
+ * base (`base list`) or refuses unknown flags, so the ambient base is never injected
+ * into it.
+ */
+const BASE_SCOPED_COMMANDS = new Set([
+  'docs',
+  'facts',
+  'graph',
+  'entities',
+  'logs',
+  'publish',
+  'init',
+  'scan',
+])
+
+/**
+ * Re-attach the caller's base to argv when it is missing. The client sends `--base` as
+ * the `X-KB-Base` header rather than an argument, so `/v1/admin/cli` is the only place
+ * that knows which base the request meant.
+ */
+export function applyAmbientBase(args: string[], baseName?: string): string[] {
+  if (!baseName) return args
+  const command = args[0]
+  if (!command || !BASE_SCOPED_COMMANDS.has(command)) return args
+  if (args.includes('--base')) return args
+  return [...args, '--base', baseName]
 }
 
 export async function runServerCommand(
@@ -95,10 +132,11 @@ export async function runServerCommand(
 }
 
 export async function runServerCommandWithOutput(
-  args: string[],
+  rawArgs: string[],
   out: CliOutput,
   options: ServerCommandOptions,
 ): Promise<number> {
+  const args = applyAmbientBase(rawArgs, options.baseName)
   const mode = options.mode ?? 'cli'
   const config = options.config
   const sessionId = options.sessionId

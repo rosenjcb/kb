@@ -6,6 +6,10 @@ import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
 import { EntityRegistry } from '@kb/core/tools/entity-registry.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
+// Edge harvest and resolution are covered by tests/tools/entity-graph-edges.test.ts,
+// which ECOSYSTEM_HARVESTERS.spec.md owns — TC ids are per-spec, so those tags must
+// not live in a file CORE.spec.md claims.
+
 let baseDir: string
 let scanDir: string
 let dbPath: string
@@ -136,7 +140,14 @@ describe('runEntityIndexCycle', () => {
     process.env.KB_ENTITY_INDEX = 'false'
 
     const stats = await runEntityIndexCycle({ baseDir, scanDir, gitRepo: 'payments-core' })
-    expect(stats).toEqual({ entitiesUpserted: 0, factsLinked: 0, collisions: 0 })
+    expect(stats).toEqual({
+      entitiesUpserted: 0,
+      factsLinked: 0,
+      collisions: 0,
+      edgesWritten: 0,
+      edgesExternal: 0,
+      edgesDropped: 0,
+    })
 
     const registry = new EntityRegistry(dbPath)
     try {

@@ -1,12 +1,34 @@
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
+import { HARVEST_PIPELINE_VERSION, isPipelineStale } from '@kb/core/core/pipeline-version.js'
 import { getHeadSha, pullRepo } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 
 export interface ScanOptions {
   onProgress?: (line: string) => void
+}
+
+/**
+ * True when this repo's slice of the index was built by an older extraction pipeline.
+ * Best-effort: an unreadable index is not a reason to force a rebuild loop, so any
+ * failure reads as "not stale" and the commit-based trigger stays in charge.
+ */
+function isRepoPipelineStale(baseDir: string, slug: string): boolean {
+  const dbPath = path.join(baseDir, '.kb-index.sqlite')
+  if (!existsSync(dbPath)) return false
+  try {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    try {
+      return isPipelineStale(indexer, slug)
+    } finally {
+      indexer.close()
+    }
+  } catch {
+    return false
+  }
 }
 
 /** Re-index `repo` from its clone, tagging facts with its slug. Ignore patterns come from env. */
@@ -41,9 +63,17 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
   }
 
   const newSha = await getHeadSha(repoDir)
-  if (!hadNewCommits) return false
+  // Upstream commits are not the only reason an index is out of date: when KB's own
+  // extraction changes, a repo that never moves keeps a stale index indefinitely. The
+  // pipeline stamp catches that case, so shipping a new harvester actually reaches the
+  // fleet instead of waiting on unrelated upstream activity.
+  const pipelineStale = isRepoPipelineStale(baseDir, repo.slug)
+  if (!hadNewCommits && !pipelineStale) return false
 
-  onProgress?.(`[kb] ${repo.slug}: re-indexing (→ ${newSha.slice(0, 8)})…`)
+  const reason = hadNewCommits
+    ? `→ ${newSha.slice(0, 8)}`
+    : `pipeline v${HARVEST_PIPELINE_VERSION} rebuild`
+  onProgress?.(`[kb] ${repo.slug}: re-indexing (${reason})…`)
   try {
     await reindexRepo(baseDir, repo)
   } catch (err) {

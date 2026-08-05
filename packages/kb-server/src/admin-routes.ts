@@ -186,7 +186,14 @@ export async function handleAdminRoute(
     }
     const args = rawArgs.map(value => String(value))
     const config = await readKbConfig()
-    const result = await runServerCommand(args, { config })
+    // Scope the command to the base this request selected (`X-KB-Base`), the same way
+    // /v1/admin/scan does. The client strips `--base` from argv and sends it as that
+    // header, so without this every admin command would run against the server's
+    // default base no matter which base the caller asked for.
+    const result = await runServerCommand(args, {
+      config,
+      baseName: path.basename(baseDir),
+    })
     sendJson(res, 200, result)
     return true
   }

@@ -2,9 +2,14 @@
 /**
  * Dump harvested ontology entities from an eval session index.
  *
- * Reads `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases`)
- * without running queries or control. Use after `eval-index` scan / `pnpm run eval`
- * to inspect what the entity-index cycle harvested.
+ * Reads `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases` /
+ * `entity_edges`) without running queries or control. Use after `eval-index` scan /
+ * `pnpm run eval` to inspect what the entity-index cycle harvested.
+ *
+ * Reports edges as well as entities: a registry with entities but no relationship
+ * edges is a bag of names, not a graph, and edge-derived retrieval lanes cannot fire
+ * against it. The pipeline version says which extraction built the index — a base
+ * behind the running code explains a thin registry on its own.
  *
  * Usage (kb repo root):
  *   pnpm run eval:entities -- --base eval-kb
@@ -157,6 +162,9 @@ function loadEntityReport(dbPath, samples) {
         total: 0,
         aliasCount: 0,
         byKind: [],
+        byEdgeType: [],
+        relationshipEdges: 0,
+        pipelineVersion: 0,
       }
     }
 
@@ -202,7 +210,46 @@ function loadEntityReport(dbPath, samples) {
       return { kind, count, sample }
     })
 
-    return { ok: true, total, aliasCount, byKind }
+    // Edge counts by type. Reporting only entities is what hid a registry with a
+    // healthy entity count and no relationship edges at all — a bag of names rather
+    // than a graph. `distinct_from` is excluded from the headline because it is
+    // written by the collision screen, not harvested.
+    let byEdgeType = []
+    const edgeTable = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='entity_edges'`)
+      .get()
+    if (edgeTable) {
+      byEdgeType = db
+        .prepare(
+          `SELECT edge_type AS type, COUNT(*) AS count
+           FROM entity_edges
+           GROUP BY edge_type
+           ORDER BY count DESC, edge_type ASC`
+        )
+        .all()
+        .map(row => ({ type: String(row.type), count: Number(row.count) }))
+    }
+    const relationshipEdges = byEdgeType
+      .filter(e => e.type !== 'distinct_from')
+      .reduce((sum, e) => sum + e.count, 0)
+
+    // Which extraction pipeline built this index — a base far behind the running code
+    // explains a low entity/edge count better than any harvester theory.
+    let pipelineVersion = 0
+    const stateTable = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='index_state'`)
+      .get()
+    if (stateTable) {
+      const rows = db
+        .prepare(`SELECT value FROM index_state WHERE key LIKE 'pipeline_version%'`)
+        .all()
+      for (const row of rows) {
+        const parsed = Number.parseInt(String(row.value), 10)
+        if (Number.isFinite(parsed)) pipelineVersion = Math.max(pipelineVersion, parsed)
+      }
+    }
+
+    return { ok: true, total, aliasCount, byKind, byEdgeType, relationshipEdges, pipelineVersion }
   } finally {
     db.close()
   }
@@ -223,6 +270,9 @@ function reportForTarget(target, samples) {
       total: 0,
       aliasCount: 0,
       byKind: [],
+      byEdgeType: [],
+      relationshipEdges: 0,
+      pipelineVersion: 0,
     }
   }
   const loaded = loadEntityReport(dbPath, samples)
@@ -246,7 +296,16 @@ function printHuman(reports, { samples }) {
       console.log(`status: error (${r.error})`)
       continue
     }
-    console.log(`entities: ${r.total}   aliases: ${r.aliasCount}`)
+    console.log(
+      `entities: ${r.total}   aliases: ${r.aliasCount}   ` +
+        `relationship edges: ${r.relationshipEdges}   pipeline: v${r.pipelineVersion || '?'}`
+    )
+    if (r.byEdgeType.length > 0) {
+      console.log(`edges: ${r.byEdgeType.map(e => `${e.type}=${e.count}`).join('  ')}`)
+    }
+    if (r.total > 0 && r.relationshipEdges === 0) {
+      console.log('⚠  no relationship edges — entities are unconnected (edge-derived lanes cannot fire)')
+    }
     if (r.byKind.length === 0) {
       console.log('(empty registry — run eval-index scan / entity-index cycle)')
       continue

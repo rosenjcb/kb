@@ -4,6 +4,31 @@
 
 ### Patch Changes
 
+- Harvest real relationship edges, and stop serving stale bases.
+
+  The entity registry was a bag of names, not a graph. `owned_by` and `depends_on`
+  had no writer anywhere in the codebase, the `part_of` edges that were emitted
+  pointed at workspace/Gradle/solution roots that nothing harvested (so they were
+  dropped silently), and tier-4 entities — the bulk of every registry — had no
+  edges at all.
+
+  - Harvest the container an edge names: the workspace root package, the Gradle
+    root project, and the `.sln` solution are candidates in their own right.
+  - Emit `depends_on` from the dependency lists every package harvester already
+    parsed for the kind rubric and then discarded. Third-party targets are counted
+    as external rather than minted as stub entities.
+  - Derive containment in the `entity-index` cycle: each candidate is `part_of` the
+    nearest package owning its source file, and each package is `part_of` the repo.
+  - Resolve edge endpoints against the whole base and report `edgesWritten` /
+    `edgesExternal` / `edgesDropped` in the cycle result, the scan progress line,
+    and `eval-entities`. An unresolvable structural endpoint is no longer silent.
+  - Stamp an extraction pipeline version per repo and re-index in `auto-sync` when
+    it is behind, so a repo with no new upstream commits still picks up harvester
+    changes instead of serving a pre-change index indefinitely.
+  - Scope `/v1/admin/cli` to the base the request selected. The client sends
+    `--base` as the `X-KB-Base` header, which that route ignored, so admin commands
+    answered from the server's default base no matter which base was asked for.
+
 - Updated dependencies
   - @kb/core@1.6.3
 
