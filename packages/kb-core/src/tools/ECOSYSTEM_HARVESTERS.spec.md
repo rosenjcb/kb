@@ -7,8 +7,12 @@ sources:
   - ./pattern-engine.ts
   - ./ecosystems/
   - ./ecosystems/common.yaml
+# TC ids are per-spec. entity-graph-edges.test.ts is claimed here and nowhere else;
+# the edge tests must not sit in tests/core/entity-index-cycle.test.ts, which
+# CORE.spec.md claims and which numbers its own TCs from TC-1.
 tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
+  - ../../../../tests/tools/entity-graph-edges.test.ts
 description: >-
   Ecosystem harvesters read package and infra manifests. They emit entity
   candidates. YAML source_patterns drive tier-4 route and app harvest.
@@ -33,6 +37,12 @@ Tier-4 harvest writes registry rows for later use. Those rows can have kind
 `api`, `module`, `model`, or `surface`, and carry `sourceKind: source-pattern`.
 Tier-4 harvest does not control query results today. You can inspect the registry
 with `kb entities`.
+
+A harvest emits edges as well as candidates. Edges are what make the registry a
+graph rather than a list of names, so the `entity-index` cycle reports how many it
+wrote, how many `depends_on` targets were third-party, and how many structural
+endpoints it could not resolve. A non-zero unresolved count is a harvester bug: an
+edge named a container that nothing harvested.
 
 ### Definitions
 
@@ -126,6 +136,12 @@ with `kb entities`.
 | FR-31 | Keep package kind classification on YAML `frameworks` and `kind_rules` (unchanged path). |
 | FR-32 | Reject a `confidence` / `weight` / `score` key on any `kind_rule` or `source_pattern` at config load. Harvest rules carry no hand-assigned weights. |
 | FR-33 | [NEW] Record provenance on every candidate: manifest parsing emits `sourceKind: manifest`, pattern-engine harvest emits `sourceKind: source-pattern`. |
+| FR-34 | [NEW] Harvest the container an edge names as a candidate in its own right: the workspace root package, the Gradle root project, and the `.sln` solution. A `part_of` edge must never name an entity nothing harvested. |
+| FR-35 | [NEW] Emit `depends_on` edges from the dependency lists each package harvester already parses for the kind rubric. |
+| FR-36 | [NEW] Derive containment in the `entity-index` cycle: every candidate is `part_of` the nearest package that owns its source file, and every package is `part_of` the repo entity. |
+| FR-37 | [NEW] Resolve edge endpoints against this run's candidates, the repo entity, and the rest of the base's registry. Report resolved (`edgesWritten`), third-party `depends_on` targets (`edgesExternal`), and unresolved structural endpoints (`edgesDropped`) — never drop an edge silently. |
+| FR-38 | [NEW] Never mint a stub entity for an unresolved `depends_on` target. A third-party package stays out of the registry. |
+| FR-39 | [NEW] Degrade to a clean no-op when nothing can be harvested (no ecosystem profile, no manifest): the repo entity only, zero edges written, zero dropped. |
 
 ### QA Test Cases
 
@@ -166,6 +182,11 @@ with `kb entities`.
 | TC-33 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
 | TC-34 | FR-32 | `source_pattern` or `kind_rule` carrying `confidence` / `weight` / `score` | Config load throws. Message names the offending key. |
 | TC-35 | FR-33 | Repo with a package manifest, an infra manifest, a route decorator, and a table declaration | Manifest-derived candidates are `sourceKind: manifest`; route and model candidates are `sourceKind: source-pattern`. |
+| TC-36 | FR-34, FR-37 | Workspace whose globs do not list the root (`workspaces: ["packages/*"]`) | The member gets a `part_of` edge to the root package. `edgesDropped` is 0. |
+| TC-37 | FR-36 | Solo package in a repo with a slug | The package gets a `part_of` edge to the repo entity. |
+| TC-38 | FR-36 | Prisma model under `packages/api/prisma/` in a workspace | The model is `part_of` `@acme/api` — the nearest enclosing package, not the repo root. |
+| TC-39 | FR-35, FR-38 | Workspace member depending on a sibling package and on `express` | A `depends_on` edge links the two packages; `express` counts as `edgesExternal` and mints no entity. |
+| TC-40 | FR-39 | Repo with no manifest and no ecosystem profile (a lone `main.zig`) | One entity (the repo), 0 edges written, 0 dropped. |
 
 ### Related docs
 

@@ -22,6 +22,7 @@ import { tombstoneRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
 import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
 import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
+import { writePipelineVersion } from '@kb/core/core/pipeline-version.js'
 import {
   type ScanFactIngestProgress,
   ingestSourceMarkdownFilesAsFacts,
@@ -913,13 +914,34 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         scanDir,
         ...(gitRepoSlug ? { gitRepo: gitRepoSlug } : {}),
       })
+      // Edge counts are part of the headline: a harvest that upserts entities but writes
+      // no relationship edges is a broken graph, and printing only entity counts is what
+      // let that go unnoticed. `dropped` is the alarm — it means an edge named a
+      // container nothing harvested.
+      const droppedNote =
+        entityStats.edgesDropped > 0 ? `, ${entityStats.edgesDropped} edges dropped` : ''
       progress.finish(
         'entity-index',
-        `${entityStats.entitiesUpserted} entities, ${entityStats.factsLinked} fact links, ${entityStats.collisions} collisions`
+        `${entityStats.entitiesUpserted} entities, ${entityStats.edgesWritten} edges, ${entityStats.factsLinked} fact links, ${entityStats.collisions} collisions${droppedNote}`
       )
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       progress.finish('entity-index', `skipped (${message.slice(0, 80)})`)
+    }
+
+    // Stamp the pipeline that produced this repo's index. `auto-sync` reads it back to
+    // rebuild bases whose upstream never moved but whose extraction is out of date.
+    try {
+      const stampIndexer = new SqliteKbIndexer({
+        dbPath: path.join(baseDir, '.kb-index.sqlite'),
+      })
+      try {
+        writePipelineVersion(stampIndexer, gitRepoSlug)
+      } finally {
+        stampIndexer.close()
+      }
+    } catch {
+      // Best-effort provenance — never fail a scan over the stamp.
     }
 
     if (!checkpoint.completedCycles.includes('import-docs')) {
