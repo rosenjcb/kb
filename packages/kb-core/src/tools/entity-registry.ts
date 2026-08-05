@@ -10,12 +10,16 @@
  *
  * Alias matching is exact/longest-match over normalized text — never fuzzy —
  * because entity resolution must be higher-precision than the fuzzy retrieval
- * channels it disambiguates.
+ * channels it disambiguates. Exactness is not sufficient on its own: an alias
+ * spelled like an ordinary English word matches ordinary prose exactly, so each
+ * match also carries `distinctive` (see `common-word-aliases.ts`), and callers
+ * that prune or steer retrieval require it.
  */
 
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { runMigrations } from '../core/db-migrations.js'
+import { isDistinctiveAliasMatch } from './common-word-aliases.js'
 
 export type EntityKind =
   | 'domain'
@@ -88,6 +92,14 @@ export interface MentionMatch {
   alias: string
   start: number
   end: number
+  /**
+   * Whether this match is strong enough to steer retrieval by itself. False for
+   * a single-token alias that is an ordinary English word occurring in ordinary
+   * casing — see `isDistinctiveAliasMatch`. Callers that prune scope or aim a
+   * sub-query should require it; callers merely listing what was mentioned
+   * need not.
+   */
+  distinctive: boolean
 }
 
 /** Lowercase, strip punctuation to spaces, collapse whitespace — the alias match key. */
@@ -476,7 +488,14 @@ export class EntityRegistry {
         for (let k = 0; k < aliasTokens.length; k++) claimed[i + k] = true
         const entity = this.getEntityById(alias.entity_id)
         if (entity) {
-          matches.push({ entity, alias: alias.alias, start: first.start, end: last.end })
+          const surface = text.slice(first.start, last.end)
+          matches.push({
+            entity,
+            alias: alias.alias,
+            start: first.start,
+            end: last.end,
+            distinctive: isDistinctiveAliasMatch(alias.alias, surface),
+          })
         }
       }
     }

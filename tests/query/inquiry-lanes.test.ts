@@ -201,3 +201,35 @@ describe('buildInquiryLanes — scope verdict reuse', () => {
     expect(lanes).toEqual([])
   })
 })
+
+describe('buildInquiryLanes — common-word aliases do not aim retrieval', () => {
+  /** The observed kb failure: a Prisma `Role` enum capturing "the role of …". */
+  function seedRoleAndIndexer(): void {
+    initSchema()
+    const registry = new EntityRegistry(dbPath)
+    try {
+      registry.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+    } finally {
+      registry.close()
+    }
+  }
+
+  it('builds no lanes for a common word used as ordinary prose', () => {
+    seedRoleAndIndexer()
+
+    // Previously this landed on the Prisma enum and pointed the fan-out at
+    // database schema for a question about an indexer.
+    expect(
+      buildInquiryLanes({ dbPath, query: 'what is the role of the tree-sitter indexer?' })
+    ).toEqual([])
+  })
+
+  it('still builds lanes when the query writes the identifier', () => {
+    seedRoleAndIndexer()
+
+    const lanes = buildInquiryLanes({ dbPath, query: 'which values does the Role enum have?' })
+
+    expect(lanes.length).toBeGreaterThan(0)
+    expect(lanes.some(l => l.query.includes('schema fields columns'))).toBe(true)
+  })
+})

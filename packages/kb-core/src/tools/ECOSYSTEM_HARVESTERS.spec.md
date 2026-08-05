@@ -142,6 +142,7 @@ edge named a container that nothing harvested.
 | FR-37 | [NEW] Resolve edge endpoints against this run's candidates, the repo entity, and the rest of the base's registry. Report resolved (`edgesWritten`), third-party `depends_on` targets (`edgesExternal`), and unresolved structural endpoints (`edgesDropped`) — never drop an edge silently. |
 | FR-38 | [NEW] Never mint a stub entity for an unresolved `depends_on` target. A third-party package stays out of the registry. |
 | FR-39 | [NEW] Degrade to a clean no-op when nothing can be harvested (no ecosystem profile, no manifest): the repo entity only, zero edges written, zero dropped. |
+| FR-40 | [NEW] Harvest `spec.owner` from a Backstage `catalog-info.yaml` as an `owned_by` edge, minting the named owner as a `team` candidate so the edge endpoint resolves. Accept the full entity-ref form (`group:default/name`). A service catalog is the only in-repo declaration of accountability; no `owned_by` is inferred from any other source. |
 
 ### QA Test Cases
 
@@ -187,6 +188,9 @@ edge named a container that nothing harvested.
 | TC-38 | FR-36 | Prisma model under `packages/api/prisma/` in a workspace | The model is `part_of` `@acme/api` — the nearest enclosing package, not the repo root. |
 | TC-39 | FR-35, FR-38 | Workspace member depending on a sibling package and on `express` | A `depends_on` edge links the two packages; `express` counts as `edgesExternal` and mints no entity. |
 | TC-40 | FR-39 | Repo with no manifest and no ecosystem profile (a lone `main.zig`) | One entity (the repo), 0 edges written, 0 dropped. |
+| TC-41 | FR-40 | `catalog-info.yaml` with `spec.owner: platform` | An `owned_by` edge from the component to `platform`, and a `team` candidate named `platform`. |
+| TC-42 | FR-40 | `catalog-info.yaml` with `spec.owner: group:default/platform-team` | The entity-ref is reduced to `platform-team` for both the edge and the candidate. |
+| TC-43 | FR-40 | `catalog-info.yaml` with no `spec.owner` | No `owned_by` edge and no `team` candidate. |
 
 ### Related docs
 

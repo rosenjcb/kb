@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { isDistinctiveAliasMatch } from '@kb/core/tools/common-word-aliases.js'
 import { EntityRegistry, normalizeEntityName } from '@kb/core/tools/entity-registry.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
@@ -171,6 +172,70 @@ describe('EntityRegistry', () => {
       expect(registry.hasLinks(id)).toBe(true)
       expect(registry.linkedFactIds([id]).sort()).toEqual([factA, factB].sort())
       expect(registry.linkedFactIds([])).toEqual([])
+    } finally {
+      registry.close()
+    }
+  })
+})
+
+describe('isDistinctiveAliasMatch', () => {
+  it('lets a name that is not an English word through in any casing', () => {
+    expect(isDistinctiveAliasMatch('kbctl', 'kbctl')).toBe(true)
+    expect(isDistinctiveAliasMatch('Kestra', 'kestra')).toBe(true)
+  })
+
+  it('requires a capitalized common word to be echoed capitalized', () => {
+    // "the Role enum" means the identifier; "the role of the indexer" does not.
+    expect(isDistinctiveAliasMatch('Role', 'Role')).toBe(true)
+    expect(isDistinctiveAliasMatch('Role', 'role')).toBe(false)
+    expect(isDistinctiveAliasMatch('User', 'user')).toBe(false)
+  })
+
+  it('never trusts an all-lowercase common word — prose is lowercase too', () => {
+    expect(isDistinctiveAliasMatch('facts', 'facts')).toBe(false)
+    expect(isDistinctiveAliasMatch('service', 'service')).toBe(false)
+  })
+
+  it('exempts multi-token aliases — nobody writes "payment service" by accident', () => {
+    expect(isDistinctiveAliasMatch('payment service', 'payment service')).toBe(true)
+  })
+})
+
+describe('EntityRegistry — mention distinctiveness', () => {
+  /** A Prisma-style `Role` enum, the real false-match from the kb index. */
+  function seedRoleModel(): void {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const registry = new EntityRegistry(dbPath)
+    try {
+      registry.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+    } finally {
+      registry.close()
+    }
+  }
+
+  it('marks a common word in ordinary prose non-distinctive but still reports it', () => {
+    seedRoleModel()
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions('what is the role of the tree-sitter indexer?')
+
+      // The match is not hidden — it is disqualified from steering retrieval.
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.distinctive).toBe(false)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('keeps the same alias distinctive when the query writes it as the identifier', () => {
+    seedRoleModel()
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions('which values does the Role enum have?')
+
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.distinctive).toBe(true)
     } finally {
       registry.close()
     }

@@ -24,9 +24,17 @@ backstage:
   kind_map:
     API: api
     Domain: domain
+    # Backstage's kind for a team. Without this row nothing in the harvest can
+    # produce a `team` entity, so `owned_by` has no legal target and the edge
+    # can never be written.
+    Group: team
     default: service
   # Edge: component → spec.domain or spec.system
   belongs_to_keys: [domain, system]
+  # Edge: component → spec.owner. A service catalog is the only place in a repo
+  # where accountability is actually declared — code declares what it depends on
+  # and what it is part of, never who answers for it.
+  owned_by_keys: [owner]
 
 kubernetes:
   dirs:

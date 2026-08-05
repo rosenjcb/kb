@@ -256,3 +256,69 @@ describe('runEntityIndexCycle — end to end', () => {
     }
   })
 })
+
+describe('inferQueryScope — common-word aliases defer to the classifier', () => {
+  function seedRoleModel(): void {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const registry = new EntityRegistry(dbPath)
+    try {
+      registry.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+    } finally {
+      registry.close()
+    }
+  }
+
+  function fakeLlm(responseText: string): LLMProvider {
+    return {
+      name: 'fake',
+      model: 'fake-model',
+      supportsStreaming: false,
+      call: async () => ({
+        text: responseText,
+        stopReason: 'end_turn' as const,
+        toolUses: [],
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }),
+    }
+  }
+
+  it('does not let a bare common word hard-prune — it reaches tier 2 instead', async () => {
+    seedRoleModel()
+
+    // The classifier is asked, and here it correctly declines to land on `Role`.
+    const verdict = await inferQueryScope({
+      dbPath,
+      query: 'what is the role of the tree-sitter indexer?',
+      llm: fakeLlm(JSON.stringify({ candidates: [] })),
+    })
+
+    expect(verdict.unresolved).toBe(true)
+    expect(verdict.excludedFactIds).toEqual([])
+  })
+
+  it('returns unresolved rather than guessing when no classifier is available', async () => {
+    seedRoleModel()
+
+    const verdict = await inferQueryScope({
+      dbPath,
+      query: 'what is the role of the tree-sitter indexer?',
+    })
+
+    expect(verdict.unresolved).toBe(true)
+  })
+
+  it('still lands deterministically when the query writes the identifier', async () => {
+    seedRoleModel()
+
+    const verdict = await inferQueryScope({
+      dbPath,
+      query: 'which values does the Role enum have?',
+    })
+
+    expect(verdict.unresolved).toBe(false)
+    expect(verdict.method).toBe('alias')
+    expect(verdict.candidates[0]?.entity.canonicalName).toBe('Role')
+    expect(verdict.candidates[0]?.label).toBe('very_confident')
+  })
+})

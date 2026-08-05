@@ -160,8 +160,11 @@ function resolveLandings(
     return dedupeById(positives).slice(0, MAX_ENTITIES)
   }
 
+  // Lanes aim retrieval, so they need the same distinctiveness bar scope pruning
+  // does: a lane built on a common word spends the fan-out on the wrong entity.
   const mentioned = registry
     .resolveMentions(query)
+    .filter(m => m.distinctive)
     .map(m => m.entity)
     .filter(e => e.kind !== 'repo')
   return dedupeById(mentioned).slice(0, MAX_ENTITIES)
