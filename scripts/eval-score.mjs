@@ -294,7 +294,11 @@ export async function callGeminiJudgeJson({ apiKey, model, systemInstruction, us
     contents: [{ role: 'user', parts: [{ text: userText }] }],
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 16384,
+      // Thinking models (the gemini-3-* default judge) bill reasoning tokens against
+      // this same budget, so a limit sized for the JSON alone truncates the response
+      // mid-object and surfaces as "could not parse JSON from model" — a scoring
+      // failure that looks like a judge bug. Leave headroom for the thoughts.
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
     },
   }
