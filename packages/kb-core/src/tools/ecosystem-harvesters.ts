@@ -23,7 +23,7 @@ import {
   loadPackageEcosystemConfig,
   loadTypescriptEcosystemConfig,
 } from './ecosystem-config.js'
-import type { EntityKind, EntitySourceKind } from './entity-registry.js'
+import type { EntityEdgeType, EntityKind, EntitySourceKind } from './entity-registry.js'
 import {
   type NextRouteHit,
   type PrismaSchemaAtom,
@@ -65,10 +65,46 @@ export interface EntityCandidate {
   contentHash: string
 }
 
+/**
+ * Edge types a harvester may emit. `distinct_from` is excluded on purpose — it is
+ * written only by the deterministic collision screen in `entity-registry.ts`, never
+ * harvested from a manifest.
+ */
+export type CandidateEdgeType = Exclude<EntityEdgeType, 'distinct_from'>
+
 export interface CandidateEdge {
   fromName: string
   toName: string
-  edgeType: 'part_of' | 'belongs_to'
+  edgeType: CandidateEdgeType
+}
+
+/**
+ * Cap on `depends_on` edges emitted per package. A manifest's dependency list is
+ * unbounded (and mostly third-party); the edges that matter are the handful that
+ * resolve to entities the base already knows about, so a generous cap keeps a
+ * pathological lockfile from dominating the harvest.
+ */
+const DEPENDS_ON_CAP = 500
+
+/**
+ * Turn a parsed dependency list into `depends_on` edges. Every package harvester
+ * already parses deps for the kind rubric; this is the same list, kept instead of
+ * discarded. Resolution is the registry's job — `entity-index-cycle` keeps only the
+ * edges whose target is a known entity and counts the rest as external.
+ */
+export function dependencyEdges(fromName: string, deps: readonly string[]): CandidateEdge[] {
+  const edges: CandidateEdge[] = []
+  const seen = new Set<string>()
+  for (const raw of deps) {
+    const dep = raw.trim()
+    if (!dep || dep === fromName) continue
+    const key = dep.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    edges.push({ fromName, toName: dep, edgeType: 'depends_on' })
+    if (edges.length >= DEPENDS_ON_CAP) break
+  }
+  return edges
 }
 
 export interface HarvestResult {
@@ -86,6 +122,7 @@ interface PackageJson {
   workspaces?: string[] | { packages?: string[] }
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
 }
 
 function sha256(text: string): string {
@@ -359,7 +396,12 @@ export async function harvestTypeScriptEcosystem(scanDir: string): Promise<Harve
   const rootPkg = rootPkgRaw ? safeParsePackage(rootPkgRaw) : null
   const rootName = rootPkg?.name
 
-  const targets = packageDirs.length > 0 ? packageDirs : rootPkgRaw ? [scanDir] : []
+  // The root package is a harvest target whenever it declares a name — not only when
+  // there are no workspace members. Every workspace edge below points *at* the root by
+  // name, so leaving the root unharvested makes those edges dangle and the registry
+  // drops them (the root only survived before when a workspace glob happened to list
+  // `.`). `Set` keeps that idempotent for workspaces that do list the root.
+  const targets = rootPkgRaw ? [...new Set([scanDir, ...packageDirs])] : packageDirs
 
   for (const dir of targets) {
     const raw = await readText(path.join(dir, manifestName))
@@ -385,9 +427,19 @@ export async function harvestTypeScriptEcosystem(scanDir: string): Promise<Harve
     if (rootName && pkg.name !== rootName) {
       edges.push({ fromName: pkg.name, toName: rootName, edgeType: 'part_of' })
     }
+    edges.push(...dependencyEdges(pkg.name, packageJsonDeps(pkg)))
   }
 
   return { candidates, edges }
+}
+
+/** Every declared dependency name across the manifest's dependency blocks. */
+function packageJsonDeps(pkg: PackageJson): string[] {
+  const deps: string[] = []
+  for (const block of [pkg.dependencies, pkg.devDependencies, pkg.peerDependencies]) {
+    if (block && typeof block === 'object') deps.push(...Object.keys(block))
+  }
+  return deps
 }
 
 /**
@@ -834,7 +886,7 @@ export async function harvestGoEcosystem(scanDir: string): Promise<HarvestResult
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(module, deps),
   }
 }
 
@@ -912,7 +964,7 @@ export async function harvestPythonEcosystem(scanDir: string): Promise<HarvestRe
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(name, deps),
   }
 }
 
@@ -945,7 +997,7 @@ export async function harvestRustEcosystem(scanDir: string): Promise<HarvestResu
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(name, deps),
   }
 }
 
@@ -992,7 +1044,7 @@ export async function harvestPhpEcosystem(scanDir: string): Promise<HarvestResul
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(parsed.name, deps),
   }
 }
 
@@ -1045,6 +1097,7 @@ function parseGemspec(raw: string): {
 export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResult> {
   const config = loadPackageEcosystemConfig('ruby')
   const candidates: EntityCandidate[] = []
+  const edges: CandidateEdge[] = []
   const gemspecs = await listFilesWithExt(scanDir, '.gemspec')
   const gemfileRaw = await readText(path.join(scanDir, 'Gemfile'))
   const gemfileDeps = gemfileRaw ? parseGemfileDeps(gemfileRaw) : []
@@ -1077,6 +1130,7 @@ export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResu
       sourceKind: 'manifest',
       contentHash: sha256(raw),
     })
+    edges.push(...dependencyEdges(parsed.name, deps))
   }
 
   // Gemfile-only app root (typical Rails) when no gemspec provides identity.
@@ -1091,9 +1145,10 @@ export async function harvestRubyEcosystem(scanDir: string): Promise<HarvestResu
       sourceKind: 'manifest',
       contentHash: sha256(gemfileRaw),
     })
+    edges.push(...dependencyEdges(name, gemfileDeps))
   }
 
-  return { candidates, edges: [] }
+  return { candidates, edges }
 }
 
 function xmlTag(raw: string, tag: string): string | null {
@@ -1157,6 +1212,7 @@ async function harvestMavenPom(
   if (rootName && artifactId !== rootName) {
     edges.push({ fromName: artifactId, toName: rootName, edgeType: 'part_of' })
   }
+  edges.push(...dependencyEdges(artifactId, deps))
   return { candidates, edges, artifactId }
 }
 
@@ -1168,6 +1224,22 @@ function parseGradleIncludes(raw: string): string[] {
   return members
 }
 
+/** Dependency coordinates declared in a Gradle build script (full coord + group + artifact). */
+function parseGradleDeps(buildRaw: string): string[] {
+  const deps: string[] = []
+  for (const m of buildRaw.matchAll(
+    /(?:implementation|api|compileOnly|runtimeOnly)\s*\(?\s*['"]([^'"]+)['"]/g
+  )) {
+    if (!m[1]) continue
+    const coord = m[1]
+    deps.push(coord)
+    const parts = coord.split(':')
+    if (parts[0]) deps.push(parts[0])
+    if (parts[1]) deps.push(parts[1])
+  }
+  return deps
+}
+
 export async function harvestJavaEcosystem(scanDir: string): Promise<HarvestResult> {
   const config = loadPackageEcosystemConfig('java')
   const candidates: EntityCandidate[] = []
@@ -1177,6 +1249,7 @@ export async function harvestJavaEcosystem(scanDir: string): Promise<HarvestResu
   if (rootPom) {
     const root = await harvestMavenPom(scanDir, 'pom.xml', config, null)
     candidates.push(...root.candidates)
+    edges.push(...root.edges)
     const modules = xmlTags(rootPom, 'module')
     for (const mod of modules) {
       const member = await harvestMavenPom(
@@ -1197,24 +1270,31 @@ export async function harvestJavaEcosystem(scanDir: string): Promise<HarvestResu
     if (!settingsRaw) continue
     const rootNameMatch =
       settingsRaw.match(/rootProject\.name\s*=\s*['"]([^'"]+)['"]/)?.[1] ?? path.basename(scanDir)
+    // Harvest the root project itself. Every member edge below points at it by name, so
+    // without a candidate for the root those edges dangle and the registry drops them
+    // (they only ever landed when some other harvester happened to mint the same name).
+    const rootBuildRel = (await readText(path.join(scanDir, 'build.gradle.kts')))
+      ? 'build.gradle.kts'
+      : 'build.gradle'
+    const rootBuildRaw = await readText(path.join(scanDir, rootBuildRel))
+    candidates.push({
+      kind: classifyFromSignals(
+        { deps: rootBuildRaw ? parseGradleDeps(rootBuildRaw) : [], packageName: rootNameMatch },
+        config
+      ),
+      canonicalName: rootNameMatch,
+      aliases: [rootNameMatch, path.basename(scanDir)],
+      sourceFile: rootBuildRaw ? rootBuildRel : settingsName,
+      sourceKind: 'manifest',
+      contentHash: sha256(rootBuildRaw ?? settingsRaw),
+    })
     for (const member of parseGradleIncludes(settingsRaw)) {
       for (const buildName of ['build.gradle.kts', 'build.gradle']) {
         const buildRel = path.join(member, buildName)
         const buildRaw = await readText(path.join(scanDir, buildRel))
         if (!buildRaw) continue
         const name = path.basename(member)
-        const deps: string[] = []
-        for (const m of buildRaw.matchAll(
-          /(?:implementation|api|compileOnly|runtimeOnly)\s*\(?\s*['"]([^'"]+)['"]/g
-        )) {
-          if (m[1]) {
-            const coord = m[1]
-            deps.push(coord)
-            const parts = coord.split(':')
-            if (parts[0]) deps.push(parts[0])
-            if (parts[1]) deps.push(parts[1])
-          }
-        }
+        const deps = parseGradleDeps(buildRaw)
         const kind = classifyFromSignals({ deps, packageName: name }, config)
         candidates.push({
           kind,
@@ -1227,6 +1307,7 @@ export async function harvestJavaEcosystem(scanDir: string): Promise<HarvestResu
         if (rootNameMatch && name !== rootNameMatch) {
           edges.push({ fromName: name, toName: rootNameMatch, edgeType: 'part_of' })
         }
+        edges.push(...dependencyEdges(name, deps))
         break
       }
     }
@@ -1330,7 +1411,7 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
           contentHash: sha256(raw),
         },
       ],
-      edges: [],
+      edges: dependencyEdges(parsed.name, parsed.deps),
     }
   }
 
@@ -1357,7 +1438,7 @@ export async function harvestHaskellEcosystem(scanDir: string): Promise<HarvestR
         contentHash: sha256(hpackRaw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(parsed.name, parsed.deps),
   }
 }
 
@@ -1397,7 +1478,7 @@ export async function harvestCppEcosystem(scanDir: string): Promise<HarvestResul
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(name, deps),
   }
 }
 
@@ -1479,7 +1560,8 @@ export async function harvestCsharpEcosystem(scanDir: string): Promise<HarvestRe
   const edges: CandidateEdge[] = []
 
   const slnFiles = await listFilesWithExt(scanDir, '.sln')
-  const slnName = slnFiles[0] ? path.basename(slnFiles[0], '.sln') : null
+  const slnFile = slnFiles[0]
+  const slnName = slnFile ? path.basename(slnFile, '.sln') : null
   const projects = await findCsprojFiles(scanDir)
 
   for (const csprojPath of projects) {
@@ -1512,6 +1594,23 @@ export async function harvestCsharpEcosystem(scanDir: string): Promise<HarvestRe
     if (slnName && canonical !== slnName) {
       edges.push({ fromName: canonical, toName: slnName, edgeType: 'part_of' })
     }
+    edges.push(...dependencyEdges(canonical, parsed.deps))
+  }
+
+  // The solution is the container every project edge above points at, so it has to be an
+  // entity in its own right — an unharvested target makes those `part_of` edges dangle.
+  // Appended after the projects so the projects stay the leading candidates.
+  if (slnName && slnFile && candidates.length > 0) {
+    const slnRaw = await readText(slnFile)
+    candidates.push({
+      kind: 'module',
+      canonicalName: slnName,
+      aliases: [slnName, path.basename(slnFile)],
+      gloss: `Visual Studio solution grouping the projects in ${path.basename(slnFile)}.`,
+      sourceFile: path.relative(scanDir, slnFile) || path.basename(slnFile),
+      sourceKind: 'manifest',
+      contentHash: sha256(slnRaw ?? slnName),
+    })
   }
 
   return { candidates, edges }
@@ -1563,7 +1662,7 @@ export async function harvestScalaEcosystem(scanDir: string): Promise<HarvestRes
         contentHash: sha256(raw),
       },
     ],
-    edges: [],
+    edges: dependencyEdges(name, deps),
   }
 }
 
