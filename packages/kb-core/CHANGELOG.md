@@ -4,6 +4,7 @@
 
 ### Patch Changes
 
+- Centralize Gemini thinkingBudget defaults (GEMINI_THINKING_BUDGET / 1024 when reasoning) so generateContent never omits thinkingConfig on Gemini 3. Count thoughtsTokenCount toward usage.outputTokens so telemetry/eval out= matches billed output.
 - Split CamelCase in entity alias normalization so prose like "tree-sitter indexer" lands on harvest names, and surface scope/lanes on retrieval detail.
 - Expand queries into ontology-typed inquiry lanes, and stop ordinary English words from resolving to entities.
 

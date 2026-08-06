@@ -212,6 +212,8 @@ function buildConfigFromEnv(bases: {
   if (process.env.GEMINI_MODEL?.trim()) {
     config.llm = { ...config.llm, geminiModel: process.env.GEMINI_MODEL.trim() }
   }
+  // GEMINI_THINKING_BUDGET is read at call time by resolveGeminiThinkingBudget in
+  // llm-provider (not copied into config) so every GeminiProvider user picks it up.
   if (process.env.OPENAI_MODEL?.trim()) {
     config.llm = { ...config.llm, openaiModel: process.env.OPENAI_MODEL.trim() }
   }

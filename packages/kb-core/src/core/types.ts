@@ -130,8 +130,11 @@ export interface LLMCallParams {
   temperature?: number
   systemPrompt?: string
   /**
-   * Gemini 2.5+ only: `thinkingBudget: 0` turns off internal reasoning so output
-   * tokens are available for the model reply (needed for strict JSON extractors).
+   * Thinking / reasoning token budget. On Gemini 2.5/3 this maps to
+   * `thinkingConfig.thinkingBudget` (`0` disables thinking). When omitted, the
+   * Gemini provider resolves via `GEMINI_THINKING_BUDGET` env, else defaults to
+   * 1024 when `onReasoning` is set and 0 otherwise. The provider always sends an
+   * explicit budget on Gemini 3 so thinking cannot run unbounded.
    */
   thinkingBudget?: number
   /** Prefer native JSON outputs over prose when the active provider implements this. */

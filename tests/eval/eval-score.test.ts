@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  DEFAULT_JUDGE_MAX_OUTPUT_TOKENS,
+  DEFAULT_JUDGE_THINKING_BUDGET,
   RUBRIC_AXES,
   SCORE_BATCH_SIZE,
   buildRubric,
+  callGeminiJudgeJson,
   parseJsonObjectFromLLM,
   runAutoScoreFile,
   scoreFromLabel,
@@ -90,6 +93,63 @@ describe('parseJsonObjectFromLLM', () => {
   it('[TC-45] parses a top-level JSON array', () => {
     const arr = [{ correctness: 'correct' }]
     expect(parseJsonObjectFromLLM(JSON.stringify(arr))).toEqual(arr)
+  })
+})
+
+describe('callGeminiJudgeJson thinking budget', () => {
+  it('[TC-47] caps gemini-3 thinking and maxOutputTokens instead of unbounded reasoning', async () => {
+    const prevBudget = process.env.EVAL_SCORER_THINKING_BUDGET
+    delete process.env.EVAL_SCORER_THINKING_BUDGET
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: '{"scores":[]}' }] } }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await callGeminiJudgeJson({
+        apiKey: 'test-key',
+        model: 'gemini-3-flash-preview',
+        systemInstruction: 'score',
+        userText: 'Score these 1 questions',
+      })
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+      expect(body.generationConfig.thinkingConfig.thinkingBudget).toBe(DEFAULT_JUDGE_THINKING_BUDGET)
+      expect(body.generationConfig.maxOutputTokens).toBe(DEFAULT_JUDGE_MAX_OUTPUT_TOKENS)
+      expect(DEFAULT_JUDGE_THINKING_BUDGET).toBe(1024)
+      expect(DEFAULT_JUDGE_MAX_OUTPUT_TOKENS).toBeLessThan(65536)
+    } finally {
+      vi.unstubAllGlobals()
+      if (prevBudget === undefined) delete process.env.EVAL_SCORER_THINKING_BUDGET
+      else process.env.EVAL_SCORER_THINKING_BUDGET = prevBudget
+    }
+  })
+
+  it('[TC-48] honors EVAL_SCORER_THINKING_BUDGET=0 to disable judge thinking', async () => {
+    const prevBudget = process.env.EVAL_SCORER_THINKING_BUDGET
+    process.env.EVAL_SCORER_THINKING_BUDGET = '0'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: '{"scores":[]}' }] } }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await callGeminiJudgeJson({
+        apiKey: 'test-key',
+        model: 'gemini-3-flash-preview',
+        systemInstruction: 'score',
+        userText: 'Score these 1 questions',
+      })
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+      expect(body.generationConfig.thinkingConfig.thinkingBudget).toBe(0)
+    } finally {
+      vi.unstubAllGlobals()
+      if (prevBudget === undefined) delete process.env.EVAL_SCORER_THINKING_BUDGET
+      else process.env.EVAL_SCORER_THINKING_BUDGET = prevBudget
+    }
   })
 })
 

@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AnthropicProvider,
+  DEFAULT_GEMINI_THINKING_BUDGET,
   GeminiProvider,
   OpenAIProvider,
   createProvider,
+  parseGeminiUsageMetadata,
+  resolveGeminiThinkingBudget,
 } from '@kb/core/core/llm-provider.js'
 
 /** Build a streaming fetch Response whose body emits the given text chunks. */
@@ -165,6 +168,120 @@ describe('llm-provider', () => {
     expect(body.system_instruction?.parts?.[0]?.text).toBe('You are KB.')
     expect(body.contents?.[0]?.role).toBe('user')
     expect(body.contents?.[1]?.role).toBe('model')
+
+    fetchMock.mockRestore()
+  })
+
+  it('[TC-194] resolveGeminiThinkingBudget prefers call arg, then GEMINI_THINKING_BUDGET, then mode default', () => {
+    const prev = process.env.GEMINI_THINKING_BUDGET
+    try {
+      delete process.env.GEMINI_THINKING_BUDGET
+      expect(resolveGeminiThinkingBudget(undefined, { includeThoughts: false })).toBe(0)
+      expect(resolveGeminiThinkingBudget(undefined, { includeThoughts: true })).toBe(
+        DEFAULT_GEMINI_THINKING_BUDGET
+      )
+      expect(resolveGeminiThinkingBudget(0, { includeThoughts: true })).toBe(0)
+      expect(resolveGeminiThinkingBudget(2048, { includeThoughts: false })).toBe(2048)
+      process.env.GEMINI_THINKING_BUDGET = '512'
+      expect(resolveGeminiThinkingBudget(undefined, { includeThoughts: false })).toBe(512)
+      expect(resolveGeminiThinkingBudget(undefined, { includeThoughts: true })).toBe(512)
+      expect(resolveGeminiThinkingBudget(0, { includeThoughts: true })).toBe(0)
+    } finally {
+      if (prev === undefined) delete process.env.GEMINI_THINKING_BUDGET
+      else process.env.GEMINI_THINKING_BUDGET = prev
+    }
+  })
+
+  it('[TC-195] Given a plain Gemini call, then thinkingConfig is present with budget 0 (never omitted)', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'hi' }] } }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+        }),
+        { status: 200 }
+      )
+    )
+    const prev = process.env.GEMINI_THINKING_BUDGET
+    delete process.env.GEMINI_THINKING_BUDGET
+    try {
+      const provider = new GeminiProvider('test-key', 'gemini-3-flash-preview')
+      await provider.call({ messages: [{ role: 'user', content: 'hi' }] })
+      const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? '{}'))
+      expect(body.generationConfig?.thinkingConfig?.thinkingBudget).toBe(0)
+    } finally {
+      fetchMock.mockRestore()
+      if (prev === undefined) delete process.env.GEMINI_THINKING_BUDGET
+      else process.env.GEMINI_THINKING_BUDGET = prev
+    }
+  })
+
+  it('[TC-196] Given Gemini usageMetadata with thoughtsTokenCount, then generateContent folds thoughts into outputTokens', async () => {
+    expect(
+      parseGeminiUsageMetadata({
+        promptTokenCount: 100,
+        candidatesTokenCount: 20,
+        thoughtsTokenCount: 80,
+        totalTokenCount: 200,
+      })
+    ).toEqual({ inputTokens: 100, outputTokens: 100 })
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'ANSWER' }] } }],
+          usageMetadata: {
+            promptTokenCount: 100,
+            candidatesTokenCount: 20,
+            thoughtsTokenCount: 80,
+            totalTokenCount: 200,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    )
+
+    const provider = new GeminiProvider('test-key', 'gemini-3-flash-preview')
+    const result = await provider.call({ messages: [{ role: 'user', content: 'hi' }] })
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 100 })
+    expect(result.text).toBe('ANSWER')
+
+    fetchMock.mockRestore()
+  })
+
+  it('[TC-197] Given Gemini stream usageMetadata, then thoughts fold into outputTokens (and total−prompt when thoughts absent)', async () => {
+    expect(
+      parseGeminiUsageMetadata({
+        promptTokenCount: 50,
+        candidatesTokenCount: 5,
+        totalTokenCount: 155,
+      })
+    ).toEqual({ inputTokens: 50, outputTokens: 105 })
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        sse({ candidates: [{ content: { parts: [{ text: 'pondering', thought: true }] } }] }),
+        sse({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }),
+        sse({
+          usageMetadata: {
+            promptTokenCount: 9,
+            candidatesTokenCount: 2,
+            thoughtsTokenCount: 40,
+          },
+        }),
+      ])
+    )
+
+    const reasoning: string[] = []
+    const provider = new GeminiProvider('k', 'gemini-2.5-flash')
+    const result = await provider.call({
+      messages: [{ role: 'user', content: 'hi' }],
+      onReasoning: d => reasoning.push(d),
+    })
+
+    expect(reasoning.join('')).toBe('pondering')
+    expect(result.text).toBe('OK')
+    expect(result.usage).toEqual({ inputTokens: 9, outputTokens: 42 })
 
     fetchMock.mockRestore()
   })
@@ -405,6 +522,9 @@ describe('llm-provider', () => {
       expect(String(url)).toContain(':streamGenerateContent?alt=sse')
       const body = JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}'))
       expect(body.generationConfig?.thinkingConfig?.includeThoughts).toBe(true)
+      expect(body.generationConfig?.thinkingConfig?.thinkingBudget).toBe(
+        DEFAULT_GEMINI_THINKING_BUDGET
+      )
 
       fetchMock.mockRestore()
     })

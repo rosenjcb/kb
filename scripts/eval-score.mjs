@@ -288,19 +288,55 @@ export async function withRetry(fn, { attempts = 3, baseDelayMs = 1500 } = {}) {
   throw lastErr
 }
 
+/**
+ * Must stay equal to `@kb/core` `DEFAULT_GEMINI_THINKING_BUDGET` (1024).
+ * Root `scripts/*.mjs` cannot import `@kb/core` under plain Node (no vitest
+ * alias / workspace hoist), so the judge mirrors the core resolver locally.
+ *
+ * Prefer `GEMINI_THINKING_BUDGET` (provider-wide); `EVAL_SCORER_THINKING_BUDGET`
+ * remains a judge-only override when set.
+ */
+export const DEFAULT_JUDGE_THINKING_BUDGET = 1024
+
+/** Visible JSON + notes for a SCORE_BATCH_SIZE batch, on top of the thinking cap. */
+export const DEFAULT_JUDGE_MAX_OUTPUT_TOKENS = 8192
+
+function resolveJudgeThinkingBudget() {
+  const judgeRaw = process.env.EVAL_SCORER_THINKING_BUDGET?.trim()
+  if (judgeRaw !== undefined && judgeRaw !== '') {
+    const n = Number(judgeRaw)
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n)
+  }
+  // Mirror resolveGeminiThinkingBudget(undefined, { includeThoughts: true }).
+  const geminiRaw = process.env.GEMINI_THINKING_BUDGET?.trim()
+  if (geminiRaw !== undefined && geminiRaw !== '') {
+    const n = Number(geminiRaw)
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n)
+  }
+  return DEFAULT_JUDGE_THINKING_BUDGET
+}
+
+function geminiJudgeSupportsThinkingBudget(model) {
+  return /gemini-2\.5|gemini-3|gemini-exp/i.test(model)
+}
+
 export async function callGeminiJudgeJson({ apiKey, model, systemInstruction, userText }) {
+  const thinkingBudget = resolveJudgeThinkingBudget()
+  const generationConfig = {
+    temperature: 0,
+    // Thinking tokens bill against this same budget. With an explicit
+    // thinkingBudget below, we no longer need a 65k ceiling — 8k covers a
+    // batch of scored JSON (+ notes) after ≤1k of reasoning.
+    maxOutputTokens: DEFAULT_JUDGE_MAX_OUTPUT_TOKENS,
+    responseMimeType: 'application/json',
+  }
+  if (geminiJudgeSupportsThinkingBudget(model)) {
+    generationConfig.thinkingConfig = { thinkingBudget }
+  }
   const body = {
     system_instruction: { parts: [{ text: systemInstruction }] },
     contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: {
-      temperature: 0,
-      // Thinking models (the gemini-3-* default judge) bill reasoning tokens against
-      // this same budget, so a limit sized for the JSON alone truncates the response
-      // mid-object and surfaces as "could not parse JSON from model" — a scoring
-      // failure that looks like a judge bug. Leave headroom for the thoughts.
-      maxOutputTokens: 65536,
-      responseMimeType: 'application/json',
-    },
+    generationConfig,
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
   return withRetry(async () => {
