@@ -13,6 +13,11 @@ questions:
   - "How are tests organized and executed inside the ShellCheck repository to verify parsing correctness?"
   - "Walk through the disable-comment path: how does an inline shellcheck disable=SCxxxx annotation get associated with an AST node and suppress a matching warning during analysis?"
   - "Detail the structural compilation process of ShellCheck from source utilizing the Cabal build utility."
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of shellcheck when a developer wants static analysis feedback on a Bash or POSIX shell script?
+  - "For a long, vague question about how shellcheck fits into Parser.hs, AST.hs, AnalyzerLib variable tracing, and Analytics/Checks rule evaluation end-to-end — if only the repo entity is available to resolve, what should still happen for ontology fan-out versus the short-question LLM expander fallback?"
 answers:
   - >
     ShellCheck is a static analysis tool designed to inspect shell scripts and provide linting
@@ -66,3 +71,13 @@ answers:
     the shellcheck root directory triggers the compiler to parse dependencies, build the core
     Haskell modules, generate the executable target, and install the compiled binary to the user's
     local path at ~/.cabal/bin/.
+  - >
+    ShellCheck's product role is static analysis for shell scripts (syntax clarity, semantic
+    bugs, portability/safety). A correct answer must describe that linter/tool — this suite's
+    registry is extremely thin (often only a repo entity), so do not invent a harvested
+    CamelCase `ShellCheck` class, and do not pivot "role" into an unrelated schema.
+  - >
+    With a thin registry, if the repo/tool entity resolves, entity-grounded fan-out can still
+    run with no length gate; if resolve fails, the short-question LLM expander is fallback only.
+    Substance should still describe Parser→AST→AnalyzerLib→Checks. A correct answer must not
+    claim CamelCase module landing the index does not have.

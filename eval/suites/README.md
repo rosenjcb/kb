@@ -37,6 +37,22 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 | `duckdb` | duckdb/duckdb | optional — large; not in `--all-suites` |
 | `generic` | `--repo` required | repo-neutral questions |
 
+## Alias / inquiry-lane landing probes
+
+Every suite appends two follow-ups that target the **entity-resolved** retrieval
+category (not general product FAQ):
+
+1. **Prose landing** — spaced/hyphenated wording for a harvested CamelCase module
+   (or the best landable cli/library/repo name on thin registries), often
+   “What is the role of the …”, so common-word aliases cannot steal the hit.
+2. **Long vague + no length gate** — once stage-0 resolves that entity, ontology
+   fan-out should still run; the short-question LLM expander is only the
+   unresolved fallback.
+
+Thin registries (`fzf`, `raylib`, `shellcheck`) mostly land the product name
+itself — they still exercise fan-out-without-length-gate, not CamelCase alias
+splitting. Re-run with a fresh index when measuring this category.
+
 ## Headline grade (ΔS)
 
 Each suite run (with `--auto-score`, control phase on) produces **`artifact.comparison.success_score.delta_kb_minus_control`** — the single scalar that answers “does kb beat a real agent on this question pack?” Both sides get the same `success_score` formula (quality + tokens + speed). See `EVALUATION.md` § Headline verdict.

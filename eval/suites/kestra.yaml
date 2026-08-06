@@ -14,6 +14,11 @@ questions:
   - "Infer the path from editing a trigger (schedule or event) in the UI to the scheduler actually firing a new execution."
   - "What are inputs, outputs, and the UI execution Gantt/logs views for — how do task results surface back to the operator after a run?"
   - "How does Kestra support starting a local all-in-one server from the CLI (e.g. server local), and which components does that mode wire together?"
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the execution controller in the Kestra webserver API?
+  - "For a long, vague question about how the concurrency-limit controller relates to executions, queues, workers, and the UI run console end-to-end, what does that API own — and should entity fan-out run without a length gate?"
 answers:
   - >
     Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure
@@ -61,3 +66,13 @@ answers:
     storage/DB defaults so the UI on the exposed port can author and run flows without a full
     multi-service deploy. Docker quickstart mounts storage and optionally the Docker socket for
     tasks that need it.
+  - >
+    `ExecutionController` (`@Controller("/api/v1/{tenant}/executions")`) is the Micronaut
+    webserver API for execution search/get/create/restart and related HTTP operations. A correct
+    answer must land on that Java controller — not only the product noun "execution" — and must
+    not confuse it with the executor/worker runtime process.
+  - >
+    `ConcurrencyLimitController` is the webserver API around concurrency limits (adjacent to
+    execution lifecycle). A correct answer distinguishes that API controller from
+    executor/worker behavior, allows long-question ontology fan-out after entity resolve, and
+    must not claim expansion is length-gated once an entity lands.

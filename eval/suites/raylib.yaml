@@ -17,6 +17,11 @@ questions:
   - Step by step, what happens inside InitWindow() to open a window and set up the graphics context?
   - Trace raylib's standard render loop in order — what do BeginDrawing, the drawing calls, and EndDrawing each do, and in what sequence?
   - How do I add a new example program to raylib and get it built, step by step?
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of raylib when an application needs a minimal C API for windowing, input, and OpenGL drawing?
+  - "For a long, vague question about how raylib fits into rcore, rlgl, optional modules, and the InitWindow/BeginDrawing/EndDrawing loop end-to-end — once the raylib library entity resolves, does ontology fan-out still issue targeted probes with no length gate?"
 answers:
   - >
     raylib is a simple, C99 library "to enjoy videogames programming," inspired by Borland BGI
@@ -151,3 +156,12 @@ answers:
     stars, raylib version created/updated, author) should also be appended as a row to
     examples/examples_list.txt, which is the canonical list used to regenerate examples/README.md
     and the raylib.com examples page.
+  - >
+    Land on the **raylib** library entity: a simple C99 gamedev API with vendored deps and
+    rlgl/OpenGL drawing. A correct answer must describe that library product role. This suite's
+    registry is thin (library/repo aliases only — no CamelCase modules); do not invent harvested
+    classes or treat "role" as a DB enum.
+  - >
+    After resolving **raylib**, ontology fan-out should still run with **no length gate**;
+    substance should cover rcore/rlgl/optional modules and the standard draw loop. A correct
+    answer must not claim only short questions expand when the library entity resolved.

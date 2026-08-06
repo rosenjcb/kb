@@ -27,6 +27,11 @@ questions:
   - "Who actually builds the knowledge-base index in normal use: the kb client CLI, or kb-server — and what does the client send on each query?"
   - 'When operators talk about a kb "base", what is that object on disk, how does a multi-base kb-server choose which base to serve, and how is that different from a git working tree?'
   - For a long, vague question about how the tree-sitter indexer fits into code indexing end-to-end, does kb still only expand short questions with an LLM, or can it fan out targeted sub-queries from a resolved entity without a length gate?
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the entity registry in query-time scope inference?
+  - "For a long, vague question about how the facts-query research orchestrator fits into deep retrieval, sufficiency judging, fact curation, and final synthesis end-to-end — does resolving that entity still trigger ontology-typed sub-queries with no query-length gate?"
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -244,3 +249,16 @@ answers:
     remains only as the fallback when no entity resolves. A correct answer must not claim expansion
     only runs for ≤2-token questions when an entity is resolved; it should separate entity-grounded
     fan-out (no length gate) from the LLM expander fallback.
+  - >
+    `EntityRegistry` (`packages/kb-core/src/tools/entity-registry.ts`) stores canonical
+    entities, aliases, typed edges, and fact links so stage-0 scope inference can partition the
+    fact pool (`KB_ENTITY_SCOPE`). A correct answer must describe that registry role and must
+    not pivot lowercase "role" to the Prisma `Role` enum / `user_role`, or reduce the answer to
+    "there is an entities SQL table" without the query-time scope use.
+  - >
+    `FactsQueryResearchOrchestrator` owns the deep adaptive retrieval loop (ponds, graph hops,
+    sufficiency) used by `kb query` / chat before curator and synthesis. A correct answer must
+    name that orchestrator path, separate entity-grounded fan-out (no length gate) from the
+    short-question LLM expander fallback, and must not claim long vague entity-resolved
+    questions skip fan-out. Watch the common-word trap: lowercase "facts" must not falsely land
+    the answer on the SQL `facts` model alone.

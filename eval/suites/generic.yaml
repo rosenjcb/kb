@@ -12,3 +12,8 @@ questions:
   - What are the coding conventions and style guidelines for contributing?
   - What are the main gotchas, constraints, and known limitations?
   - What does the roadmap or changelog say about future plans and recent version history?
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the main entrypoint or core library type this repository is named for?
+  - "For a long, vague question about how that core named component fits into the project end-to-end, can retrieval fan out from a resolved entity without a query-length gate?"

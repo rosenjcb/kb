@@ -14,6 +14,11 @@ questions:
   - "Infer the request path for a table page: from ASGI/app routing through permissions/filters/facets to the HTML template (or JSON) response."
   - "What does `datasette publish` do product-wise (e.g. Heroku / Cloud Run), and which package area implements publish providers?"
   - "How do table actions, query actions, and the debug/jump menus extend the UI without forking core templates?"
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the token handler base class in Datasette authentication plugins?
+  - "For a long, vague question about how the signed token handler fits into actor auth, dstok_ tokens, and plugin register_token_handler backends end-to-end, what does that component own — and does entity-resolved fan-out still run without a length gate?"
 answers:
   - >
     Datasette is an open-source multi-tool for exploring and publishing data. Pointed at one or
@@ -63,3 +68,14 @@ answers:
     debug menu are populated through hook/default_action modules. Plugins and core defaults
     contribute links/buttons the templates render, so new UI affordances appear beside tables or in
     menus without forking the base Jinja templates for every feature.
+  - >
+    `TokenHandler` in `datasette/tokens.py` is the plugin base for create/verify token backends
+    (`create_token` / `verify_token`); unrecognized tokens return `None`, invalid ones raise. A
+    correct answer must land on that class and its plugin role — not generic JWT/OAuth tutorials
+    — and must not pivot on common-word "token"/"role" into unrelated SQL tables such as `Table`
+    or `data`.
+  - >
+    `SignedTokenHandler` (`name="signed"`) is the default itsdangerous `dstok_` backend
+    (allow/TTL settings), sibling to other handlers such as `HardcodedTokenHandler`. A correct
+    answer describes that signed path and plugin registration, must not conflate every token
+    handler, and must not claim long entity-resolved questions skip ontology fan-out.
