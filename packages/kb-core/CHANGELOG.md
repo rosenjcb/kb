@@ -1,15 +1,10 @@
 # @kb/core
 
-## 1.6.5
-
-### Patch Changes
-
-- Split CamelCase in entity alias normalization so prose like "tree-sitter indexer" lands on harvest names, and surface scope/lanes on retrieval detail.
-
 ## 1.6.4
 
 ### Patch Changes
 
+- Split CamelCase in entity alias normalization so prose like "tree-sitter indexer" lands on harvest names, and surface scope/lanes on retrieval detail.
 - Expand queries into ontology-typed inquiry lanes, and stop ordinary English words from resolving to entities.
 
   When stage-0 scope inference resolves a question to an entity, the query pipeline now
