@@ -10,10 +10,11 @@
  *
  * Alias matching is exact/longest-match over normalized text — never fuzzy —
  * because entity resolution must be higher-precision than the fuzzy retrieval
- * channels it disambiguates. Exactness is not sufficient on its own: an alias
- * spelled like an ordinary English word matches ordinary prose exactly, so each
- * match also carries `distinctive` (see `common-word-aliases.ts`), and callers
- * that prune or steer retrieval require it.
+ * channels it disambiguates. Normalization splits CamelCase and separators so
+ * `TreeSitterIndexer` and `tree-sitter indexer` share one key. Exactness is not
+ * sufficient on its own: an alias spelled like an ordinary English word matches
+ * ordinary prose exactly, so each match also carries `distinctive` (see
+ * `common-word-aliases.ts`), and callers that prune or steer retrieval require it.
  */
 
 import { createHash } from 'node:crypto'
@@ -102,9 +103,16 @@ export interface MentionMatch {
   distinctive: boolean
 }
 
-/** Lowercase, strip punctuation to spaces, collapse whitespace — the alias match key. */
+/**
+ * Lowercase, split CamelCase / snake / kebab into tokens, collapse whitespace —
+ * the alias match key. `TreeSitterIndexer`, `tree-sitter indexer`, and
+ * `tree_sitter_indexer` must share one key so prose can land on a CamelCase
+ * harvest name (without this, "tree-sitter indexer" never matched the entity).
+ */
 export function normalizeEntityName(name: string): string {
   return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -254,14 +262,18 @@ export class EntityRegistry {
   /** Look an entity up by canonical name or any alias (normalized match). */
   findEntityByName(name: string): EntityRow[] {
     const normalized = normalizeEntityName(name)
+    // Compact form covers indexes written before CamelCase splitting landed
+    // (`treesitterindexer` vs `tree sitter indexer`).
+    const compact = normalized.replace(/\s+/g, '')
     const rows = this.db
       .prepare(
         `SELECT DISTINCT e.id, e.kind, e.canonical_name, e.gloss, e.git_repo, e.source_kind
          FROM entities e
          JOIN entity_aliases a ON a.entity_id = e.id
-         WHERE a.normalized = ? AND e.tombstoned_at IS NULL`
+         WHERE e.tombstoned_at IS NULL
+           AND (a.normalized = ? OR replace(a.normalized, ' ', '') = ?)`
       )
-      .all(normalized) as Array<{
+      .all(normalized, compact) as Array<{
       id: string
       kind: string
       canonical_name: string
@@ -464,8 +476,18 @@ export class EntityRegistry {
     if (tokens.length === 0) return []
 
     // Sort by token length descending so longest aliases claim spans first.
+    // Recompute the match key from the raw alias so CamelCase splitting applies
+    // even when `entity_aliases.normalized` was written by an older normalizer.
     const sorted = aliases
-      .map(a => ({ ...a, tokenCount: a.normalized.split(' ').length }))
+      .map(a => {
+        const normalized = normalizeEntityName(a.alias)
+        return {
+          ...a,
+          normalized,
+          tokenCount: normalized ? normalized.split(' ').length : 0,
+        }
+      })
+      .filter(a => a.tokenCount > 0)
       .sort((x, y) => y.tokenCount - x.tokenCount || y.normalized.length - x.normalized.length)
 
     const claimed = new Array<boolean>(tokens.length).fill(false)
@@ -553,10 +575,29 @@ interface TokenSpan {
 
 function tokenizeWithSpans(text: string): TokenSpan[] {
   const out: TokenSpan[] = []
+  // Keep original spans for surface casing checks, but split CamelCase inside each
+  // alnum run so "HttpRequestHandler" tokenizes like the normalized alias
+  // (`http request handler`) rather than as one fused blob.
   const re = /[a-zA-Z0-9]+/g
   let m: RegExpExecArray | null = re.exec(text)
   while (m !== null) {
-    out.push({ norm: m[0].toLowerCase(), start: m.index, end: m.index + m[0].length })
+    const raw = m[0]
+    const base = m.index
+    const pieces = normalizeEntityName(raw).split(' ').filter(Boolean)
+    if (pieces.length <= 1) {
+      out.push({ norm: raw.toLowerCase(), start: base, end: base + raw.length })
+    } else {
+      // Approximate per-piece spans inside the CamelCase run for distinctiveness
+      // checks (surface casing). Offsets follow the raw identifier left-to-right.
+      let cursor = 0
+      for (const piece of pieces) {
+        const rel = raw.toLowerCase().indexOf(piece, cursor)
+        const start = rel >= 0 ? base + rel : base + cursor
+        const end = start + piece.length
+        out.push({ norm: piece, start, end })
+        cursor = rel >= 0 ? rel + piece.length : cursor + piece.length
+      }
+    }
     m = re.exec(text)
   }
   return out

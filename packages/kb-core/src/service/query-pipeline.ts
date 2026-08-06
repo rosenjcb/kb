@@ -189,6 +189,7 @@ export async function runQueryPipeline(
   // rather than letting the reader guess facets from the question string. Reuses the
   // stage-0 verdict, so lane targets match the scope disclosure the user is shown.
   // Deterministic and additive — no lanes means the reader's existing path runs.
+  let inquiryLaneCount = 0
   if (!allFacts) {
     try {
       const lanes = buildInquiryLanes({
@@ -196,6 +197,7 @@ export async function runQueryPipeline(
         query,
         ...(scope ? { verdict: scope } : {}),
       })
+      inquiryLaneCount = lanes.length
       if (lanes.length > 0) {
         ;(parsed.envelope.payload as { inquiryLanes?: unknown }).inquiryLanes = lanes
       }
@@ -288,6 +290,21 @@ export async function runQueryPipeline(
     }
   }
 
+  // Stamp scope/lane counters onto the retrieval detail the client prints and
+  // the eval harness scrapes — not only the collector's structured trace.
+  if (isReadFactsResult(aligned)) {
+    const data = (aligned.data ?? {}) as ReadDocumentsResultData
+    if (data.retrieval) {
+      aligned = {
+        ...aligned,
+        data: {
+          ...data,
+          retrieval: annotateScopeDetail(data.retrieval, scope, inquiryLaneCount),
+        },
+      }
+    }
+  }
+
   const shouldSynthesize = params.synthesize !== false
   if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
     const enrichStarted = Date.now()
@@ -320,4 +337,22 @@ export async function runQueryPipeline(
       else process.env.KB_QUERY_TRACE = prevTraceEnv
     }
   }
+}
+
+/** Append landed entity + lane count onto retrieval.detail for eval / --debug. */
+function annotateScopeDetail(
+  retrieval: NonNullable<ReadDocumentsResultData['retrieval']>,
+  scope: ScopeVerdict | undefined,
+  laneCount: number
+): NonNullable<ReadDocumentsResultData['retrieval']> {
+  const landings =
+    scope?.candidates
+      .filter(c => c.label === 'very_confident' || c.label === 'confident')
+      .map(c => c.entity.canonicalName) ?? []
+  const bits = [
+    landings.length > 0 ? `scope:${landings.join('+')}` : 'scope:none',
+    `lanes:${laneCount}`,
+  ]
+  const detail = [retrieval.detail, ...bits].filter(Boolean).join(';')
+  return { ...retrieval, detail }
 }

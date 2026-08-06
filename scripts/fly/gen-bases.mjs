@@ -5,7 +5,7 @@
 // Each eval suite under eval/suites/*.yaml that names a `repo_url` becomes a
 // selectable base (the suite `id` is the base slug). The list is deduped by repo
 // URL and always starts with the golden default base `kb` = this repo
-// (rosenjcb/kb), so the suites that point back at kb (`kb`, `moel-kb`) collapse
+// (rosenjcb/kb), so suites that point back at kb collapse
 // into `kb` instead of re-indexing the same tree.
 //
 // Suites without a `repo_url` (e.g. `generic`, which is a repo-neutral question
@@ -28,7 +28,7 @@ const SUITES_DIR = path.join(REPO_ROOT, 'eval', 'suites')
 const OUT_FILE = path.join(HERE, 'bases.json')
 
 // The golden default base: this repo, served when no `X-KB-Base` is given. Its
-// repo URL also de-dupes the `kb` / `moel-kb` suites (same tree) out of the set.
+// repo URL also de-dupes suites that share a tree (e.g. only `kb` for this repo).
 const DEFAULT_BASE = {
   name: 'kb',
   repo: 'https://github.com/rosenjcb/kb.git',
@@ -71,7 +71,7 @@ function buildBases() {
     const repo = scalar(yaml, 'repo_url')
     if (!repo || EXCLUDE.has(id)) continue
     const key = repoKey(repo)
-    if (seen.has(key)) continue // already represented (e.g. kb / moel-kb → demo)
+    if (seen.has(key)) continue // already represented (e.g. kb → demo)
     seen.add(key)
     bases.push({ name: id, repo })
   }

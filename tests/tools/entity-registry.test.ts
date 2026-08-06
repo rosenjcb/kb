@@ -24,6 +24,12 @@ describe('normalizeEntityName', () => {
     expect(normalizeEntityName('@acme/payments-service')).toBe('acme payments service')
     expect(normalizeEntityName('  KB_Server ')).toBe('kb server')
   })
+
+  it('splits CamelCase so prose can land on harvest names', () => {
+    expect(normalizeEntityName('TreeSitterIndexer')).toBe('tree sitter indexer')
+    expect(normalizeEntityName('tree-sitter indexer')).toBe('tree sitter indexer')
+    expect(normalizeEntityName('HttpRequestHandler')).toBe('http request handler')
+  })
 })
 
 describe('EntityRegistry', () => {
@@ -218,11 +224,39 @@ describe('EntityRegistry — mention distinctiveness', () => {
     seedRoleModel()
     const registry = new EntityRegistry(dbPath, { readOnly: true })
     try {
-      const matches = registry.resolveMentions('what is the role of the tree-sitter indexer?')
+      const matches = registry.resolveMentions('what is the role of permissions here?')
 
       // The match is not hidden — it is disqualified from steering retrieval.
       expect(matches).toHaveLength(1)
       expect(matches[0]?.distinctive).toBe(false)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('lands a CamelCase harvest name from hyphenated prose, while role stays non-distinctive', () => {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const writable = new EntityRegistry(dbPath)
+    try {
+      writable.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+      writable.upsertEntity({
+        kind: 'module',
+        canonicalName: 'TreeSitterIndexer',
+        sourceKind: 'source-pattern',
+      })
+    } finally {
+      writable.close()
+    }
+
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions(
+        'What is the role of the tree-sitter indexer in code indexing?'
+      )
+      const byName = Object.fromEntries(matches.map(m => [m.entity.canonicalName, m.distinctive]))
+      expect(byName.Role).toBe(false)
+      expect(byName.TreeSitterIndexer).toBe(true)
     } finally {
       registry.close()
     }
@@ -235,6 +269,33 @@ describe('EntityRegistry — mention distinctiveness', () => {
       const matches = registry.resolveMentions('which values does the Role enum have?')
 
       expect(matches).toHaveLength(1)
+      expect(matches[0]?.distinctive).toBe(true)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('matches a CamelCase identifier in the query to the same entity', () => {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const writable = new EntityRegistry(dbPath)
+    try {
+      writable.upsertEntity({
+        kind: 'module',
+        canonicalName: 'HttpRequestHandler',
+        sourceKind: 'source-pattern',
+      })
+    } finally {
+      writable.close()
+    }
+
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions(
+        'Does kb still use HttpRequestHandler for outbound calls?'
+      )
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.entity.canonicalName).toBe('HttpRequestHandler')
       expect(matches[0]?.distinctive).toBe(true)
     } finally {
       registry.close()

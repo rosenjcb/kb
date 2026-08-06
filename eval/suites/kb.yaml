@@ -20,6 +20,13 @@ questions:
   - Walk through a single kb query in order, from the deep retrieval loop to the final answer — what does each stage (retrieval orchestrator, sufficiency judge, fact curator, synthesis) receive and produce?
   - Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?
   - How would I add support for a new programming language to kb's code indexing, from grammar to queryable facts?
+  # Ambiguity / competing-hypothesis probes (inquiry lanes + common-word alias precision).
+  # These are easy to answer wrongly from a false entity landing or stale docs.
+  - What is the role of the tree-sitter indexer in code indexing?
+  - How does kb turn TypeScript and JavaScript source into code-graph facts today — is there a separate TypeScript-compiler indexer, or one AST path for those languages too?
+  - "Who actually builds the knowledge-base index in normal use: the kb client CLI, or kb-server — and what does the client send on each query?"
+  - 'When operators talk about a kb "base", what is that object on disk, how does a multi-base kb-server choose which base to serve, and how is that different from a git working tree?'
+  - For a long, vague question about how the tree-sitter indexer fits into code indexing end-to-end, does kb still only expand short questions with an LLM, or can it fan out targeted sub-queries from a resolved entity without a length gate?
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -193,3 +200,47 @@ answers:
     edges, with a per-file `content_hash` recorded in `code_file_state` to skip unchanged files
     later. A language without a wired grammar is simply not indexed. A correct answer should name the
     `LANG_CONFIGS` / `EXT_MAP` wiring and the rescan step, and note the deterministic no-LLM path.
+
+  - >
+    The tree-sitter indexer (`TreeSitterIndexer` in
+    `packages/kb-core/src/tools/tree-sitter-indexer.ts`) is the deterministic AST code-index path:
+    it parses one file at a time with a WASM grammar (`web-tree-sitter`), writes import_code facts
+    for symbols/imports/structural edges, and records per-file `content_hash` in `code_file_state`
+    so unchanged files are skipped on scan. It is not a database schema concept. A correct answer
+    must describe that indexer role and must not pivot to a Prisma/TypeORM `Role` enum, a generic
+    "role" permission model, or unrelated ORM tables — lowercase "role" in the question is ordinary
+    English, not an entity alias.
+
+  - >
+    Live TypeScript/JavaScript code indexing goes through `TreeSitterIndexer` only
+    (`packages/kb-core/src/tools/tree-sitter-indexer.ts` + `web-tree-sitter` WASM grammars) — the same
+    AST path as other wired languages. There is no separate TypeScript-compiler / type-checker
+    indexer on the ingest path and no LLM fallback for code-graph facts. A correct answer names
+    `TreeSitterIndexer` as the TS/JS writer and must not invent a second live TS-only indexer.
+
+  - >
+    In normal product use **kb-server** owns building and refreshing the index: it clones configured
+    git repos into `KB_HOME`, runs the @kb/core init/scan phases, and serves SQLite
+    (`.kb-index.sqlite`). The **kb client** does not upload the repository on each question — it
+    sends natural-language queries (and chat turns) over HTTP/MCP to the server. Outbound LLM calls
+    happen at synthesis/curator/judge time, not as a remote "send us your repo" ingest. Eval's
+    offline `scripts/eval-index.ts` is harness-only and is not the default user path. A correct
+    answer must not claim the client CLI indexes the repo on every `kb query`.
+
+  - >
+    A kb **base** is a named session directory under `~/.kb/sessions/<base>/` holding the SQLite
+    index and cloned repo volumes — not "the git checkout you happened to run the CLI from." A
+    multi-base kb-server boots one default base and can serve other already-built bases selected per
+    request via `X-KB-Base` / `--base` / `?base=`; unknown/missing indexes 404 as serve-only.
+    Operators point the client with `--base` or `KB_BASE`. A correct answer distinguishes the session
+    base from a working tree and mentions multi-base selection; it must not conflate "base" with an
+    arbitrary source folder or a Postgres database server.
+
+  - >
+    When stage-0 resolves an entity (and `KB_ENTITY_SCOPE` is on), kb builds deterministic
+    ontology-typed sub-queries from the entity graph — ownership, locus, dependency, composition, and
+    kind-conditioned mechanism probes — with **no query-length gate**, so a long vague question about
+    the tree-sitter indexer still gets targeted probes. The older LLM expander's short-question gate
+    remains only as the fallback when no entity resolves. A correct answer must not claim expansion
+    only runs for ≤2-token questions when an entity is resolved; it should separate entity-grounded
+    fan-out (no length gate) from the LLM expander fallback.

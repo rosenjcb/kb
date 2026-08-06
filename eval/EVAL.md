@@ -29,7 +29,7 @@ Two evaluation pipelines co-exist:
 
 1. **Query harvest** (`scripts/eval-run.mjs`, suites `raylib`/`kb`/`fzf`/…/`generic`) — runs the **kb side** (condition **K**) and, by default, the **control side** (condition **N**) side-by-side into one unified artifact. kb scores `kb query` answers via auto-score (Gemini/OpenAI); the control hands each question to a *real coding agent* (Claude Code headless, no kb) and scores it with the **same rubric/judge**. Artifacts under `~/.kb/evaluations/<run>/artifact.json` hold both (kb at top level + a `control` block + a `comparison`). `--skip-control` runs kb only; `--score-runs N` averages the scorer. **Multi-suite:** Node-native parallel batch against **one shared multi-base `kb-server`** (see [Client-server eval](#client-server-eval-10)). See [Control vs kb](#control-vs-kb-the-real-baseline).
 
-2. **MOEL pipeline** (`scripts/moel-run.mjs`, suite `moel-kb`) — measures exploration efficiency across conditions per task. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
+2. **MOEL pipeline** (`scripts/moel-run.mjs`) — measures exploration efficiency across conditions per task when a MOEL-shaped suite YAML is supplied. Loss functions live in `eval/losses/`; the harness is `scripts/moel-run.mjs`.
 
 ## Three evaluation conditions
 

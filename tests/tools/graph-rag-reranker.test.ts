@@ -34,9 +34,9 @@ function makeCodeStore(names: string[] = []): CodeGraphStore {
 
 describe('llmExtractQueryEntities', () => {
   it('[TC-6] parses a valid JSON array from LLM response', async () => {
-    const llm = makeLLM('["TsMorphIndexer", "code-graph-indexer", "AST"]')
+    const llm = makeLLM('["CodeGraphWalker", "code-graph-indexer", "AST"]')
     const entities = await llmExtractQueryEntities('what class handles AST generation?', llm)
-    expect(entities).toEqual(['TsMorphIndexer', 'code-graph-indexer', 'AST'])
+    expect(entities).toEqual(['CodeGraphWalker', 'code-graph-indexer', 'AST'])
   })
 
   it('[TC-7] extracts array even when surrounded by prose', async () => {
@@ -77,29 +77,29 @@ describe('rerankByGraphConnectivity', () => {
   })
 
   it('[TC-12] returns results unchanged when fewer than 2 results', async () => {
-    const results = [makeResult('only', 'TsMorphIndexer handles AST')]
-    const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], makeGraphWriter(['TsMorphIndexer']), makeCodeStore())
+    const results = [makeResult('only', 'CodeGraphWalker handles AST')]
+    const out = await rerankByGraphConnectivity(results, ['CodeGraphWalker'], makeGraphWriter(['CodeGraphWalker']), makeCodeStore())
     expect(out).toHaveLength(1)
   })
 
   it('[TC-13] boosts result whose content matches graph neighborhood terms', async () => {
     const results = [
       makeResult('generic', 'kb maintains a knowledge graph for documents'),
-      makeResult('specific', 'TsMorphIndexer builds the code graph using TypeScript compiler'),
+      makeResult('specific', 'CodeGraphWalker builds the code graph using TypeScript compiler'),
     ]
-    // graph expansion returns TsMorphIndexer as a neighbor
-    const graphWriter = makeGraphWriter(['TsMorphIndexer', 'TypeScript compiler'])
-    const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], graphWriter, makeCodeStore())
+    // graph expansion returns CodeGraphWalker as a neighbor
+    const graphWriter = makeGraphWriter(['CodeGraphWalker', 'TypeScript compiler'])
+    const out = await rerankByGraphConnectivity(results, ['CodeGraphWalker'], graphWriter, makeCodeStore())
     expect(out[0]?.metadata?.id).toBe('specific')
   })
 
   it('[TC-14] boosts result whose graphEvidence matches', async () => {
     const results = [
       makeResult('unrelated', 'some unrelated content about nothing'),
-      makeResult('connected', 'general fact', ['TsMorphIndexer implements code-graph-indexer']),
+      makeResult('connected', 'general fact', ['CodeGraphWalker implements code-graph-indexer']),
     ]
-    const graphWriter = makeGraphWriter(['TsMorphIndexer'])
-    const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], graphWriter, makeCodeStore())
+    const graphWriter = makeGraphWriter(['CodeGraphWalker'])
+    const out = await rerankByGraphConnectivity(results, ['CodeGraphWalker'], graphWriter, makeCodeStore())
     expect(out[0]?.metadata?.id).toBe('connected')
   })
 
@@ -108,7 +108,7 @@ describe('rerankByGraphConnectivity', () => {
       makeResult('first', 'unrelated content one'),
       makeResult('second', 'unrelated content two'),
     ]
-    const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], makeGraphWriter([]), makeCodeStore())
+    const out = await rerankByGraphConnectivity(results, ['CodeGraphWalker'], makeGraphWriter([]), makeCodeStore())
     expect(out.map(r => r.metadata?.id)).toEqual(['first', 'second'])
   })
 
@@ -117,7 +117,7 @@ describe('rerankByGraphConnectivity', () => {
     const brokenGraph = {
       expandQuery: vi.fn(async () => { throw new Error('db error') }),
     } as unknown as KbGraphWriter
-    const out = await rerankByGraphConnectivity(results, ['TsMorphIndexer'], brokenGraph)
+    const out = await rerankByGraphConnectivity(results, ['CodeGraphWalker'], brokenGraph)
     expect(out).toEqual(results)
   })
 })

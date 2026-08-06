@@ -314,22 +314,22 @@ describe('SQLite KB index integration', () => {
     const indexer = new SqliteKbIndexer({ dbPath })
 
     const symbolFact = indexer.upsertFact({
-      factText: 'TsMorphIndexer is a Class exported from src/tools/code-graph-indexer.ts',
+      factText: 'CodeGraphWalker is a Class exported from src/tools/code-graph-walker.ts',
       triplet: {
-        subject: 'TsMorphIndexer',
+        subject: 'CodeGraphWalker',
         predicate: 'exported_from',
-        object: 'src/tools/code-graph-indexer.ts',
+        object: 'src/tools/code-graph-walker.ts',
       },
       sourceKind: 'import_code',
-      sourceRef: 'code:src/tools/code-graph-indexer.ts@TsMorphIndexer',
+      sourceRef: 'code:src/tools/code-graph-walker.ts@CodeGraphWalker',
       evidence: 'strong' as const,
     })
     const importFact = indexer.upsertFact({
-      factText: 'src/cli/init-cli.ts imports src/tools/code-graph-indexer.ts',
+      factText: 'src/cli/init-cli.ts imports src/tools/code-graph-walker.ts',
       triplet: {
         subject: 'src/cli/init-cli.ts',
         predicate: 'imports',
-        object: 'src/tools/code-graph-indexer.ts',
+        object: 'src/tools/code-graph-walker.ts',
       },
       sourceKind: 'import_code',
       sourceRef: 'code:src/cli/init-cli.ts@import',

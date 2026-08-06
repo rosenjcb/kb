@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     },
     // Direct lookup — should NOT trigger decompose; one clean retrieval
     {
-      prompt: 'What does TsMorphIndexer export?',
+      prompt: 'What does TreeSitterIndexer export?',
       expectDecompose: false,
     },
     {

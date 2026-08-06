@@ -23,7 +23,7 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 
 | Suite | Repo | Notes |
 |-------|------|-------|
-| `kb` | this repo | self-check / dogfood |
+| `kb` | this repo | self-check / dogfood (includes ambiguity / false-landing probes) |
 | `raylib` | raysan5/raylib | primary external C benchmark |
 | `fzf` | junegunn/fzf | Go fuzzy finder |
 | `kestra` | kestra-io/kestra | Java/UI orchestration (default-10; NiFi-shaped workflows) |

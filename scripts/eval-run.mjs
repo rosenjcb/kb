@@ -176,7 +176,7 @@ const THIS_SCRIPT = fileURLToPath(import.meta.url)
 
 /**
  * Canonical 10-suite benchmark pack from EVALUATION.md (excludes `generic` which needs
- * `--repo`, and `moel-kb` which is the separate MOEL harness).
+ * `--repo`).
  */
 export const DEFAULT_BENCHMARK_SUITES = [
   'raylib',
@@ -636,7 +636,7 @@ Session lifecycle (automatic):
 Suite / questions:
   --suite VENDOR          Load eval/suites/VENDOR.yaml  (also accepts comma lists)
   --suites a,b,c          Multiple suites (alias of repeated/comma --suite). Parallel by default.
-  --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic, moel-kb)
+  --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic)
   --parallel [N]          Multi-suite concurrency (default: all suites at once; env KB_EVAL_PARALLEL)
                           Default: one shared multi-base kb-server; each child selects
                           eval-{suite} via --base / X-KB-Base.

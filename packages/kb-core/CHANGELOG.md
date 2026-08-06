@@ -1,5 +1,11 @@
 # @kb/core
 
+## 1.6.5
+
+### Patch Changes
+
+- Split CamelCase in entity alias normalization so prose like "tree-sitter indexer" lands on harvest names, and surface scope/lanes on retrieval detail.
+
 ## 1.6.4
 
 ### Patch Changes

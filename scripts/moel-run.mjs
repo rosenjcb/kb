@@ -5,8 +5,8 @@
  * Runs kb task suites under three conditions (N/K/O) and computes MOEL loss metrics.
  *
  * Usage (kb repo root, after `pnpm run build`):
- *   node scripts/moel-run.mjs --suite moel-kb [--condition all|N|K|O] [--dry-run]
- *   node scripts/moel-run.mjs --suite moel-kb --condition K
+ *   node scripts/moel-run.mjs --suite <suiteId> [--condition all|N|K|O] [--dry-run]
+ *   node scripts/moel-run.mjs --suite <suiteId> --condition K
  *
  * Output: ~/.kb/evaluations/moel-{suiteId}-{timestamp}/
  *   trajectory_N.json, trajectory_K.json, trajectory_O.json
