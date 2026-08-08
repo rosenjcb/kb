@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { createEmbedder } from '@kb/core/core/embeddings.js'
 import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
 import { HARVEST_PIPELINE_VERSION, isPipelineStale } from '@kb/core/core/pipeline-version.js'
@@ -86,20 +87,38 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
   return true
 }
 
-/** Rebuild the cross-repo bridge edges after one or more repos changed. */
-function reconcile(baseDir: string, onProgress?: (line: string) => void): void {
-  const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+/**
+ * Embed whatever the re-index just wrote. The per-repo rescan path skips embedding (it has no
+ * view of the whole base), so without this the newly indexed documents and symbols would only
+ * be reachable through the lexical lane. Best-effort — retrieval still works unembedded.
+ */
+async function embedNewRows(baseDir: string, onProgress?: (line: string) => void): Promise<void> {
+  const embedder = createEmbedder()
+  if (!embedder) return
+  const indexer = new SqliteKbIndexer({
+    dbPath: path.join(baseDir, '.kb-index.sqlite'),
+    embedder,
+  })
   try {
-    const linked = indexer.reconcileCrossRepoEdges()
-    if (linked > 0) onProgress?.(`[kb] Linked ${linked} cross-repo edge(s).`)
+    const documents = await indexer.embedAllDocuments()
+    const symbols = await indexer.embedAllCodeSymbols()
+    const facts = await indexer.embedAllFacts()
+    if (documents + symbols + facts > 0) {
+      onProgress?.(
+        `[kb] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s).`
+      )
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    onProgress?.(`[kb] Embedding skipped (${msg.slice(0, 80)}).`)
   } finally {
     indexer.close()
   }
 }
 
 /**
- * Pull every git clone on the base's volume and re-index any with new commits, then rebuild
- * the cross-repo graph. The clones under `<baseDir>/repos/*` are the tracked-repo registry
+ * Pull every git clone on the base's volume and re-index any with new commits, then embed
+ * whatever changed. The clones under `<baseDir>/repos/*` are the tracked-repo registry
  * (see `discoverBaseRepos`); nothing is persisted about sync state — the reindex scheduler
  * owns cadence, and each clone's HEAD is its own source of truth. Never throws.
  */
@@ -114,6 +133,6 @@ export async function scanBaseRepos(baseDir: string, opts: ScanOptions = {}): Pr
     anyReindexed = anyReindexed || reindexed
   }
 
-  if (anyReindexed) reconcile(baseDir, opts.onProgress)
+  if (anyReindexed) await embedNewRows(baseDir, opts.onProgress)
   return repos.length
 }

@@ -1,4 +1,4 @@
-import { FactsQueryResearchOrchestrator } from '../tools/facts-query-research-orchestrator'
+import { retrieveHybrid } from '../tools/hybrid-retriever'
 import type { SqliteKbIndexer } from '../tools/sqlite-kb-index'
 
 export interface SupportingFact {
@@ -7,29 +7,29 @@ export interface SupportingFact {
 }
 
 /**
- * Search the facts store for entries supporting a doc-generate prompt.
+ * Search the index for units supporting a doc-generate prompt.
  *
- * Uses the same FactsQueryResearchOrchestrator pipeline as kb query:
- * graph hops, concept expansion, semantic scoring, and source-kind quotas all apply.
+ * Uses the same hybrid retriever as `kb query`, so the grounding a generated doc gets is
+ * the grounding a user asking the same question would get.
  */
 export async function searchSupportingFacts(
   indexer: SqliteKbIndexer,
   query: string,
-  _limit = 20,
+  limit = 20,
   options?: { excludeIds?: Set<string> }
 ): Promise<SupportingFact[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
-  const orchestrator = new FactsQueryResearchOrchestrator(indexer)
-  const response = await orchestrator.run({
+  await indexer.cacheQueryEmbedding(trimmed)
+  const { units } = retrieveHybrid(indexer, {
     query: trimmed,
-    surface: 'query',
+    limit,
     includeContent: true,
-    excludeIds: options?.excludeIds,
+    ...(options?.excludeIds ? { excludeIds: options.excludeIds } : {}),
   })
-  return response.results
-    .filter(r => r.content)
-    .map(r => ({ id: r.metadata.id, factText: r.content ?? '' }))
+  return units
+    .filter(unit => unit.content)
+    .map(unit => ({ id: unit.metadata.id, factText: unit.content ?? '' }))
 }
 
 /** Markdown block listing grounded facts for doc-generate LLM prompts. */

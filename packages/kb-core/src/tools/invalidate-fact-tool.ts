@@ -58,7 +58,7 @@ export async function invalidateFactTool(
     const simulatedReplacementId = replaceTo ? `fact-replacement-${Date.now()}` : undefined
     changes.push({
       factId: exact.id,
-      before: exact.fact_text,
+      before: exact.text,
       after: replaceTo || undefined,
       replacementId: simulatedReplacementId,
     })
@@ -76,7 +76,7 @@ export async function invalidateFactTool(
                   : placeholderTripletFromFactText(replaceTo),
             }
           : undefined
-      const result = indexer.invalidateFact(exact.fact_text, replacementPayload)
+      const result = indexer.invalidateFact(exact.text, replacementPayload)
       changes[0].replacementId = result.replacementId
     }
     const replaced = changes.length

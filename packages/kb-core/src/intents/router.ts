@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import type { RunCollector } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, ToolUseRequest } from '../core/types'
-import { DEFAULT_FACT_LIMIT } from '../tools/facts-query-research-orchestrator'
+import { DEFAULT_FACT_LIMIT } from '../tools/hybrid-retriever'
 import type { ConsumerIntentEnvelope, IntentResult, RouteDecision } from './types'
 
 export interface IntentRouter {

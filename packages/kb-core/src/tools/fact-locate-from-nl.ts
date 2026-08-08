@@ -5,7 +5,7 @@ import { toGraphQuerySlugs } from './graph-query-expansion'
 
 type IndexerPick = Pick<
   SqliteKbIndexer,
-  'searchFacts' | 'searchFactsByConcepts' | 'getActiveFactByTextMatch' | 'getActiveFactById'
+  'searchFacts' | 'getActiveFactByTextMatch' | 'getActiveFactById'
 >
 
 function parseChosenFactId(text: string): string | null {
@@ -57,14 +57,10 @@ export async function locateFactRowFromNaturalLanguage(input: {
       ? input.indexer.searchFacts(shortPhrase, 15)
       : []
 
-  // Concept/slug-based search as a complement — catches cases where FTS tokenization misses
-  const slugs = toGraphQuerySlugs(q)
-  const conceptCandidates = slugs.length > 0 ? input.indexer.searchFactsByConcepts(slugs, 15) : []
-
-  // Merge: FTS results first (better relevance ordering), then fallback + concept hits
+  // Merge: FTS results first (better relevance ordering), then the short-phrase fallback.
   const seen = new Set(ftsCandidates.map(c => c.id))
   const merged: FactRow[] = [...ftsCandidates]
-  for (const c of [...ftsFallback, ...conceptCandidates]) {
+  for (const c of ftsFallback) {
     if (!seen.has(c.id)) {
       seen.add(c.id)
       merged.push(c)
@@ -77,8 +73,7 @@ export async function locateFactRowFromNaturalLanguage(input: {
 
   const systemPrompt = loadPrompt('fact-locate-from-candidates.md')
   const lines = candidates.map(
-    (c, i) =>
-      `${i + 1}. id=${c.id}\n   text: ${c.fact_text}\n   triple: (${c.subject}) [${c.predicate}] (${c.object})`
+    (c, i) => `${i + 1}. id=${c.id}\n   text: ${c.text}${c.source_ref ? `\n   source: ${c.source_ref}` : ''}`
   )
   const res = await input.llm.call({
     systemPrompt,

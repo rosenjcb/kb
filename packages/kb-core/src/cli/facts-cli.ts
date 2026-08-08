@@ -139,10 +139,9 @@ function formatFactHuman(row: FactRow, baseLabel?: string): string {
     `${baseLine}id: ${row.id}`,
     `uri: ${formatFactUri(row.id)}`,
     `repo: ${row.git_repo ?? '(unscoped)'}`,
-    `source: ${row.source_kind}${row.source_ref ? ` (${row.source_ref})` : ''}`,
-    `triple: (${row.subject}) [${row.predicate}] (${row.object})`,
+    `evidence: ${row.evidence}${row.source_ref ? ` (${row.source_ref})` : ''}`,
     '',
-    row.fact_text.trim(),
+    row.text.trim(),
   ].join('\n')
 }
 

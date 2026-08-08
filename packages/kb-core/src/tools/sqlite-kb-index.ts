@@ -1,10 +1,6 @@
 import type { EvidenceLabel } from '../core/evidence-label'
 import { isOpenableSourcePath } from '../core/fact-uri'
-import {
-  DEFAULT_FACT_EVIDENCE,
-  type FactEvidenceKind,
-  factEvidenceWeightSql,
-} from '../core/fact-evidence'
+import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -12,7 +8,7 @@ import dayjs from 'dayjs'
 import { resolveEmbedFetchPageSize } from '../config/indexing-batch-size'
 import { runMigrations } from '../core/db-migrations'
 import type { Embedder } from '../core/embeddings'
-import { type RetrievalLane, classifyDocumentLane } from './retrieval-lane-router'
+import type { RetrievalLane } from './retrieval-lane-router'
 
 function runInTransaction(db: DatabaseSync, fn: () => void): void {
   db.exec('BEGIN')
@@ -58,14 +54,6 @@ export interface RetrievalRankingHint {
   docId: string
   hintScore: number
   occurrences: number
-}
-
-interface LaneBackfillRow {
-  id: string
-  title: string
-  file_path: string
-  doc_type: string | null
-  tags_json: string | null
 }
 
 export interface RetrievalCheckpointEventInput {
@@ -129,46 +117,86 @@ export interface FactTriplet {
   object: string
 }
 
+/**
+ * Curated fact write. `facts` is no longer a derived sentence store — it holds only
+ * user/curated assertions, so the triplet/source-kind fields the sentence pipeline used
+ * to supply are accepted and ignored by the legacy `upsertFact` shim.
+ */
 export interface FactUpsertInput {
   factText: string
-  /** Omitted or partial values → deterministic placeholder triple derived from `factText`. */
   triplet?: FactTriplet
-  sourceKind: 'import_doc' | 'import_code'
+  sourceKind?: 'import_doc' | 'import_code'
   sourceRef?: string
   /** What kind of evidence this fact is — see `core/fact-evidence`. */
   evidence?: FactEvidenceKind
   supersedesFactId?: string
-  /** Raw source code snippet for import_code facts — stored and served to the LLM instead of verbose fact_text. */
   sourceText?: string
   /** Slug of the git repo this fact was indexed from (multi-repo provenance). */
   gitRepo?: string
 }
 
+export interface CuratedFactUpsertInput {
+  text: string
+  sourceRef?: string
+  evidence?: FactEvidenceKind
+  gitRepo?: string
+}
+
 export interface FactRow {
   id: string
-  fact_text: string
-  normalized_text: string
-  source_kind: string
+  git_repo: string | null
+  text: string
   source_ref: string | null
-  lane_id?: string
   evidence: FactEvidenceKind
-  supersedes_fact_id: string | null
   tombstoned_at: string | null
   created_at: string
   updated_at: string
-  subject: string
-  predicate: string
-  object: string
-  source_text: string | null
-  git_repo: string | null
 }
 
-export interface FactConceptRow {
-  fact_id: string
-  concept_id: string
-  role: string
-  score: number
-  created_at: string
+/** Whole markdown file as one indexed unit (`documents`). */
+export interface DocumentIndexRow {
+  id: string
+  git_repo: string
+  rel_path: string
+  title: string
+  body: string
+  content_hash: string
+  indexed_at: string
+}
+
+export interface DocumentIndexUpsertInput {
+  gitRepo?: string
+  relPath: string
+  title: string
+  body: string
+  contentHash?: string
+}
+
+/** One exported AST symbol with its source text (`code_symbols`). */
+export interface CodeSymbolRow {
+  id: string
+  git_repo: string
+  rel_path: string
+  name: string
+  kind: string
+  source_text: string | null
+  content_hash: string
+  indexed_at: string
+}
+
+export interface CodeSymbolUpsertInput {
+  gitRepo?: string
+  relPath: string
+  name: string
+  kind: string
+  sourceText?: string
+  contentHash?: string
+}
+
+export interface DocCodeLinkInput {
+  symbolId: string
+  score?: number
+  linkKind?: string
 }
 
 export interface DerivedDocUpsertInput {
@@ -261,10 +289,27 @@ const DEFAULT_LANE_ROUTING_THRESHOLDS: LaneRoutingRolloutThresholds = {
 
 /** `facts` row projection — keep aligned with `FactRow`. */
 const FACT_ROW_SELECT =
-  'id, fact_text, normalized_text, source_kind, source_ref, evidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo'
+  'id, git_repo, text, source_ref, evidence, tombstoned_at, created_at, updated_at'
 
 const FACT_ROW_SELECT_F =
-  'f.id, f.fact_text, f.normalized_text, f.source_kind, f.source_ref, f.evidence, f.supersedes_fact_id, f.tombstoned_at, f.created_at, f.updated_at, f.subject, f.predicate, f.object, f.source_text, f.git_repo'
+  'f.id, f.git_repo, f.text, f.source_ref, f.evidence, f.tombstoned_at, f.created_at, f.updated_at'
+
+/** `documents` row projection — keep aligned with `DocumentIndexRow`. */
+const DOCUMENT_ROW_SELECT =
+  'id, git_repo, rel_path, title, body, content_hash, indexed_at'
+
+/** `code_symbols` row projection — keep aligned with `CodeSymbolRow`. */
+const CODE_SYMBOL_ROW_SELECT =
+  'id, git_repo, rel_path, name, kind, source_text, content_hash, indexed_at'
+
+const CODE_SYMBOL_ROW_SELECT_S =
+  's.id, s.git_repo, s.rel_path, s.name, s.kind, s.source_text, s.content_hash, s.indexed_at'
+
+/** Documents over this size are stored whole but truncated when served as retrieval content. */
+export const DOCUMENT_CONTENT_MAX_CHARS = 20_000
+
+const DOCUMENT_EMBED_MAX_CHARS = 4_000
+const SYMBOL_EMBED_MAX_CHARS = 2_000
 
 export class SqliteKbIndexer {
   private readonly db: DatabaseSync
@@ -310,47 +355,53 @@ export class SqliteKbIndexer {
   }
 
   /**
-   * (Re-)embed every fact whose stored embedding was not produced by the attached embedder, in
-   * batches. Idempotent: facts already carrying the current `modelId` are skipped. Returns the
-   * number of facts embedded. No-op when no embedder is attached.
+   * (Re-)embed every row of one indexed table whose stored embedding was not produced by the
+   * attached embedder. Idempotent: rows already carrying the current `modelId` are skipped.
+   *
+   * Bounded-memory pagination (issue #191): keyset-paginate by row id instead of loading every
+   * stale row into one array up front, so peak memory is O(fetchPageSize) rather than O(rows) —
+   * a cold index of a large repo used to OOM here even though `embed()` was already batched.
    */
-  async embedAllFacts(
+  private async embedTable(
+    spec: {
+      table: string
+      embeddingTable: string
+      idColumn: string
+      textSql: string
+      liveFilter?: string
+    },
     onProgress?: (done: number, total: number) => void,
     batchSize = 100,
     fetchPageSize: number = resolveEmbedFetchPageSize()
   ): Promise<number> {
     if (!this.embedder) return 0
     const embedder = this.embedder
+    const live = spec.liveFilter ? `${spec.liveFilter} AND ` : ''
     const total = (
       this.db
         .prepare(
           `SELECT COUNT(*) AS c
-           FROM facts f
-           LEFT JOIN fact_embeddings e ON e.fact_id = f.id
-           WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?)`
+           FROM ${spec.table} t
+           LEFT JOIN ${spec.embeddingTable} e ON e.${spec.idColumn} = t.id
+           WHERE ${live}(e.model_id IS NULL OR e.model_id != ?)`
         )
         .get(embedder.modelId) as { c: number }
     ).c
     if (total === 0) return 0
 
-    // Bounded-memory pagination (issue #191): keyset-paginate by fact id instead of loading
-    // every stale fact row into one array up front. Peak memory is O(fetchPageSize), not
-    // O(total facts) — this is what let a cold index of a large repo (e.g. Homebrew/brew,
-    // hundreds of thousands of facts) OOM even though the actual embed() calls were already
-    // batched at 100 texts/request.
     const selectPage = this.db.prepare(
-      `SELECT f.id AS id, f.fact_text AS fact_text
-       FROM facts f
-       LEFT JOIN fact_embeddings e ON e.fact_id = f.id
-       WHERE f.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?) AND f.id > ?
-       ORDER BY f.id
+      `SELECT t.id AS id, ${spec.textSql} AS text
+       FROM ${spec.table} t
+       LEFT JOIN ${spec.embeddingTable} e ON e.${spec.idColumn} = t.id
+       WHERE ${live}(e.model_id IS NULL OR e.model_id != ?) AND t.id > ?
+       ORDER BY t.id
        LIMIT ?`
     )
     const now = dayjs().toISOString()
     const upsert = this.db.prepare(
-      `INSERT INTO fact_embeddings (fact_id, model_id, dimensions, vector_json, embedded_at)
+      `INSERT INTO ${spec.embeddingTable} (${spec.idColumn}, model_id, dimensions, vector_json, embedded_at)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(fact_id) DO UPDATE SET
+       ON CONFLICT(${spec.idColumn}) DO UPDATE SET
          model_id = excluded.model_id, dimensions = excluded.dimensions,
          vector_json = excluded.vector_json, embedded_at = excluded.embedded_at`
     )
@@ -360,12 +411,12 @@ export class SqliteKbIndexer {
     while (true) {
       const page = selectPage.all(embedder.modelId, cursor, fetchPageSize) as Array<{
         id: string
-        fact_text: string
+        text: string | null
       }>
       if (page.length === 0) break
       for (let i = 0; i < page.length; i += batchSize) {
         const batch = page.slice(i, i + batchSize)
-        const vectors = await embedder.embed(batch.map(r => r.fact_text))
+        const vectors = await embedder.embed(batch.map(r => r.text ?? ''))
         for (let j = 0; j < batch.length; j++) {
           const vec = vectors[j]
           if (!vec || vec.length !== embedder.dimensions) continue
@@ -377,6 +428,66 @@ export class SqliteKbIndexer {
       onProgress?.(Math.min(done, total), total)
     }
     return done
+  }
+
+  /** (Re-)embed every curated fact. No-op when no embedder is attached. */
+  async embedAllFacts(
+    onProgress?: (done: number, total: number) => void,
+    batchSize = 100,
+    fetchPageSize: number = resolveEmbedFetchPageSize()
+  ): Promise<number> {
+    return this.embedTable(
+      {
+        table: 'facts',
+        embeddingTable: 'fact_embeddings',
+        idColumn: 'fact_id',
+        textSql: 't.text',
+        liveFilter: 't.tombstoned_at IS NULL',
+      },
+      onProgress,
+      batchSize,
+      fetchPageSize
+    )
+  }
+
+  /** (Re-)embed every indexed document (title + body). No-op when no embedder is attached. */
+  async embedAllDocuments(
+    onProgress?: (done: number, total: number) => void,
+    batchSize = 100,
+    fetchPageSize: number = resolveEmbedFetchPageSize()
+  ): Promise<number> {
+    return this.embedTable(
+      {
+        table: 'documents',
+        embeddingTable: 'doc_embeddings',
+        idColumn: 'doc_id',
+        // Embedders truncate at their own context window; sending the whole body of a huge
+        // file wastes the request, so the vector is built from the title + document head.
+        textSql: `t.title || char(10) || substr(t.body, 1, ${DOCUMENT_EMBED_MAX_CHARS})`,
+      },
+      onProgress,
+      batchSize,
+      fetchPageSize
+    )
+  }
+
+  /** (Re-)embed every code symbol (name + source text). No-op when no embedder is attached. */
+  async embedAllCodeSymbols(
+    onProgress?: (done: number, total: number) => void,
+    batchSize = 100,
+    fetchPageSize: number = resolveEmbedFetchPageSize()
+  ): Promise<number> {
+    return this.embedTable(
+      {
+        table: 'code_symbols',
+        embeddingTable: 'code_embeddings',
+        idColumn: 'symbol_id',
+        textSql: `t.name || ' ' || t.kind || ' ' || t.rel_path || char(10) || substr(COALESCE(t.source_text, ''), 1, ${SYMBOL_EMBED_MAX_CHARS})`,
+      },
+      onProgress,
+      batchSize,
+      fetchPageSize
+    )
   }
 
   /**
@@ -404,101 +515,68 @@ export class SqliteKbIndexer {
     }
   }
 
-  upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
+  /**
+   * Upsert a curated fact. `facts` holds only deliberate assertions now — the sentence-level
+   * derived store is gone — so text is deduped on its normalized form within a repo.
+   */
+  upsertCuratedFact(input: CuratedFactUpsertInput): {
+    id: string
+    operation: 'inserted' | 'updated'
+  } {
     const now = dayjs().toISOString()
     const gitRepo = input.gitRepo ?? this.activeGitRepo
-    const normalized = normalizeFactText(input.factText)
-    const factText = input.factText.trim()
-    const raw = input.triplet
-    let subject: string
-    let predicate: string
-    let object: string
-    if (raw?.subject?.trim() && raw.predicate?.trim() && raw.object?.trim()) {
-      subject = raw.subject.trim()
-      predicate = raw.predicate.trim()
-      object = raw.object.trim()
-    } else {
-      const o = input.factText.trim().replace(/\s+/g, ' ').slice(0, 400) || 'unspecified'
-      subject = 'kb'
-      predicate = 'asserts'
-      object = o
-    }
-    const existing = this.db
-      .prepare('SELECT id FROM facts WHERE normalized_text = ?')
-      .get(normalized) as { id: string } | undefined
+    const text = input.text.trim()
+    const normalized = normalizeFactText(text)
+    if (!normalized) throw new Error('upsertCuratedFact: text is required')
+    const evidence = input.evidence ?? DEFAULT_FACT_EVIDENCE
+    // Deterministic id from the normalized text: re-asserting the same fact updates one row
+    // instead of needing a separate normalized_text column to dedupe against.
+    const id = factIdFromText(normalized)
+
+    const existing = this.db.prepare('SELECT id FROM facts WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
 
     if (existing) {
       this.db
         .prepare(
-          `
-          UPDATE facts
-          SET fact_text = ?, source_kind = ?, source_ref = ?, evidence = ?, updated_at = ?, subject = ?, predicate = ?, object = ?, source_text = ?,
-              git_repo = COALESCE(?, git_repo)
-          WHERE id = ?
-        `
+          `UPDATE facts
+           SET text = ?, source_ref = ?, evidence = ?, tombstoned_at = NULL, updated_at = ?,
+               git_repo = COALESCE(?, git_repo)
+           WHERE id = ?`
         )
-        .run(
-          factText,
-          input.sourceKind,
-          input.sourceRef ?? null,
-          input.evidence ?? DEFAULT_FACT_EVIDENCE,
-          now,
-          subject,
-          predicate,
-          object,
-          input.sourceText ?? null,
-          gitRepo,
-          existing.id
-        )
-      this.rebuildFactIndexes(existing.id, factText, now)
-      this.rebuildFactGraph(existing.id, factText, now)
-      return { id: existing.id, operation: 'updated' }
+        .run(text, input.sourceRef ?? null, evidence, now, gitRepo, id)
+      this.rebuildFactIndexes(id, text, now)
+      return { id, operation: 'updated' }
     }
 
-    const id = `fact-${sha256(`${normalized}:${now}`).slice(0, 16)}`
     this.db
       .prepare(
-        `
-        INSERT INTO facts (
-          id, fact_text, normalized_text, source_kind, source_ref, evidence, supersedes_fact_id, tombstoned_at, created_at, updated_at, subject, predicate, object, source_text, git_repo
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
-      `
+        `INSERT INTO facts (id, git_repo, text, source_ref, evidence, tombstoned_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
       )
-      .run(
-        id,
-        factText,
-        normalized,
-        input.sourceKind,
-        input.sourceRef ?? null,
-        input.evidence ?? DEFAULT_FACT_EVIDENCE,
-        input.supersedesFactId ?? null,
-        now,
-        now,
-        subject,
-        predicate,
-        object,
-        input.sourceText ?? null,
-        gitRepo
-      )
-    this.rebuildFactIndexes(id, factText, now)
-    this.rebuildFactGraph(id, factText, now)
+      .run(id, gitRepo, text, input.sourceRef ?? null, evidence, now, now)
+    this.rebuildFactIndexes(id, text, now)
     return { id, operation: 'inserted' }
+  }
+
+  /**
+   * Compatibility shim for callers still on the pre-v21 triplet write shape. Triplets and
+   * source kinds are no longer stored — the write lands as a curated fact.
+   */
+  upsertFact(input: FactUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
+    return this.upsertCuratedFact({
+      text: input.factText,
+      ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
+      ...(input.evidence ? { evidence: input.evidence } : {}),
+      ...(input.gitRepo ? { gitRepo: input.gitRepo } : {}),
+    })
   }
 
   /** Resolve a fact by normalized lowercase + collapsed whitespace match. */
   getActiveFactByTextMatch(factText: string): FactRow | undefined {
-    const normalized = normalizeFactText(factText)
-    return this.db
-      .prepare(
-        `
-        SELECT ${FACT_ROW_SELECT}
-        FROM facts
-        WHERE normalized_text = ?
-        LIMIT 1
-      `
-      )
-      .get(normalized) as FactRow | undefined
+    const id = factIdFromText(normalizeFactText(factText))
+    return this.getActiveFactById(id)
   }
 
   getActiveFactById(id: string): FactRow | undefined {
@@ -549,7 +627,7 @@ export class SqliteKbIndexer {
           FROM facts_fts fts
           JOIN facts f ON f.id = fts.fact_id
           WHERE facts_fts MATCH ?
-           
+            AND f.tombstoned_at IS NULL
           ORDER BY rank
           LIMIT ?
         `
@@ -567,7 +645,7 @@ export class SqliteKbIndexer {
           `
           SELECT ${FACT_ROW_SELECT}
           FROM facts
-          WHERE             lower(fact_text) LIKE ?
+          WHERE tombstoned_at IS NULL AND lower(text) LIKE ?
           ORDER BY updated_at DESC
           LIMIT ?
         `
@@ -575,14 +653,14 @@ export class SqliteKbIndexer {
         .all(like, limit) as unknown as FactRow[]
     }
 
-    const where = tokens.map(() => 'lower(fact_text) LIKE ?').join(' OR ')
+    const where = tokens.map(() => 'lower(text) LIKE ?').join(' OR ')
     const likeValues = tokens.map(token => `%${token}%`)
     return this.db
       .prepare(
         `
         SELECT ${FACT_ROW_SELECT}
         FROM facts
-        WHERE           (${where})
+        WHERE tombstoned_at IS NULL AND (${where})
         ORDER BY updated_at DESC
         LIMIT ?
       `
@@ -590,77 +668,46 @@ export class SqliteKbIndexer {
       .all(...likeValues, limit) as unknown as FactRow[]
   }
 
-  searchFactsByConcepts(conceptIds: string[], limit = 20): FactRow[] {
-    const normalized = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
-    if (normalized.length === 0) return []
-    const placeholders = normalized.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT ${FACT_ROW_SELECT_F}
-        FROM facts f
-        JOIN fact_concepts fc ON fc.fact_id = f.id
-        WHERE           fc.concept_id IN (${placeholders})
-        ORDER BY f.updated_at DESC
-        LIMIT ?
-      `
-      )
-      .all(...normalized, limit) as unknown as FactRow[]
+  semanticFactScores(query: string, factIds: string[]): Map<string, number> {
+    return this.semanticScores('fact_embeddings', 'fact_id', query, factIds)
+  }
+
+  semanticDocumentScores(query: string, docIds: string[]): Map<string, number> {
+    return this.semanticScores('doc_embeddings', 'doc_id', query, docIds)
+  }
+
+  semanticCodeSymbolScores(query: string, symbolIds: string[]): Map<string, number> {
+    return this.semanticScores('code_embeddings', 'symbol_id', query, symbolIds)
   }
 
   /**
-   * Query-closure retrieval: union all facts touching any concept in frontier,
-   * ranked by concept match strength first, then evidence weight/recency.
+   * Cosine similarity of the query against stored vectors, rescaled to [0, 1]. Uses the real
+   * query vector when the query was pre-embedded by {@link cacheQueryEmbedding} *and* the row
+   * came from the same model; anything else falls back to the deterministic hash vector.
    */
-  searchFactsByConceptFrontier(conceptIds: string[], limit = 20): FactRow[] {
-    const normalized = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
-    if (normalized.length === 0) return []
-    const placeholders = normalized.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT ${FACT_ROW_SELECT_F}
-        FROM facts f
-        JOIN (
-          SELECT
-            fc.fact_id,
-            COUNT(DISTINCT fc.concept_id) AS match_count
-          FROM fact_concepts fc
-          WHERE fc.concept_id IN (${placeholders})
-          GROUP BY fc.fact_id
-        ) m ON m.fact_id = f.id
-        ORDER BY m.match_count DESC, ${factEvidenceWeightSql('f.evidence')} DESC, f.updated_at DESC
-        LIMIT ?
-      `
-      )
-      .all(...normalized, limit) as unknown as FactRow[]
-  }
-
-  semanticFactScores(query: string, factIds: string[]): Map<string, number> {
-    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
+  private semanticScores(
+    table: string,
+    idColumn: string,
+    query: string,
+    ids: string[]
+  ): Map<string, number> {
+    const unique = [...new Set(ids.map(id => id.trim()).filter(Boolean))]
     const out = new Map<string, number>()
-    if (!query.trim() || ids.length === 0) return out
-    const placeholders = ids.map(() => '?').join(', ')
+    if (!query.trim() || unique.length === 0) return out
+    const placeholders = unique.map(() => '?').join(', ')
     const rows = this.db
       .prepare(
-        `
-        SELECT fact_id, vector_json, dimensions, model_id
-        FROM fact_embeddings
-        WHERE fact_id IN (${placeholders})
-      `
+        `SELECT ${idColumn} AS id, vector_json, dimensions, model_id
+         FROM ${table}
+         WHERE ${idColumn} IN (${placeholders})`
       )
-      .all(...ids) as Array<{
-      fact_id: string
+      .all(...unique) as Array<{
+      id: string
       vector_json?: string
       dimensions?: number
       model_id?: string
     }>
-    // Real query vector (if the query was pre-embedded); used only for facts embedded by the
-    // same model. Everything else falls back to the deterministic hash vector, exactly as before.
-    const realQueryVec =
-      this.embedder && this.queryVectorCache.get(query.trim())
-        ? this.queryVectorCache.get(query.trim())
-        : undefined
+    const realQueryVec = this.embedder ? this.queryVectorCache.get(query.trim()) : undefined
     for (const row of rows) {
       if (!row.vector_json || !row.dimensions) continue
       try {
@@ -672,8 +719,7 @@ export class SqliteKbIndexer {
           row.model_id === this.embedder.modelId &&
           realQueryVec.length === row.dimensions
         const queryVec = useReal ? realQueryVec : buildDeterministicVector(query, row.dimensions)
-        const cosine = cosineSimilarity(queryVec, stored)
-        out.set(row.fact_id, (cosine + 1) / 2)
+        out.set(row.id, (cosineSimilarity(queryVec, stored) + 1) / 2)
       } catch {
         // ignore malformed embedding rows
       }
@@ -681,136 +727,32 @@ export class SqliteKbIndexer {
     return out
   }
 
-  listFactConcepts(factIds: string[]): FactConceptRow[] {
-    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
-    if (ids.length === 0) return []
-    const placeholders = ids.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT fact_id, concept_id, role, score, created_at
-        FROM fact_concepts
-        WHERE fact_id IN (${placeholders})
-      `
-      )
-      .all(...ids) as unknown as FactConceptRow[]
-  }
-
-  /** BFS neighbor lookup via fact_edges (both directions), excluding already-seen fact ids. */
-  getFactNeighbors(factIds: string[], seen: Set<string>, limit = 80): FactRow[] {
-    const ids = [...new Set(factIds.map(id => id.trim()).filter(Boolean))]
-    if (ids.length === 0) return []
-    const placeholders = ids.map(() => '?').join(', ')
-    const neighborRows = this.db
-      .prepare(
-        `
-        SELECT DISTINCT to_fact_id AS neighbor_id FROM fact_edges WHERE from_fact_id IN (${placeholders})
-        UNION
-        SELECT DISTINCT from_fact_id AS neighbor_id FROM fact_edges WHERE to_fact_id IN (${placeholders})
-      `
-      )
-      .all(...ids, ...ids) as Array<{ neighbor_id: string }>
-    const neighborIds = [
-      ...new Set(
-        neighborRows
-          .map(row => row.neighbor_id?.trim())
-          .filter((id): id is string => Boolean(id) && !seen.has(id))
-      ),
-    ].slice(0, limit === -1 ? undefined : Math.max(1, Math.min(200, limit)))
-    if (neighborIds.length === 0) return []
-    const factPlaceholders = neighborIds.map(() => '?').join(', ')
-    return this.db
-      .prepare(
-        `
-        SELECT ${FACT_ROW_SELECT}
-        FROM facts
-        WHERE id IN (${factPlaceholders})
-          AND tombstoned_at IS NULL
-      `
-      )
-      .all(...neighborIds) as unknown as FactRow[]
-  }
-
-  expandNeighborConcepts(conceptIds: string[], hopLimit = 1, limit = 20): string[] {
-    let frontier = [...new Set(conceptIds.map(id => normalizeConceptId(id)).filter(Boolean))]
-    if (frontier.length === 0) return []
-    const seen = new Set(frontier)
-    const boundedHopLimit = Math.max(1, Math.min(3, hopLimit))
-    const boundedLimit = Math.max(1, Math.min(100, limit))
-
-    for (let hop = 0; hop < boundedHopLimit; hop++) {
-      if (frontier.length === 0 || seen.size >= boundedLimit) break
-      const placeholders = frontier.map(() => '?').join(', ')
-      const neighbors = this.db
-        .prepare(
-          `
-          SELECT DISTINCT fc2.concept_id AS concept_id
-          FROM fact_concepts fc1
-          JOIN fact_edges fe ON (fe.from_fact_id = fc1.fact_id OR fe.to_fact_id = fc1.fact_id)
-          JOIN fact_concepts fc2 ON (fc2.fact_id = fe.from_fact_id OR fc2.fact_id = fe.to_fact_id)
-          WHERE fc1.concept_id IN (${placeholders})
-          LIMIT ?
-        `
-        )
-        .all(...frontier, boundedLimit) as Array<{ concept_id: string }>
-      const next: string[] = []
-      for (const row of neighbors) {
-        const concept = normalizeConceptId(row.concept_id)
-        if (!concept || seen.has(concept)) continue
-        seen.add(concept)
-        next.push(concept)
-        if (seen.size >= boundedLimit) break
-      }
-      frontier = next
-    }
-
-    return [...seen].slice(0, boundedLimit)
-  }
-
   invalidateFact(
     oldFact: string,
-    replacement?: { factText: string; triplet: FactTriplet }
+    replacement?: { factText: string; triplet?: FactTriplet }
   ): { changed: number; replacementId?: string } {
-    const normalized = normalizeFactText(oldFact)
-    const row = this.db
-      .prepare('SELECT id FROM facts WHERE normalized_text = ?')
-      .get(normalized) as { id: string } | undefined
-    if (!row) return { changed: 0 }
-
-    this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
-    this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
-    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
-    this.db
-      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
-      .run(row.id, row.id)
-    this.db.prepare('DELETE FROM facts WHERE id = ?').run(row.id)
+    const id = factIdFromText(normalizeFactText(oldFact))
+    if (!this.tombstoneFactById(id)) return { changed: 0 }
 
     if (!replacement?.factText?.trim()) {
       return { changed: 1 }
     }
 
-    const replaced = this.upsertFact({
-      factText: replacement.factText,
-      triplet: replacement.triplet,
-      sourceKind: 'import_code',
-      sourceRef: `replace:${row.id}`,
-      supersedesFactId: row.id,
+    const replaced = this.upsertCuratedFact({
+      text: replacement.factText,
+      sourceRef: `replace:${id}`,
     })
     return { changed: 1, replacementId: replaced.id }
   }
 
   /** Delete a fact row by id and clear all derived indexes. Returns true if a row was changed. */
   tombstoneFactById(factId: string): boolean {
-    const row = this.db
-      .prepare('SELECT id FROM facts WHERE id = ?')
-      .get(factId) as { id: string } | undefined
+    const row = this.db.prepare('SELECT id FROM facts WHERE id = ?').get(factId) as
+      | { id: string }
+      | undefined
     if (!row) return false
+    // fact_embeddings cascades on the facts FK; facts_fts is virtual and cleared explicitly.
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(row.id)
-    this.db.prepare('DELETE FROM fact_embeddings WHERE fact_id = ?').run(row.id)
-    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(row.id)
-    this.db
-      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
-      .run(row.id, row.id)
     this.db.prepare('DELETE FROM facts WHERE id = ?').run(row.id)
     return true
   }
@@ -834,42 +776,6 @@ export class SqliteKbIndexer {
   }
 
   /**
-   * Wire `imports` facts directly to `exported_from` facts for the same file path.
-   * This is a deterministic structural pass — AST import relationships are exact,
-   * not token-similarity based. Returns the number of new edges created.
-   */
-  relinkCodeImportEdges(): number {
-    const now = new Date().toISOString()
-    const fwd = this.db.prepare(`
-      INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
-      SELECT imp.id, sym.id, 'imports_symbol', 1.0, ?
-      FROM facts imp
-      JOIN facts sym ON sym.object = imp.object
-        AND sym.source_kind = 'import_code'
-        AND sym.predicate = 'exported_from'
-        AND sym.tombstoned_at IS NULL
-        AND sym.git_repo IS imp.git_repo
-      WHERE imp.source_kind = 'import_code'
-        AND imp.predicate = 'imports'
-        AND imp.tombstoned_at IS NULL
-    `).run(now)
-    const rev = this.db.prepare(`
-      INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
-      SELECT sym.id, imp.id, 'imports_symbol', 1.0, ?
-      FROM facts imp
-      JOIN facts sym ON sym.object = imp.object
-        AND sym.source_kind = 'import_code'
-        AND sym.predicate = 'exported_from'
-        AND sym.tombstoned_at IS NULL
-        AND sym.git_repo IS imp.git_repo
-      WHERE imp.source_kind = 'import_code'
-        AND imp.predicate = 'imports'
-        AND imp.tombstoned_at IS NULL
-    `).run(now)
-    return Number(fwd.changes) + Number(rev.changes)
-  }
-
-  /**
    * Hard-delete every fact tagged with `gitRepo` (and its derived index rows), so a repo
    * dropped from a base leaves no facts behind. Returns the count.
    */
@@ -880,147 +786,284 @@ export class SqliteKbIndexer {
     if (rows.length === 0) return 0
     const delFts = this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?')
     for (const { id } of rows) delFts.run(id)
-    // fact_edges / fact_concepts / fact_embeddings cascade on the facts FK;
-    // facts_fts is a virtual table and is cleared explicitly above.
+    // fact_embeddings cascades on the facts FK; facts_fts is virtual and cleared above.
     this.db.prepare('DELETE FROM facts WHERE git_repo = ?').run(gitRepo)
     return rows.length
   }
 
+  // ─── Documents (whole markdown files) ────────────────────────────
+
   /**
-   * Bridge the per-repo subgraphs into one connected graph. After each repo is indexed
-   * its facts form an island (imports↔exports only join by file path within a repo); this
-   * pass adds `fact_edges` between facts whose `git_repo` differ, on real integration
-   * signals. Idempotent (`INSERT OR IGNORE`) and derivable purely from live facts, so it is
-   * safe to re-run after any scan/add/remove. Returns the number of new edges created.
-   *
-   * Edge types (all bidirectional):
-   * - `depends_on_repo`   — repo A's package.json depends on repo B's package name.
-   * - `cross_repo_symbol` — a symbol imported in repo A is exported by repo B.
-   * - `references_repo`   — an env/service value in repo A names repo B (package/slug).
+   * Upsert one markdown file as a single indexed document. The FTS row is deleted and
+   * re-inserted rather than updated — `documents_fts` is a contentless-style external index
+   * keyed by `doc_id`, so an UPDATE would leave the old tokenization behind.
    */
-  reconcileCrossRepoEdges(): number {
-    const now = new Date().toISOString()
-    let created = 0
+  upsertDocument(input: DocumentIndexUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
+    const now = dayjs().toISOString()
+    const gitRepo = input.gitRepo ?? this.activeGitRepo ?? ''
+    const relPath = input.relPath.replace(/\\/g, '/')
+    const id = documentId(gitRepo, relPath)
+    const contentHash = input.contentHash ?? sha256(input.body)
+    const existing = this.db.prepare('SELECT id FROM documents WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
 
-    // depends_on (subject=slug, object=packageName) → package_name_of (subject=packageName, object=slug)
-    created += this.insertBidirectionalEdges(
-      'depends_on_repo',
-      1.0,
-      `
-        SELECT dep.id AS a, pkg.id AS b
-        FROM facts dep
-        JOIN facts pkg
-          ON LOWER(pkg.subject) = LOWER(dep.object)
-          AND pkg.predicate = 'package_name_of'
-          AND pkg.tombstoned_at IS NULL
-          AND pkg.git_repo IS NOT NULL
-          AND pkg.git_repo <> dep.git_repo
-        WHERE dep.predicate = 'depends_on'
-          AND dep.tombstoned_at IS NULL
-          AND dep.git_repo IS NOT NULL
-      `,
-      now
-    )
+    this.db
+      .prepare(
+        `INSERT INTO documents (id, git_repo, rel_path, title, body, content_hash, indexed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           body = excluded.body,
+           content_hash = excluded.content_hash,
+           indexed_at = excluded.indexed_at`
+      )
+      .run(id, gitRepo, relPath, input.title, input.body, contentHash, now)
 
-    // imports (object=symbol) in repo A → exported_from (subject=symbol) in repo B
-    created += this.insertBidirectionalEdges(
-      'cross_repo_symbol',
-      0.5,
-      `
-        SELECT imp.id AS a, sym.id AS b
-        FROM facts imp
-        JOIN facts sym
-          ON sym.subject = imp.object
-          AND sym.source_kind = 'import_code'
-          AND sym.predicate = 'exported_from'
-          AND sym.tombstoned_at IS NULL
-          AND sym.git_repo IS NOT NULL
-          AND sym.git_repo <> imp.git_repo
-        WHERE imp.source_kind = 'import_code'
-          AND imp.predicate = 'imports'
-          AND imp.tombstoned_at IS NULL
-          AND imp.git_repo IS NOT NULL
-      `,
-      now
-    )
+    this.db.prepare('DELETE FROM documents_fts WHERE doc_id = ?').run(id)
+    this.db
+      .prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
+      .run(id, `${input.title}\n${input.body}`)
 
-    // references_service (object names another repo) → that repo's identity/package fact
-    created += this.insertBidirectionalEdges(
-      'references_repo',
-      0.5,
-      `
-        SELECT ref.id AS a, id.id AS b
-        FROM facts ref
-        JOIN facts id
-          ON id.predicate IN ('package_name_of', 'is_repo')
-          AND id.tombstoned_at IS NULL
-          AND id.git_repo IS NOT NULL
-          AND id.git_repo <> ref.git_repo
-          AND (
-            LOWER(ref.object) = LOWER(id.subject)
-            OR LOWER(ref.object) = LOWER(id.git_repo)
-            OR INSTR(LOWER(ref.object), LOWER(id.git_repo)) > 0
-          )
-        WHERE ref.predicate = 'references_service'
-          AND ref.tombstoned_at IS NULL
-          AND ref.git_repo IS NOT NULL
-      `,
-      now
-    )
-
-    return created
+    return { id, operation: existing ? 'updated' : 'inserted' }
   }
 
-  /**
-   * Cross-repo links derived from the reconciliation edges, collapsed to repo→repo pairs.
-   * Used by retrieval to order repo "pools" (exhaust the landed repo, then walk the tree).
-   */
-  listCrossRepoLinks(): Array<{ fromRepo: string; toRepo: string; weight: number }> {
+  deleteDocument(id: string): boolean {
+    const row = this.db.prepare('SELECT id FROM documents WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
+    if (!row) return false
+    this.db.prepare('DELETE FROM documents_fts WHERE doc_id = ?').run(id)
+    this.db.prepare('DELETE FROM documents WHERE id = ?').run(id)
+    return true
+  }
+
+  getDocument(id: string): DocumentIndexRow | undefined {
+    return this.db
+      .prepare(`SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE id = ?`)
+      .get(id) as DocumentIndexRow | undefined
+  }
+
+  getDocumentByPath(gitRepo: string, relPath: string): DocumentIndexRow | undefined {
+    return this.db
+      .prepare(`SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE git_repo = ? AND rel_path = ?`)
+      .get(gitRepo, relPath.replace(/\\/g, '/')) as DocumentIndexRow | undefined
+  }
+
+  listDocumentsByRepo(gitRepo: string): DocumentIndexRow[] {
     return this.db
       .prepare(
-        `
-        SELECT fa.git_repo AS fromRepo, fb.git_repo AS toRepo, MAX(e.weight) AS weight
-        FROM fact_edges e
-        JOIN facts fa ON fa.id = e.from_fact_id
-        JOIN facts fb ON fb.id = e.to_fact_id
-        WHERE e.edge_type IN ('depends_on_repo', 'cross_repo_symbol', 'references_repo')
-          AND fa.git_repo IS NOT NULL AND fb.git_repo IS NOT NULL
-          AND fa.git_repo <> fb.git_repo
-        GROUP BY fa.git_repo, fb.git_repo
-      `
+        `SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE git_repo = ? ORDER BY rel_path`
       )
-      .all() as Array<{ fromRepo: string; toRepo: string; weight: number }>
+      .all(gitRepo) as unknown as DocumentIndexRow[]
   }
 
-  /** Insert both directions of an edge for every (a, b) pair the SELECT yields. */
-  private insertBidirectionalEdges(
-    edgeType: string,
-    weight: number,
-    pairSelect: string,
-    now: string
-  ): number {
-    const fwd = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
-         SELECT a, b, ?, ?, ? FROM (${pairSelect})`
-      )
-      .run(edgeType, weight, now)
-    const rev = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
-         SELECT b, a, ?, ?, ? FROM (${pairSelect})`
-      )
-      .run(edgeType, weight, now)
-    return Number(fwd.changes) + Number(rev.changes)
+  /** Path index for a repo without loading document bodies — used for stale-file reconciliation. */
+  listDocumentPathsByRepo(gitRepo: string): Array<{ id: string; rel_path: string }> {
+    return this.db
+      .prepare('SELECT id, rel_path FROM documents WHERE git_repo = ? ORDER BY rel_path')
+      .all(gitRepo) as Array<{ id: string; rel_path: string }>
   }
 
-  /** Live fact counts grouped by originating git repo (NULL → '(unscoped)'). */
+  searchDocumentsFts(query: string, limit = 20): DocumentIndexRow[] {
+    const ftsQuery = buildFtsQuery(query)
+    if (!ftsQuery) return []
+    try {
+      return this.db
+        .prepare(
+          `SELECT d.id, d.git_repo, d.rel_path, d.title, d.body, d.content_hash, d.indexed_at
+           FROM documents_fts fts
+           JOIN documents d ON d.id = fts.doc_id
+           WHERE documents_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?`
+        )
+        .all(ftsQuery, limit) as unknown as DocumentIndexRow[]
+    } catch {
+      return []
+    }
+  }
+
+  // ─── Code symbols (AST exports) ──────────────────────────────────
+
+  upsertCodeSymbol(input: CodeSymbolUpsertInput): {
+    id: string
+    operation: 'inserted' | 'updated'
+  } {
+    const now = dayjs().toISOString()
+    const gitRepo = input.gitRepo ?? this.activeGitRepo ?? ''
+    const relPath = input.relPath.replace(/\\/g, '/')
+    const id = codeSymbolId(gitRepo, relPath, input.name)
+    const contentHash = input.contentHash ?? sha256(input.sourceText ?? input.name)
+    const existing = this.db.prepare('SELECT id FROM code_symbols WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
+
+    this.db
+      .prepare(
+        `INSERT INTO code_symbols (id, git_repo, rel_path, name, kind, source_text, content_hash, indexed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           kind = excluded.kind,
+           source_text = excluded.source_text,
+           content_hash = excluded.content_hash,
+           indexed_at = excluded.indexed_at`
+      )
+      .run(id, gitRepo, relPath, input.name, input.kind, input.sourceText ?? null, contentHash, now)
+
+    this.db.prepare('DELETE FROM code_symbols_fts WHERE symbol_id = ?').run(id)
+    this.db
+      .prepare('INSERT INTO code_symbols_fts (symbol_id, name, source_text) VALUES (?, ?, ?)')
+      .run(id, `${input.name} ${relPath}`, input.sourceText ?? '')
+
+    return { id, operation: existing ? 'updated' : 'inserted' }
+  }
+
+  /** Drop every symbol recorded for one file — call before re-extracting it. */
+  deleteCodeSymbolsForFile(gitRepo: string, relPath: string): number {
+    const normalized = relPath.replace(/\\/g, '/')
+    const rows = this.db
+      .prepare('SELECT id FROM code_symbols WHERE git_repo = ? AND rel_path = ?')
+      .all(gitRepo, normalized) as Array<{ id: string }>
+    if (rows.length === 0) return 0
+    const delFts = this.db.prepare('DELETE FROM code_symbols_fts WHERE symbol_id = ?')
+    for (const { id } of rows) delFts.run(id)
+    this.db
+      .prepare('DELETE FROM code_symbols WHERE git_repo = ? AND rel_path = ?')
+      .run(gitRepo, normalized)
+    return rows.length
+  }
+
+  getCodeSymbol(id: string): CodeSymbolRow | undefined {
+    return this.db
+      .prepare(`SELECT ${CODE_SYMBOL_ROW_SELECT} FROM code_symbols WHERE id = ?`)
+      .get(id) as CodeSymbolRow | undefined
+  }
+
+  /** Symbols under a file or directory prefix, e.g. `src/core/` or `src/core/init.ts`. */
+  listCodeSymbolsByPathPrefix(prefix: string, gitRepo?: string): CodeSymbolRow[] {
+    const normalized = prefix.replace(/\\/g, '/')
+    if (gitRepo === undefined) {
+      return this.db
+        .prepare(
+          `SELECT ${CODE_SYMBOL_ROW_SELECT} FROM code_symbols WHERE rel_path LIKE ? ORDER BY rel_path, name`
+        )
+        .all(`${normalized}%`) as unknown as CodeSymbolRow[]
+    }
+    return this.db
+      .prepare(
+        `SELECT ${CODE_SYMBOL_ROW_SELECT} FROM code_symbols
+         WHERE git_repo = ? AND rel_path LIKE ? ORDER BY rel_path, name`
+      )
+      .all(gitRepo, `${normalized}%`) as unknown as CodeSymbolRow[]
+  }
+
+  /** Symbol identity for a repo, without source text — used for stale-file reconciliation. */
+  listCodeSymbolKeysByRepo(
+    gitRepo: string
+  ): Array<{ id: string; rel_path: string; name: string }> {
+    return this.db
+      .prepare('SELECT id, rel_path, name FROM code_symbols WHERE git_repo = ?')
+      .all(gitRepo) as Array<{ id: string; rel_path: string; name: string }>
+  }
+
+  deleteCodeSymbol(id: string): boolean {
+    const row = this.db.prepare('SELECT id FROM code_symbols WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
+    if (!row) return false
+    this.db.prepare('DELETE FROM code_symbols_fts WHERE symbol_id = ?').run(id)
+    this.db.prepare('DELETE FROM code_symbols WHERE id = ?').run(id)
+    return true
+  }
+
+  searchCodeSymbolsFts(query: string, limit = 20): CodeSymbolRow[] {
+    const ftsQuery = buildFtsQuery(query)
+    if (!ftsQuery) return []
+    try {
+      return this.db
+        .prepare(
+          `SELECT ${CODE_SYMBOL_ROW_SELECT_S}
+           FROM code_symbols_fts fts
+           JOIN code_symbols s ON s.id = fts.symbol_id
+           WHERE code_symbols_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?`
+        )
+        .all(ftsQuery, limit) as unknown as CodeSymbolRow[]
+    } catch {
+      return []
+    }
+  }
+
+  // ─── doc ↔ symbol links (flat, not a graph) ──────────────────────
+
+  /** Replace every link for one document. Unknown symbol ids are skipped (FK would reject). */
+  replaceDocCodeLinks(docId: string, links: DocCodeLinkInput[]): number {
+    this.db.prepare('DELETE FROM doc_code_links WHERE doc_id = ?').run(docId)
+    if (links.length === 0) return 0
+    const insert = this.db.prepare(
+      `INSERT OR IGNORE INTO doc_code_links (doc_id, symbol_id, score, link_kind)
+       VALUES (?, ?, ?, ?)`
+    )
+    let written = 0
+    for (const link of links) {
+      if (!link.symbolId) continue
+      try {
+        insert.run(docId, link.symbolId, link.score ?? 1.0, link.linkKind ?? 'relates_to')
+        written += 1
+      } catch {
+        // Symbol disappeared between scoring and write — the link is simply not recorded.
+      }
+    }
+    return written
+  }
+
+  listLinkedSymbols(docId: string, limit = 20): Array<CodeSymbolRow & { link_score: number }> {
+    return this.db
+      .prepare(
+        `SELECT ${CODE_SYMBOL_ROW_SELECT_S}, l.score AS link_score
+         FROM doc_code_links l
+         JOIN code_symbols s ON s.id = l.symbol_id
+         WHERE l.doc_id = ?
+         ORDER BY l.score DESC
+         LIMIT ?`
+      )
+      .all(docId, limit) as unknown as Array<CodeSymbolRow & { link_score: number }>
+  }
+
+  listLinkingDocuments(
+    symbolId: string,
+    limit = 20
+  ): Array<DocumentIndexRow & { link_score: number }> {
+    return this.db
+      .prepare(
+        `SELECT d.id, d.git_repo, d.rel_path, d.title, d.body, d.content_hash, d.indexed_at,
+                l.score AS link_score
+         FROM doc_code_links l
+         JOIN documents d ON d.id = l.doc_id
+         WHERE l.symbol_id = ?
+         ORDER BY l.score DESC
+         LIMIT ?`
+      )
+      .all(symbolId, limit) as unknown as Array<DocumentIndexRow & { link_score: number }>
+  }
+
+  /** Indexed-unit counts grouped by originating git repo (NULL/'' → '(unscoped)'). */
   listRepoStats(): Array<{ repo: string; count: number }> {
     return this.db
       .prepare(
-        `SELECT COALESCE(git_repo, '(unscoped)') AS repo, COUNT(*) AS count
-         FROM facts WHERE tombstoned_at IS NULL
-         GROUP BY COALESCE(git_repo, '(unscoped)')
+        `SELECT repo, SUM(count) AS count FROM (
+           SELECT COALESCE(NULLIF(git_repo, ''), '(unscoped)') AS repo, COUNT(*) AS count
+           FROM documents GROUP BY 1
+           UNION ALL
+           SELECT COALESCE(NULLIF(git_repo, ''), '(unscoped)') AS repo, COUNT(*) AS count
+           FROM code_symbols GROUP BY 1
+           UNION ALL
+           SELECT COALESCE(NULLIF(git_repo, ''), '(unscoped)') AS repo, COUNT(*) AS count
+           FROM facts WHERE tombstoned_at IS NULL GROUP BY 1
+         )
+         GROUP BY repo
          ORDER BY count DESC, repo ASC`
       )
       .all() as Array<{ repo: string; count: number }>
@@ -1196,9 +1239,7 @@ export class SqliteKbIndexer {
 
   private rebuildFactIndexes(factId: string, factText: string, now: string): void {
     this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?').run(factId)
-    this.db
-      .prepare('INSERT INTO facts_fts (fact_id, fact_text) VALUES (?, ?)')
-      .run(factId, factText)
+    this.db.prepare('INSERT INTO facts_fts (fact_id, text) VALUES (?, ?)').run(factId, factText)
 
     const vector = buildDeterministicVector(factText, this.vectorDimensions)
     this.db
@@ -1216,56 +1257,6 @@ export class SqliteKbIndexer {
       .run(factId, this.modelId, this.vectorDimensions, JSON.stringify(vector), now)
   }
 
-  private rebuildFactGraph(factId: string, factText: string, now: string): void {
-    const concepts = extractConcepts(factText)
-    this.db.prepare('DELETE FROM fact_concepts WHERE fact_id = ?').run(factId)
-    this.db
-      .prepare('DELETE FROM fact_edges WHERE from_fact_id = ? OR to_fact_id = ?')
-      .run(factId, factId)
-    if (concepts.length === 0) return
-
-    const upsertConcept = this.db.prepare(
-      `
-      INSERT INTO fact_concepts (fact_id, concept_id, role, score, created_at)
-      VALUES (?, ?, 'context', 1.0, ?)
-      ON CONFLICT(fact_id, concept_id, role) DO UPDATE SET
-        score = excluded.score,
-        created_at = excluded.created_at
-    `
-    )
-    for (const concept of concepts) upsertConcept.run(factId, concept, now)
-
-    const placeholders = concepts.map(() => '?').join(', ')
-    const relatedFacts = this.db
-      .prepare(
-        `
-        SELECT DISTINCT fc.fact_id
-        FROM fact_concepts fc
-        JOIN facts f ON f.id = fc.fact_id
-        WHERE fc.concept_id IN (${placeholders})
-          AND fc.fact_id != ?
-         
-        ORDER BY f.updated_at DESC
-        LIMIT 12
-      `
-      )
-      .all(...concepts, factId) as Array<{ fact_id: string }>
-
-    const upsertEdge = this.db.prepare(
-      `
-      INSERT INTO fact_edges (from_fact_id, to_fact_id, edge_type, weight, created_at)
-      VALUES (?, ?, 'concept_overlap', ?, ?)
-      ON CONFLICT(from_fact_id, to_fact_id, edge_type) DO UPDATE SET
-        weight = excluded.weight,
-        created_at = excluded.created_at
-    `
-    )
-    for (const row of relatedFacts) {
-      upsertEdge.run(factId, row.fact_id, 1, now)
-      upsertEdge.run(row.fact_id, factId, 1, now)
-    }
-  }
-
   upsertDocumentFromContent(filePath: string, content: string): void {
     const parsed = parseDocument(filePath, content)
     if (!parsed) return
@@ -1281,31 +1272,6 @@ export class SqliteKbIndexer {
 
   close(): void {
     this.db.close()
-  }
-
-  backfillDocumentLanes(): number {
-    const rows = this.db
-      .prepare('SELECT id, title, file_path, doc_type, tags_json FROM documents')
-      .all() as unknown as LaneBackfillRow[]
-
-    const updateDocumentLane = this.db.prepare('UPDATE documents SET lane = ? WHERE id = ?')
-    const updateChunkLane = this.db.prepare('UPDATE chunks SET lane = ? WHERE doc_id = ?')
-
-    runInTransaction(this.db, () => {
-      for (const row of rows) {
-        const lane = classifyDocumentLane(
-          row.id,
-          row.title,
-          row.doc_type,
-          parseTagsJsonSafe(row.tags_json),
-          row.file_path
-        )
-
-        updateDocumentLane.run(lane, row.id)
-        updateChunkLane.run(lane, row.id)
-      }
-    })
-    return rows.length
   }
 
   isDocumentStale(filePath: string, content: string): boolean {
@@ -1902,17 +1868,6 @@ function extractMetadata(lines: string[], key: string): string | undefined {
   return undefined
 }
 
-function parseTagsJsonSafe(raw: string | null): string[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(tag => typeof tag === 'string') as string[]
-  } catch {
-    return []
-  }
-}
-
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex')
 }
@@ -1949,9 +1904,35 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / Math.sqrt(magA * magB)
 }
 
-/** Exported for tools that must match `facts.normalized_text` exactly. */
+/** Exported for tools that must resolve a curated fact by its text. */
 export function normalizeFactText(input: string): string {
   return input.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/** Curated facts are keyed by their normalized text, so re-asserting one updates in place. */
+function factIdFromText(normalized: string): string {
+  return `fact-${sha256(normalized).slice(0, 16)}`
+}
+
+export function documentId(gitRepo: string, relPath: string): string {
+  return `doc-${sha256(`${gitRepo}:${relPath}`).slice(0, 16)}`
+}
+
+export function codeSymbolId(gitRepo: string, relPath: string, name: string): string {
+  return `sym-${sha256(`${gitRepo}:${relPath}:${name}`).slice(0, 16)}`
+}
+
+/**
+ * FTS5 OR-query from free text. Also emits the camelCase-joined form, so "agent loop"
+ * matches the single token "agentloop" stored for a symbol named `agentLoop`.
+ */
+export function buildFtsQuery(input: string): string {
+  const tokens = tokenizeQuery(input)
+  if (tokens.length === 0) return ''
+  const joined = tokens.join('')
+  const terms =
+    joined.length > 2 && joined !== tokens.join(' ') ? [...new Set([...tokens, joined])] : tokens
+  return terms.join(' OR ')
 }
 
 function tokenizeQuery(input: string): string[] {
@@ -1993,18 +1974,3 @@ const FACT_STOP_WORDS = new Set([
   'has',
 ])
 
-function extractConcepts(input: string): string[] {
-  const tokens = input
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(token => token.length > 2 && !FACT_STOP_WORDS.has(token))
-  return [...new Set(tokens)].slice(0, 12).map(normalizeConceptId).filter(Boolean)
-}
-
-function normalizeConceptId(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '')
-    .trim()
-}

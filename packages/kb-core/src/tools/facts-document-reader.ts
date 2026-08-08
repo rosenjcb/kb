@@ -2,28 +2,19 @@ import type { EvidenceLabel } from '../core/evidence-label'
 import { isEnvTrue } from '../config/env-boolean.js'
 import type { LLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
-import { defaultTracesDir } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
-import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import type { LLMProvider } from '../core/types'
 import { type CuratorRequery, type CurationRecord, curateFacts, shouldCurate } from './fact-curator'
 import { type Embedder, createEmbedder } from '../core/embeddings'
 import {
   DEFAULT_FACT_LIMIT,
-  FactsQueryResearchOrchestrator,
-} from './facts-query-research-orchestrator'
-import { makeSufficiencyJudge } from './facts-sufficiency-judge'
+  type HybridRetrievalResult,
+  factToUnit,
+  retrieveHybrid,
+} from './hybrid-retriever'
 import type { InquiryLane } from '../query/inquiry-lanes.js'
 import { expandQuery, shouldExpandQuery } from './query-expander'
-import {
-  type QueryTraceDump,
-  type QueryTraceLane,
-  buildCurationTrace,
-  isQueryTraceEnabled,
-  newTraceId,
-  writeQueryTrace,
-} from './query-trace'
-import { type FactRow, SqliteKbIndexer } from './sqlite-kb-index'
+import { SqliteKbIndexer } from './sqlite-kb-index'
 
 export interface QueryDocumentsInput {
   query?: string
@@ -91,13 +82,6 @@ export interface QueryResponse {
      */
     degraded?: LLMFailure[]
   }
-  /**
-   * Opt-in deep trace lane (`kb query --trace`). Present only when tracing is on; the reader
-   * writes it to disk and strips it before returning, so it never reaches synthesis.
-   */
-  trace?: QueryTraceLane
-  /** Path to the written trace dump when tracing is enabled. */
-  traceFile?: string
 }
 
 export class FactsDocumentReader {
@@ -118,6 +102,7 @@ export class FactsDocumentReader {
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {
     const limit = input.limit ?? DEFAULT_FACT_LIMIT
+    const includeContent = input.includeContent === true
 
     if (input.allFacts || this.defaultAllFacts) {
       if (this.allFactsDumped) {
@@ -128,8 +113,9 @@ export class FactsDocumentReader {
         }
       }
       this.allFactsDumped = true
-      const rows = this.indexer.listFactsForQuery(99999)
-      const results = rows.map(row => this.toResult(row, input.includeContent === true))
+      const results = this.indexer
+        .listFactsForQuery(99999)
+        .map(row => factToUnit(row, includeContent))
       return {
         results,
         total: results.length,
@@ -137,91 +123,59 @@ export class FactsDocumentReader {
       }
     }
 
-    if (input.discoveryDepth === 'deep') {
-      // Collects best-effort stage failures across this call so they can ride out on the
-      // response instead of vanishing into a bare catch.
-      const degraded: LLMFailure[] = []
-      const judge = this.llm
-        ? makeSufficiencyJudge(this.llm, input.collector, failure => degraded.push(failure))
-        : undefined
-      const orchestrator = new FactsQueryResearchOrchestrator(this.indexer, { judge })
-      const baseQuery = input.query?.trim() ?? ''
-      // H5 ablation: score against the raw question (env-provided) while discovery stays on
-      // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
-      const rawScoringQuery = isEnvTrue(process.env.KB_ABLATE_RAW_SCORING)
-        ? process.env.KB_ABLATE_RAW_Q?.trim() || undefined
-        : undefined
-      const opts = {
-        includeContent: input.includeContent === true,
-        surface: input.surface ?? 'query',
-        ...(rawScoringQuery ? { scoringQuery: rawScoringQuery } : {}),
-      } as const
+    const baseQuery = input.query?.trim() ?? ''
+    const excludeIdSet =
+      input.excludeIds && input.excludeIds.length > 0 ? new Set(input.excludeIds) : undefined
 
-      // Pre-embed the string the orchestrator scores against so per-iteration semantic scoring
-      // uses one real query vector (no re-embed per pass). Best-effort; no-op without an embedder.
-      await this.indexer.cacheQueryEmbedding(rawScoringQuery ?? baseQuery)
+    // H5 ablation: score against the raw question (env-provided) while discovery stays on
+    // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
+    const rawScoringQuery = isEnvTrue(process.env.KB_ABLATE_RAW_SCORING)
+      ? process.env.KB_ABLATE_RAW_Q?.trim() || undefined
+      : undefined
 
-      const excludeIdSet =
-        input.excludeIds && input.excludeIds.length > 0 ? new Set(input.excludeIds) : undefined
+    // Pre-embed once so every retrieval pass scores against one real query vector rather than
+    // re-embedding. Best-effort; a no-op without an embedder.
+    await this.indexer.cacheQueryEmbedding(rawScoringQuery ?? baseQuery)
 
-      // Fan-out lane selection. Ontology-typed lanes win whenever the caller
-      // resolved an entity: they are deterministic, entity-grounded, need no LLM
-      // call, and are deliberately NOT gated on query length — a long vague
-      // question benefits from targeted probes as much as a one-word one does.
-      // The generic LLM expander stays as the fallback for questions that resolve
-      // to no entity, where it keeps its original short-query gate.
-      const typedLanes = input.inquiryLanes ?? []
-      let expansions: string[] = typedLanes.map(lane => lane.query)
-      if (expansions.length === 0 && this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
-        expansions = await expandQuery(this.llm, baseQuery)
-      }
-
-      if (baseQuery && expansions.length > 0) {
-        const responses = await Promise.all(
-          [baseQuery, ...expansions].map(q =>
-            orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
-          )
-        )
-        const lanes = responses
-          .map(res => res.trace)
-          .filter((lane): lane is QueryTraceLane => Boolean(lane))
-        const merged = mergeQueryResponses(
-          responses,
-          expansions.length,
-          typedLanes.length > 0 ? describeTypedLanes(typedLanes) : undefined
-        )
-        const curated = await this.curateRelevance(
-          merged,
-          baseQuery,
-          opts.includeContent,
-          excludeIdSet,
-          input.collector
-        )
-        return this.finalizeDeep(baseQuery, lanes, curated, degraded)
-      }
-
-      const response = await orchestrator.run({
-        query: baseQuery,
-        ...opts,
-        excludeIds: excludeIdSet,
+    const runRetrieval = (query: string) =>
+      retrieveHybrid(this.indexer, {
+        query: rawScoringQuery ?? query,
+        limit,
+        includeContent,
+        ...(excludeIdSet ? { excludeIds: excludeIdSet } : {}),
       })
-      const lanes = response.trace ? [response.trace] : []
-      const curated = await this.curateRelevance(
-        response,
-        baseQuery,
-        opts.includeContent,
-        excludeIdSet,
-        input.collector
-      )
-      return this.finalizeDeep(baseQuery, lanes, curated)
+
+    if (input.discoveryDepth !== 'deep') {
+      const shallow = runRetrieval(baseQuery)
+      return {
+        results: shallow.units,
+        total: shallow.units.length,
+        retrieval: {
+          method: shallow.units.length > 0 ? 'hybrid' : 'lexical-fallback',
+          detail: shallow.detail,
+        },
+      }
     }
-    const rows = this.readRows(input, limit)
-    const results = rows.map(row => this.toResult(row, input.includeContent === true))
-    return {
-      results,
-      total: results.length,
-      retrieval: { method: 'lexical', detail: 'facts+graph-first' },
+
+    // Deep mode fans the question out over sub-queries and fuses the results. Ontology-typed
+    // lanes win whenever the caller resolved an entity: they are deterministic,
+    // entity-grounded, need no LLM call, and are deliberately NOT gated on query length — a
+    // long vague question benefits from targeted probes as much as a one-word one does. The
+    // generic LLM expander stays as the fallback, keeping its original short-query gate.
+    const typedLanes = input.inquiryLanes ?? []
+    let expansions: string[] = typedLanes.map(lane => lane.query)
+    if (expansions.length === 0 && this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
+      expansions = await expandQuery(this.llm, baseQuery)
     }
+
+    const passes = [baseQuery, ...expansions].filter(Boolean).map(runRetrieval)
+    const merged = mergeRetrievals(
+      passes,
+      limit,
+      expansions.length,
+      typedLanes.length > 0 ? describeTypedLanes(typedLanes) : undefined
+    )
+    return this.curateRelevance(merged, baseQuery, includeContent, excludeIdSet, input.collector)
   }
 
   /**
@@ -238,14 +192,19 @@ export class FactsDocumentReader {
   ): Promise<QueryResponse> {
     if (!this.llm || !shouldCurate(response.results)) return response
 
-    // Bounded, cheap re-discovery: a single shallow FTS pass over the gap sub-query, skipping
-    // anything already known (incoming pool + the caller's session exclusions).
+    // Bounded, cheap re-discovery: a single shallow hybrid pass over the gap sub-query,
+    // skipping anything already known (incoming pool + the caller's session exclusions).
     const requery: CuratorRequery = async (gap, knownIds, budget) => {
-      const rows = this.indexer.searchFacts(gap, budget * 3)
+      const { units } = retrieveHybrid(this.indexer, {
+        query: gap,
+        limit: budget * 3,
+        includeContent,
+        ...(excludeIds ? { excludeIds } : {}),
+      })
       const out: QueryResult[] = []
-      for (const row of rows) {
-        if (knownIds.has(row.id) || excludeIds?.has(row.id)) continue
-        out.push(this.toResult(row, includeContent))
+      for (const unit of units) {
+        if (knownIds.has(unit.metadata.id)) continue
+        out.push(unit)
         if (out.length >= budget) break
       }
       return out
@@ -287,85 +246,6 @@ export class FactsDocumentReader {
     }
   }
 
-  /**
-   * When tracing is on, fold discovery + curation into one dump, write it to `~/.kb/traces/`,
-   * and point the user at the file. Always strips the heavy `trace` lane from the returned
-   * response so the full content dump never escapes the reader into synthesis or session logs.
-   */
-  private async finalizeDeep(
-    query: string,
-    lanes: QueryTraceLane[],
-    input: QueryResponse,
-    degraded: LLMFailure[] = []
-  ): Promise<QueryResponse> {
-    // The curator swallows its own LLM errors to stay fail-safe; fold that failure in here
-    // so every best-effort degradation leaves on one channel.
-    const curatorFailure = input.retrieval.curation?.failure
-    const allDegraded = curatorFailure ? [...degraded, curatorFailure] : degraded
-    const curated: QueryResponse =
-      allDegraded.length > 0
-        ? { ...input, retrieval: { ...input.retrieval, degraded: allDegraded } }
-        : input
-    if (lanes.length > 0 && isQueryTraceEnabled()) {
-      const record = curated.retrieval.curation
-      const dump: QueryTraceDump = {
-        traceId: newTraceId(),
-        createdAt: new Date().toISOString(),
-        query,
-        lanes,
-        ...(record ? { curation: buildCurationTrace(record, lanes, curated.results.length) } : {}),
-      }
-      let traceFile: string | undefined
-      try {
-        traceFile = await writeQueryTrace(defaultTracesDir(), dump)
-        process.stderr.write(`[kb] query trace written: ${traceFile}\n`)
-      } catch (err) {
-        process.stderr.write(
-          `[kb] Warning: could not write query trace: ${err instanceof Error ? err.message : String(err)}\n`
-        )
-      }
-      const { trace: _trace, ...rest } = curated
-      return traceFile ? { ...rest, traceFile } : rest
-    }
-    const { trace: _trace, ...rest } = curated
-    return rest
-  }
-
-  private readRows(input: QueryDocumentsInput, limit: number): FactRow[] {
-    const query = input.query?.trim()
-    if (!query) return this.indexer.listFactsForQuery(limit)
-    return this.indexer.searchFacts(query, limit)
-  }
-
-  private toResult(row: FactRow, includeContent: boolean): QueryResult {
-    const content = includeContent
-      ? row.source_kind === 'import_code' && row.source_text
-        ? row.source_text
-        : row.fact_text
-      : undefined
-    const source = sourceRefToPath(row.source_ref, row.git_repo)
-    return {
-      metadata: {
-        id: row.id,
-        title: summarizeFactTitle(row.fact_text),
-        filePath: formatFactUri(row.id),
-        ...(source ? { sourcePath: source.path } : {}),
-        ...(row.git_repo ? { gitRepo: row.git_repo } : {}),
-        ...(source?.symbol ? { symbol: source.symbol } : {}),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        tags: [row.source_kind, ...(row.git_repo ? [row.git_repo] : []), 'fact'],
-        type: 'reference',
-      },
-      content,
-    }
-  }
-}
-
-function summarizeFactTitle(text: string): string {
-  const trimmed = text.trim().replace(/\s+/g, ' ')
-  if (trimmed.length <= 72) return trimmed
-  return `${trimmed.slice(0, 69)}...`
 }
 
 /** `facets:ownership+mechanism` — which typed probes ran, for --debug / --trace. */
@@ -373,22 +253,32 @@ function describeTypedLanes(lanes: InquiryLane[]): string {
   return `facets:${[...new Set(lanes.map(lane => lane.facet))].join('+')}`
 }
 
-function mergeQueryResponses(
-  responses: QueryResponse[],
+/**
+ * Fuse the fan-out passes with Reciprocal Rank Fusion, so a unit that several sub-queries
+ * agree on outranks one that only the first pass happened to surface. Interleaving by pass
+ * order (the old merge) made lane 1's tail beat lane 2's head.
+ */
+function mergeRetrievals(
+  passes: HybridRetrievalResult[],
+  limit: number,
   expansionCount: number,
   lanesDetail?: string
 ): QueryResponse {
-  const seen = new Set<string>()
-  const merged: QueryResult[] = []
-  for (const res of responses) {
-    for (const result of res.results) {
-      if (seen.has(result.metadata.id)) continue
-      seen.add(result.metadata.id)
-      merged.push(result)
-    }
+  const RRF_K = 60
+  const scores = new Map<string, number>()
+  const byId = new Map<string, QueryResult>()
+  for (const pass of passes) {
+    pass.units.forEach((unit, index) => {
+      const id = unit.metadata.id
+      if (!byId.has(id)) byId.set(id, unit)
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + index + 1))
+    })
   }
-  const first = responses[0]
-  const baseDetail = first?.retrieval.detail ?? 'facts-loop'
+  const merged = [...byId.values()]
+    .sort((a, b) => (scores.get(b.metadata.id) ?? 0) - (scores.get(a.metadata.id) ?? 0))
+    .slice(0, limit)
+
+  const baseDetail = passes[0]?.detail ?? 'hybrid'
   return {
     results: merged,
     total: merged.length,

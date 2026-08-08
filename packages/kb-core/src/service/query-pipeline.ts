@@ -7,7 +7,6 @@
  * it can run inside an HTTP request or an MCP tool call.
  */
 
-import { DatabaseSync } from 'node:sqlite'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
@@ -18,9 +17,7 @@ import {
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
 import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
-import { expandQueryWithGraph, kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
-import { llmExtractQueryEntities, rerankByGraphConnectivity } from '@kb/core/tools/graph-rag-reranker.js'
-import { formatGraphRelationBlockFromQuestion } from '@kb/core/tools/graph-relation-context.js'
+import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import {
@@ -58,9 +55,8 @@ export interface QueryPipelineParams {
 }
 
 /**
- * Run the full `query_truth` pipeline: graph expansion → retrieval → graph-RAG
- * rerank → optional LLM answer synthesis. Returns the raw `IntentResult`; callers
- * serialize it for their transport.
+ * Run the full `query_truth` pipeline: scope inference → hybrid retrieval → optional LLM
+ * answer synthesis. Returns the raw `IntentResult`; callers serialize it for their transport.
  *
  * Unlike the CLI path this never reads `query-session.json` (servers are stateless),
  * never auto-syncs, and never mutates persistent session state.
@@ -152,36 +148,16 @@ export async function runQueryPipeline(
     }
   }
 
-  // Graph augmentation (best-effort): expand the retrieval query with neighboring
-  // concepts and capture a relation-path block for relational questions. When scope
-  // resolved with entity-guarded terms, expansion draws from the resolved entity's
-  // aliases instead of the generic LIKE widening — the generic path is exactly what
-  // pulls colliding neighborhoods into the query string.
+  // Entity-guarded expansion (best-effort): when scope resolved, the entity's own aliases
+  // widen the retrieval query. There is no generic graph widening fallback — that path
+  // pulled colliding neighborhoods into the query string, and the hybrid retriever's
+  // lexical + neural lanes cover the recall it was there for.
   let graphRelationContext: string | undefined
-  if (!allFacts) {
-    try {
-      const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
-      try {
-        if (scope?.expansionTerms && scope.expansionTerms.length > 0) {
-          const extra = scope.expansionTerms
-            .filter(term => !query.toLowerCase().includes(term.toLowerCase()))
-            .slice(0, 8)
-          ;(parsed.envelope.payload as { query?: string }).query = [query, ...extra].join(' ')
-        } else {
-          ;(parsed.envelope.payload as { query?: string }).query = expandQueryWithGraph(query, db)
-        }
-        try {
-          const block = formatGraphRelationBlockFromQuestion(db, query)
-          if (block) graphRelationContext = block
-        } catch {
-          // Relation-path block is best-effort; never block the query.
-        }
-      } finally {
-        db.close()
-      }
-    } catch {
-      // Graph augmentation unavailable; fall back to plain retrieval.
-    }
+  if (!allFacts && scope?.expansionTerms && scope.expansionTerms.length > 0) {
+    const extra = scope.expansionTerms
+      .filter(term => !query.toLowerCase().includes(term.toLowerCase()))
+      .slice(0, 8)
+    ;(parsed.envelope.payload as { query?: string }).query = [query, ...extra].join(' ')
   }
 
   // Ontology-typed inquiry lanes: turn the resolved entity into targeted sub-queries
@@ -245,33 +221,6 @@ export async function runQueryPipeline(
     graphRelationContext = graphRelationContext
       ? `${disclosureBlock}\n\n${graphRelationContext}`
       : disclosureBlock
-  }
-
-  // LLM-driven graph RAG: extract entities from the question, re-rank retrieved
-  // facts by graph connectivity.
-  if (llmProvider && isReadFactsResult(aligned) && !allFacts) {
-    try {
-      const entities = await llmExtractQueryEntities(query, llmProvider, failure =>
-        degraded.push(failure)
-      )
-      if (entities.length > 0) {
-        const db = new DatabaseSync(kbIndexDbPath(baseDir), { readOnly: true })
-        try {
-          const data = (aligned.data ?? {}) as ReadDocumentsResultData
-          const reranked = rerankByGraphConnectivity(
-            Array.isArray(data.results) ? data.results : [],
-            entities,
-            db
-          )
-          aligned = { ...aligned, data: { ...data, results: reranked } }
-        } finally {
-          db.close()
-        }
-      }
-    } catch (error) {
-      // Re-ranking is best-effort; never block the answer.
-      degraded.push(toLLMFailure('graph-rerank', error, llmProvider.name))
-    }
   }
 
   // Fold pipeline-level degradations in with any recorded during retrieval, so every

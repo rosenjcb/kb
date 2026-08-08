@@ -1,18 +1,16 @@
 /**
- * kb graph — CLI commands for the knowledge graph (facts-based).
+ * kb graph — CLI for the doc↔code map (the post–fact-graph surface).
  *
  * Usage:
- *   kb graph                        Summary (triplet count, symbol count, top subjects)
- *   kb graph --entity <name>        Matching triplets from facts
- *   kb graph --path <from> <to>     BFS path through facts triplets
- *   kb graph --format dot           Export from facts triplets as DOT graph
- *   kb graph --format json          Export from facts triplets as JSON
+ *   kb graph                        Summary (documents, symbols, links)
+ *   kb graph --entity <name>        Matching documents + symbols
+ *   kb graph --format json          Export the map as JSON
+ *   kb graph --format dot           Export the map as DOT
  */
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { findFactsPath } from '@kb/core/tools/graph-relation-context.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 
 export interface GraphCommandOptions {
@@ -42,16 +40,14 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     'Inspect:',
     `  ${cmd('graph', mode)}`,
     `  ${cmd('graph --entity <name>', mode)}`,
-    `  ${cmd('graph --path <from> <to>', mode)}`,
     `  ${cmd('graph --format dot|json', mode)}`,
     '',
     'Notes:',
-    '  The graph is derived from the facts table (subject→predicate→object triplets).',
+    '  Surfaces the document ↔ code-symbol map (flat links, no edge traversal).',
     '',
     'Examples:',
     `  ${cmd('graph', mode)}`,
-    `  ${cmd('graph --entity "KB"', mode)}`,
-    `  ${cmd('graph --path "KB" "SQLite"', mode)}`,
+    `  ${cmd('graph --entity "SqliteKbIndexer"', mode)}`,
     `  ${cmd('graph --format json', mode)}`,
     `  ${cmd('graph --base dogfood --entity KB', mode)}`,
   ].join('\n')
@@ -86,12 +82,15 @@ export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphC
   return opts
 }
 
-// Minimal output interface — compatible with CliOutput from index.ts (duck-typed)
 export interface GraphOut {
   log(message: string): void
 }
 
 const defaultGraphOut: GraphOut = { log: console.log }
+
+function countTable(db: DatabaseSync, sql: string): number {
+  return (db.prepare(sql).get() as { n: number }).n
+}
 
 export async function runGraphCommand(
   baseDir: string,
@@ -108,121 +107,138 @@ export async function runGraphCommand(
 
   const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
-    // --format dot
     if (opts.format === 'dot') {
       const rows = db
         .prepare(
-          `SELECT subject, predicate, object FROM facts
-           WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
+          `SELECT d.rel_path AS doc_path, d.title, s.name AS symbol, s.rel_path AS code_path
+           FROM doc_code_links l
+           JOIN documents d ON d.id = l.doc_id
+           JOIN code_symbols s ON s.id = l.symbol_id
+           ORDER BY l.score DESC
            LIMIT 2000`
         )
-        .all() as Array<{ subject: string; predicate: string; object: string }>
+        .all() as Array<{
+        doc_path: string
+        title: string
+        symbol: string
+        code_path: string
+      }>
 
-      const lines = ['digraph kb_graph {', '  rankdir=LR;']
+      const lines = ['digraph kb_doc_code {', '  rankdir=LR;']
       for (const row of rows) {
-        const from = String(row.subject).replace(/"/g, '\\"')
-        const rel = String(row.predicate)
-        const to = String(row.object).replace(/"/g, '\\"')
-        lines.push(`  "${from}" -> "${to}" [label="${rel}"];`)
+        const from = String(row.doc_path).replace(/"/g, '\\"')
+        const to = `${row.symbol}@${row.code_path}`.replace(/"/g, '\\"')
+        lines.push(`  "${from}" -> "${to}" [label="relates_to"];`)
       }
       lines.push('}')
       out.log(lines.join('\n'))
       return
     }
 
-    // --format json
     if (opts.format === 'json') {
-      const entities = db
+      const documents = db
         .prepare(
-          `SELECT DISTINCT subject AS id, subject AS name FROM facts
-           WHERE tombstoned_at IS NULL AND subject != 'kb' AND predicate != 'asserts'
-           LIMIT 500`
+          'SELECT id, git_repo, rel_path, title FROM documents ORDER BY rel_path LIMIT 500'
         )
         .all()
-      const relationships = db
+      const symbols = db
         .prepare(
-          `SELECT subject AS fromId, predicate AS type, object AS toId FROM facts
-           WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
-           LIMIT 2000`
+          'SELECT id, git_repo, rel_path, name, kind FROM code_symbols ORDER BY name LIMIT 500'
         )
         .all()
-      out.log(JSON.stringify({ entities, relationships }, null, 2))
+      const links = db
+        .prepare(
+          'SELECT doc_id, symbol_id, score, link_kind FROM doc_code_links ORDER BY score DESC LIMIT 2000'
+        )
+        .all()
+      out.log(JSON.stringify({ documents, symbols, links }, null, 2))
       return
     }
 
-    // --path <from> <to>
     if (opts.pathFrom && opts.pathTo) {
-      const result = findFactsPath(db, opts.pathFrom, opts.pathTo)
-      if (!result) {
-        out.log(`No path found between "${opts.pathFrom}" and "${opts.pathTo}".`)
-      } else {
-        const hops = result.edgeLabels.length
-        out.log(`Path (${hops} hop${hops === 1 ? '' : 's'}):`)
-        out.log(`  ${result.nodes.join(' → ')}`)
-      }
+      out.log(
+        'Path search over a structural code graph is not available in v1 — docs and symbols are joined via flat links only. Try `kb graph --entity <name>`.'
+      )
       return
     }
 
-    // --entity <name>
     if (opts.entity) {
       const pattern = `%${opts.entity.toLowerCase()}%`
-      const rows = db
+      const docs = db
         .prepare(
-          `SELECT subject, predicate, object FROM facts
-           WHERE tombstoned_at IS NULL
-             AND predicate != 'asserts'
-             AND subject != 'kb'
-             AND (LOWER(subject) LIKE ? OR LOWER(object) LIKE ?)
-           LIMIT 100`
+          `SELECT rel_path, title, git_repo FROM documents
+           WHERE lower(title) LIKE ? OR lower(rel_path) LIKE ? OR lower(body) LIKE ?
+           LIMIT 50`
         )
-        .all(pattern, pattern) as Array<{ subject: string; predicate: string; object: string }>
+        .all(pattern, pattern, pattern) as Array<{
+        rel_path: string
+        title: string
+        git_repo: string
+      }>
+      const symbols = db
+        .prepare(
+          `SELECT name, kind, rel_path, git_repo FROM code_symbols
+           WHERE lower(name) LIKE ? OR lower(rel_path) LIKE ?
+           LIMIT 50`
+        )
+        .all(pattern, pattern) as Array<{
+        name: string
+        kind: string
+        rel_path: string
+        git_repo: string
+      }>
 
-      if (rows.length === 0) {
-        out.log(`No facts found matching "${opts.entity}".`)
+      if (docs.length === 0 && symbols.length === 0) {
+        out.log(`No documents or symbols matching "${opts.entity}".`)
         return
       }
-      out.log(`Facts matching "${opts.entity}":`)
-      for (const row of rows) {
-        out.log(`  ${row.subject} -[${row.predicate}]-> ${row.object}`)
+      if (docs.length > 0) {
+        out.log(`Documents matching "${opts.entity}":`)
+        for (const row of docs) {
+          const prefix = row.git_repo ? `${row.git_repo}/` : ''
+          out.log(`  ${prefix}${row.rel_path} — ${row.title}`)
+        }
+      }
+      if (symbols.length > 0) {
+        if (docs.length > 0) out.log('')
+        out.log(`Symbols matching "${opts.entity}":`)
+        for (const row of symbols) {
+          const prefix = row.git_repo ? `${row.git_repo}/` : ''
+          out.log(`  ${row.name} (${row.kind}) — ${prefix}${row.rel_path}`)
+        }
       }
       return
     }
 
-    // Default: summary
-    const tripletCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM facts
-           WHERE predicate != 'asserts' AND tombstoned_at IS NULL AND subject != 'kb'`
-        )
-        .get() as { n: number }
-    ).n
+    const documentCount = countTable(db, 'SELECT COUNT(*) AS n FROM documents')
+    const symbolCount = countTable(db, 'SELECT COUNT(*) AS n FROM code_symbols')
+    const linkCount = countTable(db, 'SELECT COUNT(*) AS n FROM doc_code_links')
+    const factCount = countTable(
+      db,
+      'SELECT COUNT(*) AS n FROM facts WHERE tombstoned_at IS NULL'
+    )
 
-    const symbolCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM facts
-           WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL`
-        )
-        .get() as { n: number }
-    ).n
-
-    const topSubjects = db
+    const topSymbols = db
       .prepare(
-        `SELECT subject, COUNT(*) AS cnt FROM facts
-         WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
-         GROUP BY subject ORDER BY cnt DESC LIMIT 10`
+        `SELECT s.name, COUNT(*) AS cnt
+         FROM doc_code_links l
+         JOIN code_symbols s ON s.id = l.symbol_id
+         GROUP BY s.id
+         ORDER BY cnt DESC
+         LIMIT 10`
       )
-      .all() as Array<{ subject: string; cnt: number }>
+      .all() as Array<{ name: string; cnt: number }>
 
-    out.log('Knowledge graph summary')
-    out.log(`  Triplets: ${tripletCount}`)
-    out.log(`  Symbols:  ${symbolCount}`)
-    if (topSubjects.length > 0) {
+    out.log('Doc ↔ code map summary')
+    out.log(`  Documents: ${documentCount}`)
+    out.log(`  Symbols:   ${symbolCount}`)
+    out.log(`  Links:     ${linkCount}`)
+    out.log(`  Facts:     ${factCount}`)
+    if (topSymbols.length > 0) {
       out.log('')
-      out.log('Top subjects by frequency:')
-      for (const row of topSubjects) {
-        out.log(`  ${row.subject} — ${row.cnt} fact${row.cnt === 1 ? '' : 's'}`)
+      out.log('Most-linked symbols:')
+      for (const row of topSymbols) {
+        out.log(`  ${row.name} — ${row.cnt} link${row.cnt === 1 ? '' : 's'}`)
       }
     }
   } finally {
@@ -238,7 +254,7 @@ export interface KnowledgeGraphInitSummaryJson {
 }
 
 /**
- * Read a graph summary from the facts table.
+ * Read a doc↔code map summary from the index.
  * Returns null if the database file does not exist yet.
  */
 export async function readKnowledgeGraphInitSummary(
@@ -249,48 +265,38 @@ export async function readKnowledgeGraphInitSummary(
 
   const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
-    const tripletCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM facts
-           WHERE predicate != 'asserts' AND tombstoned_at IS NULL AND subject != 'kb'`
-        )
-        .get() as { n: number }
-    ).n
+    const documentCount = countTable(db, 'SELECT COUNT(*) AS n FROM documents')
+    const symbolCount = countTable(db, 'SELECT COUNT(*) AS n FROM code_symbols')
+    const linkCount = countTable(db, 'SELECT COUNT(*) AS n FROM doc_code_links')
 
-    const symbolCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM facts
-           WHERE source_kind = 'import_code' AND predicate = 'exported_from' AND tombstoned_at IS NULL`
-        )
-        .get() as { n: number }
-    ).n
-
-    const topSubjects = db
+    const topSymbols = db
       .prepare(
-        `SELECT subject, COUNT(*) AS cnt FROM facts
-         WHERE tombstoned_at IS NULL AND predicate != 'asserts' AND subject != 'kb'
-         GROUP BY subject ORDER BY cnt DESC LIMIT 10`
+        `SELECT s.name, COUNT(*) AS cnt
+         FROM doc_code_links l
+         JOIN code_symbols s ON s.id = l.symbol_id
+         GROUP BY s.id
+         ORDER BY cnt DESC
+         LIMIT 10`
       )
-      .all() as Array<{ subject: string; cnt: number }>
+      .all() as Array<{ name: string; cnt: number }>
 
     const human = [
-      'Knowledge graph summary',
-      `  Triplets: ${tripletCount}`,
-      `  Symbols:  ${symbolCount}`,
-      ...(topSubjects.length > 0
-        ? ['', 'Top subjects by frequency:', ...topSubjects.map(r => `  ${r.subject} — ${r.cnt}`)]
+      'Doc ↔ code map summary',
+      `  Documents: ${documentCount}`,
+      `  Symbols:   ${symbolCount}`,
+      `  Links:     ${linkCount}`,
+      ...(topSymbols.length > 0
+        ? ['', 'Most-linked symbols:', ...topSymbols.map(r => `  ${r.name} — ${r.cnt}`)]
         : []),
     ].join('\n')
 
     const json: KnowledgeGraphInitSummaryJson = {
-      entities: tripletCount,
-      relationships: tripletCount,
-      topEntities: topSubjects.map(r => ({
-        id: r.subject,
-        name: r.subject,
-        type: 'concept',
+      entities: documentCount + symbolCount,
+      relationships: linkCount,
+      topEntities: topSymbols.map(r => ({
+        id: r.name,
+        name: r.name,
+        type: 'symbol',
         connections: Number(r.cnt),
       })),
     }
