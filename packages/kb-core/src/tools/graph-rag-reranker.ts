@@ -10,7 +10,7 @@ const MAX_NEIGHBOR_TERMS = 24
 /**
  * Ask the LLM to extract technical entity names from the query.
  * This bridges semantic gaps that slug-matching can't: "AST graph generation"
- * → ["TsMorphIndexer", "code-graph-indexer", "TypeScript compiler"].
+ * → ["TreeSitterIndexer", "tree-sitter-indexer", "TypeScript compiler"].
  */
 export async function llmExtractQueryEntities(
   query: string,

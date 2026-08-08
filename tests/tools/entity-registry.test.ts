@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { isDistinctiveAliasMatch } from '@kb/core/tools/common-word-aliases.js'
 import { EntityRegistry, normalizeEntityName } from '@kb/core/tools/entity-registry.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
@@ -22,6 +23,12 @@ describe('normalizeEntityName', () => {
     expect(normalizeEntityName('Internal  Services')).toBe('internal services')
     expect(normalizeEntityName('@acme/payments-service')).toBe('acme payments service')
     expect(normalizeEntityName('  KB_Server ')).toBe('kb server')
+  })
+
+  it('splits CamelCase so prose can land on harvest names', () => {
+    expect(normalizeEntityName('TreeSitterIndexer')).toBe('tree sitter indexer')
+    expect(normalizeEntityName('tree-sitter indexer')).toBe('tree sitter indexer')
+    expect(normalizeEntityName('HttpRequestHandler')).toBe('http request handler')
   })
 })
 
@@ -171,6 +178,125 @@ describe('EntityRegistry', () => {
       expect(registry.hasLinks(id)).toBe(true)
       expect(registry.linkedFactIds([id]).sort()).toEqual([factA, factB].sort())
       expect(registry.linkedFactIds([])).toEqual([])
+    } finally {
+      registry.close()
+    }
+  })
+})
+
+describe('isDistinctiveAliasMatch', () => {
+  it('lets a name that is not an English word through in any casing', () => {
+    expect(isDistinctiveAliasMatch('kbctl', 'kbctl')).toBe(true)
+    expect(isDistinctiveAliasMatch('Kestra', 'kestra')).toBe(true)
+  })
+
+  it('requires a capitalized common word to be echoed capitalized', () => {
+    // "the Role enum" means the identifier; "the role of the indexer" does not.
+    expect(isDistinctiveAliasMatch('Role', 'Role')).toBe(true)
+    expect(isDistinctiveAliasMatch('Role', 'role')).toBe(false)
+    expect(isDistinctiveAliasMatch('User', 'user')).toBe(false)
+  })
+
+  it('never trusts an all-lowercase common word — prose is lowercase too', () => {
+    expect(isDistinctiveAliasMatch('facts', 'facts')).toBe(false)
+    expect(isDistinctiveAliasMatch('service', 'service')).toBe(false)
+  })
+
+  it('exempts multi-token aliases — nobody writes "payment service" by accident', () => {
+    expect(isDistinctiveAliasMatch('payment service', 'payment service')).toBe(true)
+  })
+})
+
+describe('EntityRegistry — mention distinctiveness', () => {
+  /** A Prisma-style `Role` enum, the real false-match from the kb index. */
+  function seedRoleModel(): void {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const registry = new EntityRegistry(dbPath)
+    try {
+      registry.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+    } finally {
+      registry.close()
+    }
+  }
+
+  it('marks a common word in ordinary prose non-distinctive but still reports it', () => {
+    seedRoleModel()
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions('what is the role of permissions here?')
+
+      // The match is not hidden — it is disqualified from steering retrieval.
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.distinctive).toBe(false)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('lands a CamelCase harvest name from hyphenated prose, while role stays non-distinctive', () => {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const writable = new EntityRegistry(dbPath)
+    try {
+      writable.upsertEntity({ kind: 'model', canonicalName: 'Role', sourceKind: 'source-pattern' })
+      writable.upsertEntity({
+        kind: 'module',
+        canonicalName: 'TreeSitterIndexer',
+        sourceKind: 'source-pattern',
+      })
+    } finally {
+      writable.close()
+    }
+
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions(
+        'What is the role of the tree-sitter indexer in code indexing?'
+      )
+      const byName = Object.fromEntries(matches.map(m => [m.entity.canonicalName, m.distinctive]))
+      expect(byName.Role).toBe(false)
+      expect(byName.TreeSitterIndexer).toBe(true)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('keeps the same alias distinctive when the query writes it as the identifier', () => {
+    seedRoleModel()
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions('which values does the Role enum have?')
+
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.distinctive).toBe(true)
+    } finally {
+      registry.close()
+    }
+  })
+
+  it('matches a CamelCase identifier in the query to the same entity', () => {
+    const indexer = new SqliteKbIndexer({ dbPath })
+    indexer.close()
+    const writable = new EntityRegistry(dbPath)
+    try {
+      writable.upsertEntity({
+        kind: 'module',
+        canonicalName: 'HttpRequestHandler',
+        sourceKind: 'source-pattern',
+      })
+    } finally {
+      writable.close()
+    }
+
+    const registry = new EntityRegistry(dbPath, { readOnly: true })
+    try {
+      const matches = registry.resolveMentions(
+        'Does kb still use HttpRequestHandler for outbound calls?'
+      )
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.entity.canonicalName).toBe('HttpRequestHandler')
+      expect(matches[0]?.distinctive).toBe(true)
     } finally {
       registry.close()
     }

@@ -90,7 +90,11 @@ export async function inferQueryScope(input: {
   try {
     if (registry.entityCount() === 0) return UNRESOLVED
 
-    const mentions = registry.resolveMentions(input.query)
+    // Only a distinctive match short-circuits the classifier. A bare common word
+    // — "the *role* of the indexer" against a `Role` enum — used to land here
+    // `very_confident` and hard-prune, and the classifier that could have caught
+    // it never ran. Those now fall through to tier 2 instead of deciding.
+    const mentions = registry.resolveMentions(input.query).filter(m => m.distinctive)
     if (mentions.length > 0) {
       return gateDeterministicMentions(registry, mentions.map(m => m.entity))
     }

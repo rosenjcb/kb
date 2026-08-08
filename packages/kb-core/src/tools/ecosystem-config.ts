@@ -173,6 +173,7 @@ export interface InfraEcosystemConfig {
     file: string
     kind_map: Record<string, EntityKind | string> & { default: EntityKind | string }
     belongs_to_keys: string[]
+    owned_by_keys?: string[]
   }
   kubernetes: {
     dirs: string[]

@@ -13,6 +13,7 @@ import {
   FactsQueryResearchOrchestrator,
 } from './facts-query-research-orchestrator'
 import { makeSufficiencyJudge } from './facts-sufficiency-judge'
+import type { InquiryLane } from '../query/inquiry-lanes.js'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import {
   type QueryTraceDump,
@@ -37,6 +38,13 @@ export interface QueryDocumentsInput {
   excludeIds?: string[]
   /** When true, bypass all query expansion and load every fact in the KB. */
   allFacts?: boolean
+  /**
+   * Ontology-typed sub-query lanes from `query/inquiry-lanes.ts`, built by the
+   * caller from the stage-0 scope verdict. When present these replace the generic
+   * LLM expander for the deep fan-out — they are deterministic, entity-grounded,
+   * and not gated on query length.
+   */
+  inquiryLanes?: InquiryLane[]
   /** Telemetry collector — when set, curator/sufficiency-judge LLM calls are recorded on it. */
   collector?: RunCollector
 }
@@ -156,27 +164,40 @@ export class FactsDocumentReader {
       const excludeIdSet =
         input.excludeIds && input.excludeIds.length > 0 ? new Set(input.excludeIds) : undefined
 
-      if (this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
-        const expansions = await expandQuery(this.llm, baseQuery)
-        if (expansions.length > 0) {
-          const responses = await Promise.all(
-            [baseQuery, ...expansions].map(q =>
-              orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
-            )
+      // Fan-out lane selection. Ontology-typed lanes win whenever the caller
+      // resolved an entity: they are deterministic, entity-grounded, need no LLM
+      // call, and are deliberately NOT gated on query length — a long vague
+      // question benefits from targeted probes as much as a one-word one does.
+      // The generic LLM expander stays as the fallback for questions that resolve
+      // to no entity, where it keeps its original short-query gate.
+      const typedLanes = input.inquiryLanes ?? []
+      let expansions: string[] = typedLanes.map(lane => lane.query)
+      if (expansions.length === 0 && this.llm && baseQuery && shouldExpandQuery(baseQuery)) {
+        expansions = await expandQuery(this.llm, baseQuery)
+      }
+
+      if (baseQuery && expansions.length > 0) {
+        const responses = await Promise.all(
+          [baseQuery, ...expansions].map(q =>
+            orchestrator.run({ query: q, ...opts, excludeIds: excludeIdSet })
           )
-          const lanes = responses
-            .map(res => res.trace)
-            .filter((lane): lane is QueryTraceLane => Boolean(lane))
-          const merged = mergeQueryResponses(responses, expansions.length)
-          const curated = await this.curateRelevance(
-            merged,
-            baseQuery,
-            opts.includeContent,
-            excludeIdSet,
-            input.collector
-          )
-          return this.finalizeDeep(baseQuery, lanes, curated, degraded)
-        }
+        )
+        const lanes = responses
+          .map(res => res.trace)
+          .filter((lane): lane is QueryTraceLane => Boolean(lane))
+        const merged = mergeQueryResponses(
+          responses,
+          expansions.length,
+          typedLanes.length > 0 ? describeTypedLanes(typedLanes) : undefined
+        )
+        const curated = await this.curateRelevance(
+          merged,
+          baseQuery,
+          opts.includeContent,
+          excludeIdSet,
+          input.collector
+        )
+        return this.finalizeDeep(baseQuery, lanes, curated, degraded)
       }
 
       const response = await orchestrator.run({
@@ -347,7 +368,16 @@ function summarizeFactTitle(text: string): string {
   return `${trimmed.slice(0, 69)}...`
 }
 
-function mergeQueryResponses(responses: QueryResponse[], expansionCount: number): QueryResponse {
+/** `facets:ownership+mechanism` — which typed probes ran, for --debug / --trace. */
+function describeTypedLanes(lanes: InquiryLane[]): string {
+  return `facets:${[...new Set(lanes.map(lane => lane.facet))].join('+')}`
+}
+
+function mergeQueryResponses(
+  responses: QueryResponse[],
+  expansionCount: number,
+  lanesDetail?: string
+): QueryResponse {
   const seen = new Set<string>()
   const merged: QueryResult[] = []
   for (const res of responses) {
@@ -364,7 +394,7 @@ function mergeQueryResponses(responses: QueryResponse[], expansionCount: number)
     total: merged.length,
     retrieval: {
       method: merged.length > 0 ? 'hybrid' : 'lexical-fallback',
-      detail: `${baseDetail};expanded:${expansionCount}`,
+      detail: `${baseDetail};expanded:${expansionCount}${lanesDetail ? `;${lanesDetail}` : ''}`,
     },
   }
 }

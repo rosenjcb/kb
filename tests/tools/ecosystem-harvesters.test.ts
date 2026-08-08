@@ -292,6 +292,78 @@ describe('harvestInfraManifests', () => {
     })
   })
 
+  it('[TC-41] Given catalog spec.owner, when harvested, then an owned_by edge and a team candidate', async () => {
+    await writeFile(
+      path.join(scanDir, 'catalog-info.yaml'),
+      [
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: payments',
+        'spec:',
+        '  type: service',
+        '  owner: platform',
+      ].join('\n')
+    )
+
+    const result = await harvestInfraManifests(scanDir)
+
+    expect(result.edges).toContainEqual({
+      fromName: 'payments',
+      toName: 'platform',
+      edgeType: 'owned_by',
+    })
+    // The owner is minted too — an owned_by naming nothing harvested is a
+    // dropped edge, which the cycle reports as a harvester bug.
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({ kind: 'team', canonicalName: 'platform' })
+    )
+  })
+
+  it('[TC-42] Given a full Backstage entity-ref owner, when harvested, then only the name is used', async () => {
+    await writeFile(
+      path.join(scanDir, 'catalog-info.yaml'),
+      [
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: payments',
+        'spec:',
+        '  owner: group:default/platform-team',
+      ].join('\n')
+    )
+
+    const result = await harvestInfraManifests(scanDir)
+
+    expect(result.edges).toContainEqual({
+      fromName: 'payments',
+      toName: 'platform-team',
+      edgeType: 'owned_by',
+    })
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({ kind: 'team', canonicalName: 'platform-team' })
+    )
+  })
+
+  it('[TC-43] Given a catalog entry with no owner, when harvested, then no owned_by edge', async () => {
+    await writeFile(
+      path.join(scanDir, 'catalog-info.yaml'),
+      [
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: payments',
+        'spec:',
+        '  domain: commerce',
+      ].join('\n')
+    )
+
+    const result = await harvestInfraManifests(scanDir)
+
+    expect(result.edges.some(e => e.edgeType === 'owned_by')).toBe(false)
+    expect(result.candidates.some(c => c.kind === 'team')).toBe(false)
+  })
+
   it('[TC-7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
     await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
     const result = await harvestInfraManifests(scanDir)

@@ -16,11 +16,39 @@ import type {
 type JsonRecord = Record<string, unknown>
 
 /**
- * Default reasoning budget (tokens) when a caller opts into reasoning via
- * {@link LLMCallParams.onReasoning} without specifying an explicit `thinkingBudget`.
+ * Default thinking / reasoning budget (tokens) when a caller opts into reasoning
+ * ({@link LLMCallParams.onReasoning} / Gemini `includeThoughts`) without an
+ * explicit {@link LLMCallParams.thinkingBudget}.
+ *
+ * Also the fallback for {@link resolveGeminiThinkingBudget} when
+ * `GEMINI_THINKING_BUDGET` is unset. Never omit `thinkingConfig` on Gemini 2.5/3
+ * — an omitted budget means unbounded dynamic thinking.
  */
-const DEFAULT_REASONING_BUDGET_TOKENS = 1024
+export const DEFAULT_GEMINI_THINKING_BUDGET = 1024
 
+/**
+ * Resolve Gemini `thinkingConfig.thinkingBudget` for every generateContent call.
+ *
+ * Priority:
+ * 1. Explicit `thinkingBudget` on the call (including `0` to disable)
+ * 2. `GEMINI_THINKING_BUDGET` env (global override for any Gemini client user)
+ * 3. Mode default — {@link DEFAULT_GEMINI_THINKING_BUDGET} when thinking is on
+ *    (`includeThoughts` / onReasoning), otherwise `0` (thinking off)
+ */
+export function resolveGeminiThinkingBudget(
+  thinkingBudget: number | undefined,
+  opts: { includeThoughts?: boolean } = {}
+): number {
+  if (typeof thinkingBudget === 'number' && Number.isFinite(thinkingBudget)) {
+    return Math.max(0, Math.floor(thinkingBudget))
+  }
+  const raw = process.env.GEMINI_THINKING_BUDGET?.trim()
+  if (raw !== undefined && raw !== '') {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n)
+  }
+  return opts.includeThoughts ? DEFAULT_GEMINI_THINKING_BUDGET : 0
+}
 function asRecord(value: unknown): JsonRecord {
   if (value && typeof value === 'object') {
     return value as JsonRecord
@@ -71,12 +99,12 @@ function providerApiError(
   })
 }
 
-/** Resolve the reasoning budget for a reasoning-enabled call. */
+/** Resolve the reasoning budget for a reasoning-enabled (non-Gemini) call. */
 function resolveReasoningBudget(params: LLMCallParams): number {
   if (typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0) {
     return params.thinkingBudget
   }
-  return DEFAULT_REASONING_BUDGET_TOKENS
+  return DEFAULT_GEMINI_THINKING_BUDGET
 }
 
 /**
@@ -266,6 +294,7 @@ export class AnthropicProvider implements LLMProvider {
       text: this.extractText(content),
       stopReason: payload.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
       toolUses: this.extractToolUses(content),
+      // Anthropic's output_tokens already includes extended-thinking tokens.
       usage: {
         inputTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : 0,
         outputTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : 0,
@@ -563,6 +592,8 @@ export class OpenAIProvider implements LLMProvider {
               : {},
         }
       }),
+      // OpenAI completion_tokens already includes reasoning tokens (details.reasoning_tokens
+      // is a breakdown only — do not add it again).
       usage: {
         inputTokens: typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : 0,
         outputTokens: typeof usage.completion_tokens === 'number' ? usage.completion_tokens : 0,
@@ -702,6 +733,48 @@ function geminiModelSupportsThinkingBudget(model: string): boolean {
   return /gemini-2\.5|gemini-3|gemini-exp/i.test(model)
 }
 
+function readNonNegInt(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value)
+  }
+  return undefined
+}
+
+/**
+ * Parse Gemini `usageMetadata` into KB's `{ inputTokens, outputTokens }`.
+ *
+ * Google bills thinking at the output rate and reports it separately as
+ * `thoughtsTokenCount` (candidates = visible answer only). Fold thoughts into
+ * `outputTokens` so telemetry / eval `out=` match billed output:
+ * `candidatesTokenCount + thoughtsTokenCount`.
+ *
+ * When `thoughtsTokenCount` is absent, fall back to
+ * `max(candidates, totalTokenCount - promptTokenCount)` so streams that only
+ * expose `totalTokenCount` still include thinking.
+ */
+export function parseGeminiUsageMetadata(usageMetadata: unknown): {
+  inputTokens: number
+  outputTokens: number
+} {
+  const usage = asRecord(usageMetadata)
+  const inputTokens = readNonNegInt(usage.promptTokenCount) ?? 0
+  const candidates = readNonNegInt(usage.candidatesTokenCount) ?? 0
+  const thoughts =
+    readNonNegInt(usage.thoughtsTokenCount) ??
+    readNonNegInt(usage.thoughts_token_count) ??
+    readNonNegInt(usage.thinkingTokenCount)
+
+  let outputTokens = candidates + (thoughts ?? 0)
+  if (thoughts === undefined) {
+    const total = readNonNegInt(usage.totalTokenCount)
+    if (total !== undefined) {
+      const inferred = Math.max(0, total - inputTokens)
+      if (inferred > outputTokens) outputTokens = inferred
+    }
+  }
+  return { inputTokens, outputTokens }
+}
+
 /** Strip JSON Schema fields Gemini's function declaration API does not accept. */
 function stripUnsupportedSchemaFields(schema: Record<string, unknown>): Record<string, unknown> {
   const { additionalProperties: _, ...rest } = schema
@@ -826,25 +899,22 @@ export class GeminiProvider implements LLMProvider {
     const supportsThinking = geminiModelSupportsThinkingBudget(this.model)
     const thinkingConfig: Record<string, unknown> = {}
     if (supportsThinking) {
-      if (opts.includeThoughts) {
-        // Reasoning explicitly requested (e.g. query expansion): keep thinking on,
-        // but BOUND it. gemini-3.x otherwise thinks dynamically and can spend the
-        // entire output budget reasoning, leaving no answer text (the chat "I don't
-        // have enough information" fallback). Cap at ~1/4 of the output budget so
-        // there is always room for the answer; honor an explicit budget if given.
+      // Always set an explicit budget — omitting thinkingConfig lets gemini-3.x
+      // think dynamically with no cap. Resolution: per-call → GEMINI_THINKING_BUDGET
+      // → mode default (on when includeThoughts, else off).
+      let thinkingBudget = resolveGeminiThinkingBudget(params.thinkingBudget, {
+        includeThoughts: Boolean(opts.includeThoughts),
+      })
+      if (opts.includeThoughts && thinkingBudget > 0) {
+        // Leave room for the visible answer; never let thinking consume the
+        // entire maxOutputTokens budget.
+        thinkingBudget = Math.min(
+          thinkingBudget,
+          Math.max(256, Math.floor(maxOutputTokens / 4))
+        )
         thinkingConfig.includeThoughts = true
-        thinkingConfig.thinkingBudget =
-          typeof params.thinkingBudget === 'number' && params.thinkingBudget > 0
-            ? params.thinkingBudget
-            : Math.min(1024, Math.max(256, Math.floor(maxOutputTokens / 4)))
-      } else {
-        // No reasoning requested → default thinking OFF. gemini-3.x otherwise thinks
-        // by default and consumes terse/classifier budgets (e.g. the sufficiency
-        // judge's maxTokens:10), returning empty and silently breaking them. Callers
-        // opt in with an explicit positive `thinkingBudget`.
-        thinkingConfig.thinkingBudget =
-          typeof params.thinkingBudget === 'number' ? params.thinkingBudget : 0
       }
+      thinkingConfig.thinkingBudget = thinkingBudget
     }
 
     return {
@@ -911,7 +981,6 @@ export class GeminiProvider implements LLMProvider {
     const first = asRecord(candidates[0])
     const contentRecord = asRecord(first.content)
     const content = Array.isArray(contentRecord.parts) ? contentRecord.parts : []
-    const usage = asRecord(payload.usageMetadata)
 
     return {
       text: content
@@ -938,11 +1007,8 @@ export class GeminiProvider implements LLMProvider {
               : {}),
           }
         }),
-      usage: {
-        inputTokens: typeof usage.promptTokenCount === 'number' ? usage.promptTokenCount : 0,
-        outputTokens:
-          typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0,
-      },
+      // thoughtsTokenCount is billed as output — see parseGeminiUsageMetadata.
+      usage: parseGeminiUsageMetadata(payload.usageMetadata),
       finishReason: typeof first.finishReason === 'string' ? first.finishReason : undefined,
     }
   }
@@ -997,9 +1063,11 @@ export class GeminiProvider implements LLMProvider {
           else text += part.text
         }
       }
-      const usage = asRecord(event.usageMetadata)
-      if (typeof usage.promptTokenCount === 'number') inputTokens = usage.promptTokenCount
-      if (typeof usage.candidatesTokenCount === 'number') outputTokens = usage.candidatesTokenCount
+      if (event.usageMetadata) {
+        const parsed = parseGeminiUsageMetadata(event.usageMetadata)
+        inputTokens = parsed.inputTokens
+        outputTokens = parsed.outputTokens
+      }
     }
 
     return {

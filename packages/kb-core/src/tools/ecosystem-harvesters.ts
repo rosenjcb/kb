@@ -518,15 +518,26 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
           sourceKind: 'manifest',
           contentHash: sha256(backstageRaw),
         })
-        let domain: string | undefined
-        for (const key of config.backstage.belongs_to_keys) {
-          const value = parsed?.spec?.[key]
-          if (typeof value === 'string' && value) {
-            domain = value
-            break
-          }
-        }
+        const domain = firstSpecString(parsed?.spec, config.backstage.belongs_to_keys)
         if (domain) edges.push({ fromName: name, toName: domain, edgeType: 'belongs_to' })
+
+        // `spec.owner` is the one declaration of accountability a repo carries.
+        // The owner is emitted as a `team` candidate as well as an edge endpoint:
+        // an `owned_by` naming something nothing harvested counts as a dropped
+        // edge, which the cycle reports as a harvester bug.
+        const owner = firstSpecString(parsed?.spec, config.backstage.owned_by_keys ?? [])
+        const ownerName = owner ? parseEntityRef(owner) : undefined
+        if (ownerName) {
+          pushCandidate({
+            kind: 'team',
+            canonicalName: ownerName,
+            aliases: [ownerName],
+            sourceFile: config.backstage.file,
+            sourceKind: 'manifest',
+            contentHash: sha256(backstageRaw),
+          })
+          edges.push({ fromName: name, toName: ownerName, edgeType: 'owned_by' })
+        }
       }
     } catch {
       // Malformed catalog file — skip.
@@ -538,6 +549,30 @@ export async function harvestInfraManifests(scanDir: string): Promise<HarvestRes
   await harvestProcfile(scanDir, config, pushCandidate)
 
   return { candidates, edges }
+}
+
+/** First key in `keys` whose value is a non-empty string. */
+function firstSpecString(
+  spec: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = spec?.[key]
+    if (typeof value === 'string' && value) return value
+  }
+  return undefined
+}
+
+/**
+ * Backstage entity references are `[<kind>:][<namespace>/]<name>`, so `owner`
+ * arrives as any of `platform`, `group:platform`, or `group:default/platform`.
+ * Only the name is an entity here; the kind is already fixed by the edge.
+ */
+function parseEntityRef(ref: string): string | undefined {
+  const afterKind = ref.includes(':') ? ref.slice(ref.indexOf(':') + 1) : ref
+  const name = afterKind.includes('/') ? afterKind.slice(afterKind.lastIndexOf('/') + 1) : afterKind
+  const trimmed = name.trim()
+  return trimmed || undefined
 }
 
 const WALK_SKIP_DIRS = new Set([

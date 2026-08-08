@@ -13,6 +13,11 @@ questions:
   - "How are custom HTTP mock responses generated and mapped dynamically using mitmproxy addons?"
   - "Step by step, what happens when a client issues HTTPS CONNECT: SNI extraction, dynamic cert generation, dual handshakes, and when request/response addon hooks fire relative to those steps."
   - "What library drives the console terminal UI of mitmproxy, and how does the application handle console startup errors?"
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the flow handler in mitmproxy's web UI API when a captured flow is edited or deleted?
+  - "For a long, vague question about how the proxy connection handler fits into mode servers, addon lifecycle hooks, and waiting for flow resume end-to-end, what does that handler own — and should entity fan-out run without a query-length gate?"
 answers:
   - >
     Mitmproxy operates as an intercepting proxy supporting several modes: Regular (explicit client
@@ -68,3 +73,13 @@ answers:
     interactive shell; if not, it exits with an error. It verifies UTF-8 encoding support, maps
     color themes via set_palette, and integrates urwid's screen render loop with Python's asyncio
     event loop to draw visual changes on the console screen atomically.
+  - >
+    `FlowHandler` in `mitmproxy/tools/web/app.py` is a Tornado web handler that mutates/removes
+    an in-memory `Flow` for the web UI. A correct answer must land on that web API class — not
+    the core proxy "flow" noun alone — and must not pivot common-word "flow"/"role" into
+    unrelated enums or modules.
+  - >
+    `ProxyConnectionHandler` in `mitmproxy/proxy/mode_servers.py` (extends live connection
+    handling) dispatches addon lifecycle hooks and waits for flow resume in mode servers. A
+    correct answer places it in proxy connection handling (not the web `FlowHandler`) and must
+    not claim long entity-resolved questions skip ontology fan-out.

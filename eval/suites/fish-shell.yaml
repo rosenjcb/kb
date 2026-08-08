@@ -13,6 +13,11 @@ questions:
   - "Step by step, how does fish_config's web UI change a theme in a live shell session — from browser action through the local HTTP server to shell stdin/state updates?"
   - "How can developers add and register a new built-in shell command in the Rust-based codebase?"
   - "How does fish-shell implement its signature autocomplete suggestions and command history lookups?"
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of the event handler struct when fish reacts to signals, variable changes, or process exits?
+  - "For a long, vague question about how the fish-config HTTP request handler fits into the web_config theme UI, local HTTP server, and live shell variable updates end-to-end, what does that handler own — and can entity fan-out run without a query-length gate?"
 answers:
   - >
     The complete rewrite of fish-shell from C++ to Rust (a project spanning two years and involving
@@ -68,3 +73,14 @@ answers:
     specialized Python scripts. Additionally, fish includes a web-based configuration tool
     ('fish_config') written in Python, which launches an interactive page in a browser, allowing
     users to set terminal colors and view global variables.
+  - >
+    `EventHandler` in `src/event.rs` binds an event description
+    (signal/variable/process/job/etc.) to a function name with match/one-shot bookkeeping on the
+    global handler list. A correct answer must land on that Rust struct — not a generic
+    observer-pattern essay — and must not treat bare "event"/"fish" as enough to invent
+    unrelated modules.
+  - >
+    `FishConfigHTTPRequestHandler` in `share/tools/web_config/webconfig.py` serves the
+    fish_config web UI (themes/colors) and drives live shell updates. A correct answer ties it
+    to web_config ↔ session updates (not the core Rust reader loop) and allows ontology fan-out
+    on a long vague question once the entity resolves.

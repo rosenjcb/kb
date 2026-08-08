@@ -24,11 +24,11 @@ describe('extractFactTriplets', () => {
 
   it('[TC-18] parses a multi-element array from a compound sentence', async () => {
     const llm = mockLlm(
-      '[{"subject":"TsMorphIndexer","predicate":"handles","object":"TypeScript and JS files"},{"subject":"TreeSitterIndexer","predicate":"handles","object":"all other files"}]'
+      '[{"subject":"CodeGraphWalker","predicate":"handles","object":"TypeScript and JS files"},{"subject":"TreeSitterIndexer","predicate":"handles","object":"all other files"}]'
     )
-    const result = await extractFactTriplets(llm, 'TsMorphIndexer handles TS, TreeSitterIndexer handles the rest')
+    const result = await extractFactTriplets(llm, 'CodeGraphWalker handles TS, TreeSitterIndexer handles the rest')
     expect(result).toHaveLength(2)
-    expect(result[0]?.subject).toBe('TsMorphIndexer')
+    expect(result[0]?.subject).toBe('CodeGraphWalker')
     expect(result[1]?.subject).toBe('TreeSitterIndexer')
   })
 

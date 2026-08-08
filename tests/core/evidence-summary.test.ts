@@ -18,7 +18,7 @@ describe('evidence-summary', () => {
         {
           metadata: {
             id: 'fact-ts',
-            title: 'TsMorphIndexer (code-graph-indexer.ts)',
+            title: 'CodeGraphWalker (code-graph-walker.ts)',
             tags: ['import_doc', 'code-graph', 'fact'],
           },
         },
@@ -62,11 +62,11 @@ describe('evidence-summary', () => {
   it('[TC-57] Given duplicate lead titles, then leads are deduped', () => {
     const parts = buildEvidenceSummaryParts({
       results: [
-        { metadata: { title: 'TsMorphIndexer', tags: ['import_doc', 'fact'] } },
-        { metadata: { title: 'TsMorphIndexer', tags: ['import_doc', 'fact'] } },
+        { metadata: { title: 'CodeGraphWalker', tags: ['import_doc', 'fact'] } },
+        { metadata: { title: 'CodeGraphWalker', tags: ['import_doc', 'fact'] } },
         { metadata: { title: 'TreeSitterIndexer', tags: ['import_doc', 'fact'] } },
       ],
     })
-    expect(parts?.leads).toEqual(['TsMorphIndexer', 'TreeSitterIndexer'])
+    expect(parts?.leads).toEqual(['CodeGraphWalker', 'TreeSitterIndexer'])
   })
 })

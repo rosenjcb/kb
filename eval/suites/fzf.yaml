@@ -14,6 +14,11 @@ questions:
   - What are the key flags and configuration options available to users?
   - What are the main gotchas, constraints, and known limitations of fzf?
   - What does the changelog say about recent version history and notable changes?
+  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
+  # CamelCase entities (or best landable cli/library/repo on thin registries),
+  # plus a long vague question that should fan out without a length gate.
+  - What is the role of fzf when a shell widget or pipeline needs interactive fuzzy selection?
+  - "For a long, vague question about how fzf fits into matching, TUI rendering, shell key-bindings, and editor integration end-to-end — once the fzf cli entity resolves, does ontology fan-out still emit targeted probes with no query-length gate?"
 answers:
   - >
     fzf is a general-purpose command-line fuzzy finder and interactive terminal toolkit, distributed
@@ -115,3 +120,14 @@ answers:
     `FuzzyMatchV2` plus a UTF-8 C1 control-character injection issue. 0.72.0 added `inline` header/footer
     border styles that merge into the list frame's border. Across versions the changelog consistently
     pairs new `--bind` actions/events with targeted scoring and rendering bug fixes.
+  - >
+    Land on the **fzf** CLI/product: read lines (stdin or walker), interactive fuzzy filter,
+    write selection(s) to stdout — including shell widgets (CTRL-T/R, ALT-C) and completion. A
+    correct answer must describe that interactive-filter role. This suite's registry is thin
+    (cli/library aliases for fzf, no CamelCase modules); do not invent harvested class entities
+    or treat "role" as a schema concept.
+  - >
+    After resolving the **fzf** cli/library entity, ontology-typed fan-out should still run with
+    **no length gate**; substance should cover matching (`FuzzyMatchV2` / algo), TUI, and shell
+    integration. A correct answer must not claim only short questions expand when the entity
+    resolved, and must not require non-existent CamelCase module entities.

@@ -191,7 +191,7 @@ as `-` rather than erroring.
 - `generic` — repo-neutral questions. Use with `--repo` for arbitrary upstreams.
 - `nifi` / `duckdb` — still loadable via `--suite` for historical runs; **not** in `--all-suites` (too large to index in ~1h).
 
-`--all-suites` runs the ten benchmark suites above (everything except `generic`, `moel-kb`, and the retired-from-default `nifi`/`duckdb` packs).
+`--all-suites` runs the ten benchmark suites above (everything except `generic` and the retired-from-default `nifi`/`duckdb` packs).
 
 **Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. The parent starts **one shared multi-base `kb-server`**; each child attaches (`KB_EVAL_SERVER_URL`) and selects its `eval-{suite}` base per request via `--base` / `X-KB-Base` (and probes `/healthz?base=`). Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. Legacy isolation: `--per-suite-server` (one ephemeral port per suite). Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
 
@@ -276,7 +276,7 @@ pnpm run eval -- --suite kb --auto-score --skip-control
 Every run: `kb scan` on the snapshot clone, then 8× `kb query` (one-shot synthesis — see
 `src/core/QUERY_INTERNALS.md`), then control (unless skipped).
 
-To force a fresh init (e.g. after significant KB changes): `--force-init` (runs `kb base delete --force`, then `kb init`).
+To force a fresh init (e.g. after significant KB changes): `--force-init` (wipes `~/.kb/sessions/<base>` on disk, then offline `eval-index` init).
 
 ### Phase 2: Review Artifacts
 

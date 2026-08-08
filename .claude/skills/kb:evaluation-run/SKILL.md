@@ -11,6 +11,119 @@ Canonical spec: `EVALUATION.md`
 
 Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source of truth.
 
+## Preflight — run this before promising a run
+
+Four things have burned agent sessions before. Check them in order; each is one
+command and each has a known fix.
+
+**1. Node 24 and installed deps.** The repo pins `engines.node >=24`, but a fresh
+container may boot on an older Node with `node_modules` missing. `pnpm` refuses to
+run at all on the wrong version (`ERR_PNPM_UNSUPPORTED_ENGINE`).
+
+```bash
+export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm install 24 && nvm use 24
+node -v                       # expect v24.x
+pnpm install --frozen-lockfile   # if node_modules/ is absent
+pnpm run build                   # eval needs dist/bin/kb + dist/bin/kb-server
+```
+
+Every later shell needs the `nvm use 24` prefix — the Bash tool does not persist
+shell state between calls.
+
+**2. `flyctl` is installed but not on `PATH`.** It lives at `~/.fly/bin/flyctl`.
+A setup script ending in `export PATH=...` cannot help you — that export dies with
+the script's own process. Do not conclude it is missing from a bare `command -v`:
+
+```bash
+export PATH="$HOME/.fly/bin:$PATH"   # do this in each shell that needs it
+flyctl version
+```
+
+**3. An LLM provider must actually resolve.** With no key, `kb-server` silently
+falls back to `ollama/mistral`, which is not installed — queries then fail at
+synthesis rather than at startup. Confirm the resolved provider, don't assume:
+
+```bash
+timeout 25 ./packages/kb-server/dist/bin/kb-server start --base eval-kb 2>&1 \
+  | grep -o '"provider":"[a-z]*","model":"[^"]*"'
+```
+
+`GEMINI_API_KEY` or `OPENAI_API_KEY` covers both `kb query` synthesis and the
+`--auto-score` judge. `ANTHROPIC_API_KEY` covers synthesis only.
+
+**4. Check ontology coverage before running anything entity-dependent.** See below —
+this is the one most likely to waste an entire run.
+
+## Ontology coverage gate (entity / scope / expansion work)
+
+Published snapshots carry facts in bulk but **very little ontology**. If the change
+under evaluation touches the entity registry, scope inference, or query expansion,
+measure coverage *first* — otherwise the run produces null movement and you cannot
+tell "the feature does nothing" from "the data cannot exercise the feature."
+
+Observed across all 10 published bases (Aug 2026):
+
+| suite | facts | entities | edges | usable edges (non-`distinct_from`) |
+|---|---|---|---|---|
+| kestra | 20943 | 300 | 1213 | 23 |
+| kb | 9250 | 121 | 83 | 3 |
+| lazygit | 5035 | 51 | 1 | 0 |
+| mitmproxy | 4477 | 31 | 1 | 0 |
+| brew | 20048 | 19 | 5 | 0 |
+| raylib | 4751 | 2 | 1 | 0 |
+| datasette / fish-shell / fzf / shellcheck | 1977–3129 | **0** | 0 | 0 |
+
+Two facts that follow from this, and that any entity-side eval has to respect:
+
+- **`part_of` is the only relationship edge the harvest emits.** Every other edge in
+  the fleet is `distinct_from`, which the deterministic collision detector writes —
+  not a harvested relationship. There are zero `owned_by`, `belongs_to`, and
+  `depends_on` edges anywhere. Anything keyed on those is untestable on this data.
+- **`raylib`, the canonical benchmark, has 2 entities.** It is the wrong suite for
+  entity work regardless of its status elsewhere. Use `kb` and `kestra`; treat the
+  rest as regression-only.
+
+Check it directly (works on a local base, or remotely — see the SSH fallback):
+
+```bash
+pnpm run eval:entities -- --all-suites
+```
+
+## Snapshot credentials — what actually works
+
+`FLY_API_TOKEN` reads bucket keys out of the Fly GraphQL `addOn.environment` field.
+**Fly blanks that field for deploy/org tokens** (`fm2_…`), so `snapshot-pull` fails
+with "found kb-demo-storage but the environment came back empty — this token cannot
+read extension secrets." This is a token *class* problem; it is not fixable by
+widening scopes on that token, and retrying with another deploy token gives the same
+result. `fly secrets list -a kb-demo` shows only digests, never values.
+
+Working options, in order of preference:
+
+1. **Explicit bucket creds** — `BUCKET_NAME` + `AWS_ACCESS_KEY_ID` +
+   `AWS_SECRET_ACCESS_KEY`. Tigris pairs a `tid_…` access key id with a `tsec_…`
+   secret; the id alone is not a credential. Bucket is `kb-demo-storage`, endpoint
+   `https://t3.storage.dev` (note: `snapshot-pull`'s `DEFAULT_ENDPOINT` is still the
+   legacy `fly.storage.tigris.dev`, so set `AWS_ENDPOINT_URL_S3` explicitly).
+2. **SSH fallback — pull the adopted indexes off the serving machine.** `kb-demo`
+   already holds every base at `/data/sessions/<base>/.kb-index.sqlite`, so no bucket
+   access is needed at all:
+
+   ```bash
+   export PATH="$HOME/.fly/bin:$PATH"
+   flyctl ssh console -a kb-demo -C "sh -c 'ls -lh /data/sessions/*/.kb-index.sqlite'"
+   mkdir -p ~/.kb/sessions/eval-raylib && cd ~/.kb/sessions/eval-raylib
+   flyctl ssh sftp get /data/sessions/raylib/.kb-index.sqlite -a kb-demo
+   ```
+
+   The machine has `node` but no `sqlite3`, so inspect remotely with
+   `flyctl ssh console -a kb-demo -C "node -e \"...DatabaseSync...\""` — far cheaper
+   than downloading ~800 MB to discover a base is empty.
+
+   These are the *serving* copies, not the sha256-verified snapshot objects. Good
+   enough for scoring runs; say so in the artifact rather than implying
+   `--from-snapshot` provenance.
+
 ## Evaluation target
 
 **Primary external benchmark:** suite `raylib` (repo resolves from suite YAML `repo_url`; optional `--repo` override).

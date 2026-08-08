@@ -42,7 +42,7 @@ tests:
   - ../../../../tests/core/yield.test.ts
 description: Behavioral specification for KB Core
 tags: [spec, kb]
-timestamp: 2026-08-02T23:10:00Z
+timestamp: 2026-08-06T04:10:00Z
 ---
 
 ### Intro
@@ -94,6 +94,7 @@ See companion doc for full vocabulary where applicable.
 | FR-27 | Behaviors in telemetry.test.ts |
 | FR-28 | Behaviors in code-fact-writer.test.ts |
 | FR-29 | [NEW] Classify LLM transport failures into a structured error (provider, HTTP status, kind, retryability) so callers can distinguish a spent credit balance, a rate limit, bad credentials, and a timeout from one another — and from a model that simply returned nothing |
+| FR-30 | [NEW] Cap Gemini thinking: every Gemini 2.5/3 generateContent call sends an explicit `thinkingConfig.thinkingBudget` (never omit it). Resolve budget as per-call `thinkingBudget` → `GEMINI_THINKING_BUDGET` env → mode default (1024 when reasoning/`includeThoughts`, else 0). Parse `usageMetadata` so `outputTokens` = `candidatesTokenCount` + `thoughtsTokenCount` (thinking billed as output) |
 
 ### QA Test Cases
 
@@ -292,6 +293,10 @@ See companion doc for full vocabulary where applicable.
 | TC-191 | FR-29 | an already-structured error | returned unchanged, not re-wrapped |
 | TC-192 | FR-29 | a thrown provider error converted to a failure record | stage, kind, provider preserved; description names the operator action |
 | TC-193 | FR-8 | every DocType in the taxonomy | questionnaire loads with non-empty keys and questions |
+| TC-194 | FR-30 | resolveGeminiThinkingBudget with call arg / GEMINI_THINKING_BUDGET / unset | prefers call arg, then env, then mode default (1024 when includeThoughts, else 0) |
+| TC-195 | FR-30 | plain Gemini call with no thinkingBudget and unset GEMINI_THINKING_BUDGET | generationConfig.thinkingConfig.thinkingBudget is 0 (config never omitted) |
+| TC-196 | FR-30 | Gemini usageMetadata with candidatesTokenCount + thoughtsTokenCount (generateContent) | usage.outputTokens equals sum (thinking folded into output) |
+| TC-197 | FR-30 | Gemini stream usageMetadata with thoughtsTokenCount (and totalTokenCount fallback) | stream usage.outputTokens includes thinking; total−prompt used when thoughts field absent |
 
 ### Related docs
 

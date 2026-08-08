@@ -128,7 +128,6 @@ KB ships harnesses for measuring answer quality and exploration cost. Two entry 
 ```bash
 pnpm run eval -- --suite raylib --auto-score   # canonical external benchmark
 pnpm run eval -- --suite kb --auto-score       # dogfood smoke on this repo
-pnpm run moel -- --suite moel-kb               # exploration-cost benchmark
 ```
 
 `eval-run.mjs` orchestrates init/scan via `scripts/eval-index.ts` (offline `@kb/core`), then remote queries against a live `kb-server`. Multi-suite batches share **one multi-base `kb-server`** (children attach with `--base` / `X-KB-Base`); `--per-suite-server` restores one process per suite. Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.

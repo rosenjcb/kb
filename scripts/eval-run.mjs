@@ -8,7 +8,8 @@
  *   - If the session already has docs → reuse it (query-only run).
  *   - If the session is empty / missing → run core init via scripts/eval-index.ts first.
  *   - Every harvest runs core scan (eval-index), then query — unless `--skip-scan`.
- *   - `--base NAME` overrides the formula. `--force-init` deletes the base then re-inits from scratch.
+ *   - `--base NAME` overrides the formula. `--force-init` wipes `~/.kb/sessions/<base>` on disk
+ *     then re-inits from scratch (offline — does not call `kb base delete`).
  * Ends with an automatic trends summary across prior runs for the same suite.
  *
  * Usage (kb repo root, after `pnpm run build`):
@@ -102,6 +103,32 @@ import {
   runControlPass,
 } from './control-core.mjs'
 
+/** Placeholder default base for the shared multi-base parent (not an eval-{suite}). */
+export const SHARED_EVAL_BATCH_BASE = '_eval-batch'
+
+/**
+ * Session directory for a named base under KB_HOME (default ~/.kb).
+ * @param {string} base
+ * @param {string} [kbHome]
+ */
+export function evalSessionDir(base, kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')) {
+  return path.join(kbHome, 'sessions', base)
+}
+
+/**
+ * Wipe an eval base on disk (offline). Used by `--force-init` instead of `kb base delete`,
+ * which needs a live server and races with offline `eval-index`.
+ * @param {string} base
+ * @param {{ kbHome?: string }} [opts]
+ * @returns {boolean} true if a directory was removed
+ */
+export function wipeEvalBaseSession(base, { kbHome } = {}) {
+  const dir = evalSessionDir(base, kbHome)
+  if (!fs.existsSync(dir)) return false
+  fs.rmSync(dir, { recursive: true, force: true })
+  return true
+}
+
 export {
   sanitizeSlugPart,
   repoLeafNameFromUrl,
@@ -149,7 +176,7 @@ const THIS_SCRIPT = fileURLToPath(import.meta.url)
 
 /**
  * Canonical 10-suite benchmark pack from EVALUATION.md (excludes `generic` which needs
- * `--repo`, and `moel-kb` which is the separate MOEL harness).
+ * `--repo`).
  */
 export const DEFAULT_BENCHMARK_SUITES = [
   'raylib',
@@ -413,19 +440,29 @@ export async function runSuiteBatch(args, opts = {}) {
   let shared = null
   let childEnv = opts.env ?? process.env
   if (sharedServer) {
-    const defaultBase = derivedBase(suites[0])
+    // Wipe suite sessions before the parent opens SQLite — `kb base delete` needs a
+    // live server and would race offline eval-index if the parent held eval-{suite}.
+    if (args.forceInit) {
+      for (const id of suites) {
+        const base = derivedBase(id)
+        if (wipeEvalBaseSession(base)) {
+          console.error(`[eval] force-init: wiped ${evalSessionDir(base)} before shared server start`)
+        }
+      }
+    }
     const batchStamp = dayjs().format('YYYY-MM-DD-HHmm')
     const batchLogDir = path.join(evaluationsRoot(), `_batch-${batchStamp}`)
     fs.mkdirSync(batchLogDir, { recursive: true })
     console.error(
-      `[eval] starting shared multi-base kb-server (default base=${defaultBase}); children attach via X-KB-Base`
+      `[eval] starting shared multi-base kb-server (default base=${SHARED_EVAL_BATCH_BASE}); children attach via X-KB-Base`
     )
     shared = await startEvalServer({
-      base: defaultBase,
+      base: SHARED_EVAL_BATCH_BASE,
       apiKey: defaultEvalApiKey(),
       logPath: path.join(batchLogDir, 'eval-server.log'),
     })
-    await shared.waitReady()
+    // Listening only — the placeholder has no suite index. Children call waitReady
+    // on their own eval-{suite} after offline init/scan.
     childEnv = {
       ...(opts.env ?? process.env),
       KB_EVAL_SERVER_URL: shared.url,
@@ -599,7 +636,7 @@ Session lifecycle (automatic):
 Suite / questions:
   --suite VENDOR          Load eval/suites/VENDOR.yaml  (also accepts comma lists)
   --suites a,b,c          Multiple suites (alias of repeated/comma --suite). Parallel by default.
-  --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic, moel-kb)
+  --all-suites            Run the 10 EVALUATION.md benchmark suites (excludes generic)
   --parallel [N]          Multi-suite concurrency (default: all suites at once; env KB_EVAL_PARALLEL)
                           Default: one shared multi-base kb-server; each child selects
                           eval-{suite} via --base / X-KB-Base.
@@ -610,7 +647,7 @@ Suite / questions:
 
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId}; single-suite only)
-  --force-init            Delete the base, then kb init from scratch (not just scan)
+  --force-init            Wipe ~/.kb/sessions/<base> on disk, then eval-index init from scratch
   --skip-scan             Skip eval-index scan (reuse existing index; still queries). Forced scan
                           after a fresh init.
   --from-snapshot         Adopt the snapshot Fly.io is serving for this suite (download + verify +
@@ -837,22 +874,12 @@ async function timedAsync(label, timings, fn) {
 }
 
 /**
- * Returns true if the KB session already has an index (or at least one document).
- * Prefer the on-disk index check so a shared multi-base server holding SQLite open
- * does not race with an offline `docs list` before the query-phase server attach.
+ * Returns true if the KB session already has an on-disk index.
+ * Do not probe via `kb docs list` here — that needs a live server and, under the
+ * offline init/scan env, only produces noisy connection errors to localhost:38117.
  */
-function sessionHasDocs(targetCwd, base) {
-  const kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')
-  if (fs.existsSync(path.join(kbHome, 'sessions', base, '.kb-index.sqlite'))) {
-    return true
-  }
-  try {
-    const out = kb(targetCwd, `docs list --base ${base}`)
-    const m = /Count:\s*(\d+)/.exec(out)
-    return m ? Number(m[1]) > 0 : false
-  } catch {
-    return false
-  }
+function sessionHasDocs(_targetCwd, base) {
+  return fs.existsSync(path.join(evalSessionDir(base), '.kb-index.sqlite'))
 }
 
 /** Decide whether eval should wipe/init vs reuse an existing session. */
@@ -1251,10 +1278,11 @@ async function main() {
 
     try {
       if (wipeBase) {
-        console.error(`[eval] kb base delete ${base} --force`)
-        timed('base_delete', runTiming, () =>
-          kb(targetCwd, `base delete ${base} --force`, { stdio: 'inherit' })
-        )
+        const sessionDir = evalSessionDir(base)
+        console.error(`[eval] force-init: wiping session ${sessionDir}`)
+        timed('base_delete', runTiming, () => {
+          wipeEvalBaseSession(base)
+        })
       }
 
       if (needsInit) {
@@ -1657,7 +1685,7 @@ async function main() {
         'pnpm run build (kb repo)',
         `kb-server start --base ${base} (eval orchestration)`,
         repoUrl ? `git clone (snapshot) → ${targetCwd}` : null,
-        wipeBase ? `kb base delete ${base} --force (cwd: ${targetCwd})` : null,
+        wipeBase ? `rm -rf ~/.kb/sessions/${base} (force-init offline wipe)` : null,
         evalMode === 'all'
           ? `kb init --base ${base} --git "${targetCwd}" --non-interactive --debug (cwd: ${targetCwd})`
           : null,

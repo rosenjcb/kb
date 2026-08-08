@@ -23,7 +23,7 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 
 | Suite | Repo | Notes |
 |-------|------|-------|
-| `kb` | this repo | self-check / dogfood |
+| `kb` | this repo | self-check / dogfood (includes ambiguity / false-landing probes) |
 | `raylib` | raysan5/raylib | primary external C benchmark |
 | `fzf` | junegunn/fzf | Go fuzzy finder |
 | `kestra` | kestra-io/kestra | Java/UI orchestration (default-10; NiFi-shaped workflows) |
@@ -36,6 +36,22 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 | `nifi` | apache/nifi | optional — large; not in `--all-suites` |
 | `duckdb` | duckdb/duckdb | optional — large; not in `--all-suites` |
 | `generic` | `--repo` required | repo-neutral questions |
+
+## Alias / inquiry-lane landing probes
+
+Every suite appends two follow-ups that target the **entity-resolved** retrieval
+category (not general product FAQ):
+
+1. **Prose landing** — spaced/hyphenated wording for a harvested CamelCase module
+   (or the best landable cli/library/repo name on thin registries), often
+   “What is the role of the …”, so common-word aliases cannot steal the hit.
+2. **Long vague + no length gate** — once stage-0 resolves that entity, ontology
+   fan-out should still run; the short-question LLM expander is only the
+   unresolved fallback.
+
+Thin registries (`fzf`, `raylib`, `shellcheck`) mostly land the product name
+itself — they still exercise fan-out-without-length-gate, not CamelCase alias
+splitting. Re-run with a fresh index when measuring this category.
 
 ## Headline grade (ΔS)
 

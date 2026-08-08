@@ -1,5 +1,36 @@
 # @kb/core
 
+## 1.6.4
+
+### Patch Changes
+
+- Centralize Gemini thinkingBudget defaults (GEMINI_THINKING_BUDGET / 1024 when reasoning) so generateContent never omits thinkingConfig on Gemini 3. Count thoughtsTokenCount toward usage.outputTokens so telemetry/eval out= matches billed output.
+- Split CamelCase in entity alias normalization so prose like "tree-sitter indexer" lands on harvest names, and surface scope/lanes on retrieval detail.
+- Expand queries into ontology-typed inquiry lanes, and stop ordinary English words from resolving to entities.
+
+  When stage-0 scope inference resolves a question to an entity, the query pipeline now
+  derives deterministic sub-queries from the entity graph — its owner, its parent domain,
+  its dependencies, and mechanism probes conditioned on entity kind — and hands them to
+  the deep retrieval fan-out. Lanes need no LLM call and are not gated on query length,
+  so long vague questions get targeted probes too. Questions that resolve to no entity
+  keep the existing LLM expander unchanged. Lanes follow the registry's existing
+  `KB_ENTITY_SCOPE` switch.
+
+  Two ontology gaps that capped what lane targeting could do:
+
+  - Aliases spelled like ordinary English words captured ordinary prose. "The _role_ of
+    the tree-sitter indexer" resolved to a Prisma `Role` enum, landed `very_confident`,
+    hard-pruned retrieval to the database schema, and short-circuited the LLM classifier
+    that would have caught it. A single-token alias that is a common English word is now
+    distinctive only when the query echoes its capitalization (`Role`, not `role`); an
+    all-lowercase common word never is. Non-distinctive matches are still reported — they
+    just stop deciding scope, and the question reaches the classifier instead.
+  - `owned_by` was emitted nowhere, and no harvester could produce a `team` entity for it
+    to point at, so the ownership lane was unreachable. Backstage `spec.owner` is now
+    harvested as an `owned_by` edge with the named owner minted as a `team`, accepting the
+    full entity-ref form (`group:default/name`). A service catalog is the only place a
+    repository declares accountability; nothing else infers ownership.
+
 ## 1.6.3
 
 ### Patch Changes

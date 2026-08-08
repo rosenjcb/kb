@@ -73,8 +73,8 @@
   },
   {
     "taskId": "kb-indexer-001",
-    "candidate": "kb parses TypeScript files using ts-morph to extract class and function information, and stores this as facts.",
-    "reference": "kb uses two indexers: TsMorphIndexer for TypeScript/JavaScript code-graph relationships (imports, exports), and TreeSitterIndexer for 17+ languages (Go, Python, Rust, etc.) using WASM grammars to extract IMPORTS_FILE and EXPORTS_SYMBOL facts.",
+    "candidate": "kb parses TypeScript files using a separate TypeScript-compiler indexer to extract class and function information, and stores this as facts.",
+    "reference": "kb indexes TypeScript/JavaScript through TreeSitterIndexer (web-tree-sitter WASM) like other wired languages — there is no separate TypeScript-compiler indexer on the live ingest path. TreeSitterIndexer writes import_code facts (imports, exports, structural edges) across the LANG_CONFIGS language set.",
     "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
     "humanScores": {
       "judge-gpt4o": 2.0,
@@ -85,8 +85,8 @@
   },
   {
     "taskId": "kb-indexer-002",
-    "candidate": "kb uses TsMorphIndexer (code-graph-indexer.ts) for TypeScript/JS relationships and TreeSitterIndexer (tree-sitter-indexer.ts) with WASM grammars for 17 languages. TreeSitterIndexer writes IMPORTS_FILE and EXPORTS_SYMBOL facts. The goExportConvention flag handles Go's uppercase-initial export convention.",
-    "reference": "kb uses two indexers: TsMorphIndexer for TypeScript/JavaScript code-graph relationships (imports, exports), and TreeSitterIndexer for 17+ languages (Go, Python, Rust, etc.) using WASM grammars to extract IMPORTS_FILE and EXPORTS_SYMBOL facts.",
+    "candidate": "kb uses TreeSitterIndexer (tree-sitter-indexer.ts) with WASM grammars for every wired language, including TypeScript and JavaScript. It writes import_code facts for imports, exports, and structural edges. The goExportConvention flag handles Go's uppercase-initial export convention.",
+    "reference": "kb indexes TypeScript/JavaScript through TreeSitterIndexer (web-tree-sitter WASM) like other wired languages — there is no separate TypeScript-compiler indexer on the live ingest path. TreeSitterIndexer writes import_code facts (imports, exports, structural edges) across the LANG_CONFIGS language set.",
     "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
     "humanScores": {
       "judge-gpt4o": 4.7,
@@ -229,7 +229,7 @@
   },
   {
     "taskId": "kb-dataflow-002",
-    "candidate": "kb init runs 5 named cycles: read-inputs (file discovery), code-index (TsMorphIndexer + TreeSitterIndexer write source_kind='import_code' facts), document-facts (markdown segmentation writes source_kind='doc' facts), import-docs, write. SQLite tables: facts, fact_edges, facts_fts, fact_embeddings, documents, fact_categories, code_file_state.",
+    "candidate": "kb init runs 5 named cycles: read-inputs (file discovery), code-index (TreeSitterIndexer writes source_kind='import_code' facts), document-facts (markdown segmentation writes source_kind='doc' facts), import-docs, write. SQLite tables: facts, fact_edges, facts_fts, fact_embeddings, documents, fact_categories, code_file_state.",
     "reference": "kb init runs 5 checkpointed cycles: read-inputs, code-index, document-facts, import-docs, write. SQLite tables written: facts, fact_edges, facts_fts (FTS5), fact_embeddings, documents, fact_categories, code_file_state.",
     "rubric": ["correctness", "usefulness", "specificity", "evidence_handling"],
     "humanScores": {

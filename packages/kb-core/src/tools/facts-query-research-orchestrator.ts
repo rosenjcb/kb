@@ -228,15 +228,16 @@ export class FactsQueryResearchOrchestrator {
         checkpoints.push({
           stage: `pass_${iter + 1}`,
           status: 'stop',
-          nextAction: 'frontier_exhausted',
+          nextAction:
+            sufficiency.decision === 'answerable' ? 'return_answerable' : 'frontier_exhausted',
           evidence: exhaustedEvidence,
         })
+        // Enough facts with nowhere left to walk is still an answerable plateau —
+        // not a weak-evidence exhaustion.
         stopReason =
           sufficiency.decision === 'answerable'
-            ? 'frontier_exhausted'
-            : scoredFacts.size > 0
-              ? 'weak_evidence_after_exhaustion'
-              : 'weak_evidence_after_exhaustion'
+            ? 'answerable_plateau'
+            : 'weak_evidence_after_exhaustion'
         break
       }
 
@@ -333,10 +334,11 @@ export class FactsQueryResearchOrchestrator {
         const frontierExhausted = !canExpandGraph && plateauCount >= 1
         if (frontierExhausted) {
           status = 'stop'
-          nextAction = 'frontier_exhausted'
+          nextAction =
+            sufficiency.decision === 'answerable' ? 'return_answerable' : 'frontier_exhausted'
           stopReason =
             sufficiency.decision === 'answerable'
-              ? 'frontier_exhausted'
+              ? 'answerable_plateau'
               : 'weak_evidence_after_exhaustion'
         } else if (plateauCount >= 3) {
           status = 'stop'
