@@ -1,4 +1,5 @@
 import type { EvidenceLabel } from '../core/evidence-label'
+import { isOpenableSourcePath } from '../core/fact-uri'
 import {
   DEFAULT_FACT_EVIDENCE,
   type FactEvidenceKind,
@@ -1816,11 +1817,17 @@ export class SqliteKbIndexer {
   upsertDocumentWithContent(input: DocumentUpsertInput): void {
     const now = dayjs().toISOString()
     if (input.isOriginal) {
+      // Prefer a real workspace path for source_ref. Using the document id
+      // (sanitizeId of the path → `src-core-init-md`) made citations unopenable.
+      // Title is often the path for filesystem-imported companions.
+      const titleAsPath = input.title?.trim().replace(/\\/g, '/')
+      const sourceRef =
+        titleAsPath && isOpenableSourcePath(titleAsPath) ? titleAsPath : input.id
       this.upsertOriginalDoc({
         id: input.id,
         title: input.title,
         markdown: input.content,
-        sourceRef: input.id,
+        sourceRef,
         tags: input.tags ?? [],
         docType: input.docType ?? null,
       })

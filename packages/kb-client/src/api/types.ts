@@ -48,6 +48,13 @@ export interface QuerySource {
   snippet?: string
 }
 
+/** Lean agent citation (default `/v1/query` and MCP `kb_query` without verbose). */
+export interface LeanSource {
+  path: string
+  /** Folded fact subjects when known; omitted when empty. */
+  symbols?: string[]
+}
+
 /** One underlying fact folded under its file. */
 export interface GroupedSourceFact {
   id?: string
@@ -79,12 +86,18 @@ export interface LLMFailureResponse {
 export interface QueryResponse {
   status: string
   answer?: string | null
-  /** Source-centric citations (ranked files, symbols folded). Prefer over `results`. */
-  sources?: GroupedSource[]
-  /** Raw per-fact rows. Kept for verbose/programmatic use. */
-  results: QuerySource[]
+  /**
+   * Citations: lean `{path, symbols?}` by default; full `GroupedSource[]` when
+   * the request set `verbose: true`.
+   */
+  sources?: LeanSource[] | GroupedSource[]
+  /** Raw per-fact rows. Present only when `verbose: true`. */
+  results?: QuerySource[]
+  /** Retrieval telemetry. Present only when `verbose: true`. */
   retrieval?: { method?: string; detail?: string; degraded?: LLMFailureResponse[] }
   evidence?: EvidenceLabel
+  /** Lean-payload caveats (verify / ungrounded / outage). */
+  notes?: string[]
   /** Set when synthesis was attempted and failed; `answer` is null and this says why. */
   answerError?: LLMFailureResponse
   traceFile?: string

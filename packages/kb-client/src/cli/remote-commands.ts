@@ -153,11 +153,13 @@ export async function runRemoteIntentCommand(
   const printer = createPrinter(out, mode)
   printer.startSpinner('querying kb server...')
   try {
+    // REST defaults to the lean agent payload; humans still want results +
+    // retrieval footer, so always request the full evidence dump over the wire.
     const result = await client.query({
       q: question,
       synthesize: !parsed.allFacts,
       discovery,
-      verbose,
+      verbose: true,
       trace,
     })
     printer.stopSpinner()
@@ -167,11 +169,12 @@ export async function runRemoteIntentCommand(
     // Sources without an answer used to print as a bare metadata footer and exit 0, which
     // reads as "nothing worth saying". Say what actually happened, and fail the command so
     // scripts and CI notice an outage instead of treating it as an empty result.
+    const results = result.results ?? []
     if (!result.answer?.trim() && result.answerError) {
       out.error(`❌ ${describeQueryFailure(result.answerError)}`)
-      if (result.results.length > 0) {
+      if (results.length > 0) {
         out.error(
-          `   Retrieval succeeded — ${result.results.length} source(s) found. Re-run the query to synthesize an answer.`
+          `   Retrieval succeeded — ${results.length} source(s) found. Re-run the query to synthesize an answer.`
         )
       }
       return 1
@@ -181,10 +184,10 @@ export async function runRemoteIntentCommand(
         `⚠️  ${degradation.stage} was skipped after an LLM error (${degradation.kind}); results are ranked less precisely than usual.`
       )
     }
-    if (result.results.length > 0) {
+    if (results.length > 0) {
       printer.separator()
-      printer.metadata('Sources', String(result.results.length))
-      for (const source of result.results.slice(0, 8)) {
+      printer.metadata('Sources', String(results.length))
+      for (const source of results.slice(0, 8)) {
         const label = source.title || source.filePath || source.id || 'source'
         printer.metadata('Source', label)
       }

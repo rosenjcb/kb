@@ -12,6 +12,7 @@
  * cloned on (`url#branch`, `--branch`, or the remote's default HEAD).
  */
 
+import { isOpenableSourcePath } from '@kb/core/core/fact-uri.js'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
 import type { BaseRepo } from '@kb/core/storage/base-repos.js'
 import type { QuerySource } from './serialize.js'
@@ -72,7 +73,13 @@ function cleanPath(filePath: string | undefined): string | null {
   if (p.startsWith('fact://')) return p
   if (/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith('fact://')) return null
   p = p.replace(/#.*$/, '')
-  return p || null
+  if (!p) return null
+  // Strip a leading repo slug for the openable check (`rosenjcb-kb/src-core-…`
+  // is still a slug basename). Keep the full string as the return value.
+  const segments = p.split('/')
+  const withoutSlug = segments.length > 1 ? segments.slice(1).join('/') : p
+  if (!isOpenableSourcePath(withoutSlug) && !isOpenableSourcePath(p)) return null
+  return p
 }
 
 /**

@@ -11,6 +11,9 @@
   non-openable refs (`fact://` ids, `ast:edge:<sha>`/`ast:import:<sha>` hashes that
   surfaced as bogus `edge:<sha>` filenames), unifies blob-link construction, and
   lets a bare-`HEAD` clone still produce Slack links.
+- Lean agent query payload by default: `{path, symbols?}` sources without fact dumps;
+  full evidence only when `verbose: true` (REST + MCP).
+- Stop citing document-id slugs and synthetic integration refs as openable source paths.
 
 ## 1.6.4
 

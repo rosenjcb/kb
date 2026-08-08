@@ -131,7 +131,7 @@ function factItem(sourcePath: string, symbol?: string, id = sourcePath) {
 }
 
 describe('serializeMcpQueryResult', () => {
-  it('[TC-112] trims to answer + citations and drops retrieval metadata and the fact dump', () => {
+  it('[TC-112] trims to answer + lean citations and drops retrieval metadata and the fact dump', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       evidence: 'strong' as const,
@@ -144,9 +144,14 @@ describe('serializeMcpQueryResult', () => {
     expect(body).toEqual({
       status: 'accepted',
       answer: 'Login flows through `login.ts` and `session.ts`.',
-      sources: ['src/auth/login.ts (loginHandler)', 'src/auth/session.ts'],
+      sources: [
+        { path: 'src/auth/login.ts', symbols: ['loginHandler'] },
+        { path: 'src/auth/session.ts' },
+      ],
       evidence: 'strong',
     })
+    expect(body).not.toHaveProperty('results')
+    expect(body).not.toHaveProperty('retrieval')
   })
 
   it('[TC-113] adds a verify note when evidence is below the floor', () => {
@@ -179,8 +184,8 @@ describe('serializeMcpQueryResult', () => {
       data: { answer: 'See `a.ts`.', results, retrieval: {} },
     })
     expect(body.sources).toHaveLength(5)
-    expect(body.sources[0]).toBe('src/a.ts (alpha, beta)')
-    expect(body.sources).not.toContain('src/f.ts')
+    expect(body.sources[0]).toEqual({ path: 'src/a.ts', symbols: ['alpha', 'beta'] })
+    expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
   })
 
   it('[TC-115] flags answer file references that match no cited source path', () => {

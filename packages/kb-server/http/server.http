@@ -59,14 +59,16 @@ Content-Type: application/json
     const b = response.parsedBody;
     assert.strictEqual(typeof b.status, 'string');
     assert.ok('answer' in b);
-    assert.ok(Array.isArray(b.results));
-    assert.ok(b.retrieval && typeof b.retrieval === 'object');
+    assert.ok(Array.isArray(b.sources));
+    // Lean default: no fact dump or retrieval telemetry.
+    assert.strictEqual(b.results, undefined);
+    assert.strictEqual(b.retrieval, undefined);
   });
 }}
 
 ###
 
-# Query — facts only (no LLM synthesis), with retrieval controls
+# Query — facts only (no LLM synthesis), full evidence via verbose
 # @name queryFactsOnly
 POST {{baseUrl}}/v1/query
 Authorization: Bearer {{apiKey}}
@@ -75,6 +77,7 @@ Content-Type: application/json
 {
   "q": "rate limiting",
   "synthesize": false,
+  "verbose": true,
   "limit": 10,
   "discovery": "deep"
 }

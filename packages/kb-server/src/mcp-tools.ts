@@ -3,13 +3,13 @@
  *
  * `kb_query` is an **agent-to-agent** channel: a coding agent asks the knowledge
  * base a direct question in plain terms and gets a direct, synthesized answer
- * plus compact source citations (`path (symbol)`) — not a raw fact dump to grep
- * through. The MCP surface is exactly three tools — `kb_query`, its feedback
+ * plus lean source citations (`{ path, symbols? }`) — not a raw fact dump to
+ * grep through. The MCP surface is exactly three tools — `kb_query`, its feedback
  * channel `submit_feedback`, and `get_feedback_requests` — and kb_query always
  * synthesizes; the citations are physical file paths so the caller knows
- * exactly what to open. The full evidence payload (per-fact snippets, tags,
- * retrieval metadata) is opt-in via `verbose: true`. (A fact-id drill-down tool
- * may return later.)
+ * exactly what to open. The full evidence payload (GroupedSource facts/ids/
+ * snippets, raw `results`, `retrieval.detail`) is opt-in via `verbose: true`.
+ * (A fact-id drill-down tool may return later.)
  *
  * `submit_feedback` closes the loop: agents report whether a kb_query answer
  * held up once they acted on it, one `requestId` per call (no batching — a call
@@ -57,10 +57,10 @@ const KB_QUERY_TOOL = {
   name: 'kb_query',
   description:
     'Ask the knowledge base a direct question in plain language, agent-to-agent. ' +
-    'Returns a synthesized answer plus compact source citations ("path (symbol)") ' +
-    'to open and verify — ask for exactly what you want instead of retrieving raw ' +
-    'facts to sift through. Set verbose:true only when you need the full evidence ' +
-    'payload (per-fact snippets, tags, retrieval metadata).',
+    'Default response is lean: answer + openable sources ({path, symbols?}) + ' +
+    'evidence/notes — no fact dumps, ids, snippets, factCount, or retrieval.detail. ' +
+    'Open the cited paths to verify. Set verbose:true only when debugging retrieval ' +
+    '(full GroupedSource facts, raw results, retrieval telemetry).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -68,8 +68,9 @@ const KB_QUERY_TOOL = {
       verbose: {
         type: 'boolean',
         description:
-          'Return the full evidence payload (every fact with snippet/tags plus retrieval ' +
-          'metadata) instead of the default trimmed answer + sources. Default false.',
+          'Return the full evidence payload (GroupedSource with facts/ids/snippets, ' +
+          'raw results, retrieval.method/detail) instead of the default lean answer + ' +
+          'sources. Default false.',
       },
     },
     required: ['q'],

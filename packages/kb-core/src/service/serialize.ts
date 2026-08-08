@@ -114,17 +114,24 @@ export function toSource(item: ReadDocumentsResultItem): QuerySource {
   }
 }
 
-// ─── MCP lean response (kb_query default) ─────────────────────────────────────
+// ─── Lean agent response (kb_query / REST default) ────────────────────────────
 //
 // Agent consumers want the synthesized answer plus a handful of openable
 // citations — not the fact dump or retrieval telemetry. The full payload stays
-// available behind the tool's `verbose` flag (`serializeQueryResult`).
+// available behind `verbose: true` (`serializeQueryResult`).
+
+/** Lean citation: openable path + optional folded symbols. No facts/ids/snippets. */
+export interface McpSource {
+  path: string
+  /** Distinct fact subjects when known; omitted when empty. */
+  symbols?: string[]
+}
 
 export interface McpQueryResponseBody {
   status: IntentResult['status']
   answer: string | null
-  /** Compact citations, `path (symbol, …)` — open these files to verify the answer. */
-  sources: string[]
+  /** Lean file citations — open these to verify the answer. */
+  sources: McpSource[]
   evidence?: EvidenceLabel
   /** Actionable caveats: verify hints, answer/evidence path mismatches. */
   notes?: string[]
@@ -228,23 +235,25 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
 }
 
 /**
- * Compact `path (symbol, …)` citations for the lean MCP payload. Reuses the
+ * Lean `{ path, symbols? }` citations for the agent payload. Reuses the
  * canonical {@link groupSources} (drops non-openable refs, dedupes by file, folds
- * symbols) at MCP's tighter caps. No repo registry here, so no hrefs — the MCP
- * payload is repo-relative paths, which is what agents open/grep.
+ * symbols) at MCP's tighter caps. Omits label/gitRepo/href/facts/factCount — those
+ * are verbose-only. Empty `symbols` is omitted to save tokens.
  */
-function formatMcpSources(results: QuerySource[]): string[] {
+function formatMcpSources(results: QuerySource[]): McpSource[] {
   return groupSources(results, {
     maxSources: MCP_MAX_SOURCES,
     maxSymbolsPerSource: MCP_MAX_SYMBOLS_PER_SOURCE,
-  }).map(g => (g.symbols.length > 0 ? `${g.path} (${g.symbols.join(', ')})` : g.path))
+  }).map(g =>
+    g.symbols.length > 0 ? { path: g.path, symbols: g.symbols } : { path: g.path }
+  )
 }
 
 /**
- * Map an `IntentResult` to the trimmed MCP `kb_query` payload: answer + top
- * cited files, no fact dump, no retrieval metadata. Adds `notes` when the
- * answer needs verification (evidence below `MCP_VERIFY_EVIDENCE_FLOOR`) or when
- * the prose names files absent from the evidence.
+ * Map an `IntentResult` to the trimmed agent payload (MCP `kb_query` default and
+ * REST without `verbose`): answer + top cited files, no fact dump, no retrieval
+ * metadata. Adds `notes` when the answer needs verification (evidence below
+ * `MCP_VERIFY_EVIDENCE_FLOOR`) or when the prose names files absent from the evidence.
  */
 export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseBody {
   const full = serializeQueryResult(result)

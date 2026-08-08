@@ -19,7 +19,17 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
       recommendedAction: 'read_facts',
       data: {
         answer: `answer for: ${params.query}`,
-        results: [{ metadata: { id: 'd1', title: 'Doc' }, content: 'evidence line' }],
+        results: [
+          {
+            metadata: {
+              id: 'd1',
+              title: 'Doc',
+              sourcePath: 'src/docs/auth.md',
+              symbol: 'AuthDoc',
+            },
+            content: 'evidence line',
+          },
+        ],
         retrieval: { method: 'hybrid', detail: 'deep' },
       },
     }),
@@ -109,8 +119,29 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.answer).toBe('answer for: how does auth work')
-    expect(body.results[0]).toMatchObject({ id: 'd1', title: 'Doc' })
+    // Default is the lean agent payload — no fact dump or retrieval telemetry.
+    expect(body.sources).toEqual([{ path: 'src/docs/auth.md', symbols: ['AuthDoc'] }])
+    expect(body.results).toBeUndefined()
+    expect(body.retrieval).toBeUndefined()
+  })
+
+  it('[TC-163] REST verbose:true returns the full evidence dump', async () => {
+    server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
+    const base = await listen(server)
+    const res = await fetch(`${base}/v1/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+      body: JSON.stringify({ q: 'how does auth work', verbose: true }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.results[0]).toMatchObject({ id: 'd1', title: 'Doc', filePath: 'src/docs/auth.md' })
     expect(body.retrieval).toEqual({ method: 'hybrid', detail: 'deep' })
+    expect(body.sources[0]).toMatchObject({
+      path: 'src/docs/auth.md',
+      symbols: ['AuthDoc'],
+      factCount: 1,
+    })
   })
 
                 it('[TC-7] forwards trace: true to the service query pipeline', async () => {
