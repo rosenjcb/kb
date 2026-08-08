@@ -244,138 +244,48 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-7] Given facts-first schema, then backfillDocumentLanes is a no-op', async () => {
+  it('[TC-7] Given a document upsert, then getDocument returns the body', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
-    const filePath = path.join(baseDir, 'incident-runbook.md')
-    const content = [
-      '# Incident Runbook',
-      '',
-      'Created: 2026-04-12T00:00:00.000Z',
-      'Type: runbook',
-      'Tags: ops, incident',
-      '',
-      'Restart service and verify health checks.',
-    ].join('\n')
+    const { id } = indexer.upsertDocument({
+      relPath: 'incident-runbook.md',
+      title: 'Incident Runbook',
+      body: 'Restart service and verify health checks.',
+    })
 
-    indexer.upsertDocumentFromContent(filePath, content)
-
-    const updated = indexer.backfillDocumentLanes()
-    expect(updated).toBe(0)
+    const row = indexer.getDocument(id)
+    expect(row?.title).toBe('Incident Runbook')
+    expect(row?.body).toContain('Restart service')
 
     indexer.close()
   })
 
-  it('[TC-8] Given fact concepts, indexer can search and expand through concept graph', async () => {
-    const baseDir = await createTempDir()
-    const dbPath = path.join(baseDir, 'kb-index.sqlite')
-    const indexer = new SqliteKbIndexer({ dbPath })
-
-    const factA = indexer.upsertFact({
-      factText: 'raylib uses opengl rendering backend',
-      sourceKind: 'submit',
-      sourceRef: 'test',
-      confidence: 0.9,
-    })
-    indexer.upsertFact({
-      factText: 'opengl backend supports shader pipelines',
-      sourceKind: 'submit',
-      sourceRef: 'test',
-      confidence: 0.9,
-    })
-
-    const concepts = indexer.listFactConcepts([factA.id])
-    expect(concepts.some(c => c.concept_id === 'opengl')).toBe(true)
-
-    const conceptMatches = indexer.searchFactsByConcepts(['opengl'], 10)
-    expect(conceptMatches.length).toBeGreaterThan(0)
-
-    const frontierMatches = indexer.searchFactsByConceptFrontier(['raylib', 'opengl'], 10)
-    expect(frontierMatches.length).toBeGreaterThan(0)
-    expect(frontierMatches[0]?.id).toBe(factA.id)
-
-    const semanticScores = indexer.semanticFactScores('raylib opengl rendering', [
-      factA.id,
-      frontierMatches[1]?.id ?? '',
-    ])
-    expect(semanticScores.has(factA.id)).toBe(true)
-
-    const neighbors = indexer.expandNeighborConcepts(['raylib'], 2, 20)
-    expect(neighbors).toContain('opengl')
-
-    indexer.close()
-  })
-
-  it('[TC-9] Given fact_edges, getFactNeighbors walks both directions and skips seen ids', async () => {
-    const baseDir = await createTempDir()
-    const dbPath = path.join(baseDir, 'kb-index.sqlite')
-    const indexer = new SqliteKbIndexer({ dbPath })
-
-    const symbolFact = indexer.upsertFact({
-      factText: 'CodeGraphWalker is a Class exported from src/tools/code-graph-walker.ts',
-      triplet: {
-        subject: 'CodeGraphWalker',
-        predicate: 'exported_from',
-        object: 'src/tools/code-graph-walker.ts',
-      },
-      sourceKind: 'import_code',
-      sourceRef: 'code:src/tools/code-graph-walker.ts@CodeGraphWalker',
-      evidence: 'strong' as const,
-    })
-    const importFact = indexer.upsertFact({
-      factText: 'src/cli/init-cli.ts imports src/tools/code-graph-walker.ts',
-      triplet: {
-        subject: 'src/cli/init-cli.ts',
-        predicate: 'imports',
-        object: 'src/tools/code-graph-walker.ts',
-      },
-      sourceKind: 'import_code',
-      sourceRef: 'code:src/cli/init-cli.ts@import',
-      evidence: 'strong' as const,
-    })
-
-    expect(indexer.relinkCodeImportEdges()).toBeGreaterThan(0)
-
-    const seen = new Set<string>([importFact.id])
-    const neighbors = indexer.getFactNeighbors([importFact.id], seen)
-    expect(neighbors.map(row => row.id)).toEqual([symbolFact.id])
-
-    const reverseNeighbors = indexer.getFactNeighbors([symbolFact.id], new Set())
-    expect(reverseNeighbors.map(row => row.id)).toEqual(
-      expect.arrayContaining([importFact.id])
-    )
-
-    indexer.close()
-  })
-
-  it('[TC-10] Given natural language query, searchFacts should match token-level evidence', async () => {
+  it('[TC-8] Given natural language query, searchFacts should match token-level evidence', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
 
     indexer.upsertFact({
       factText: 'raylib is a C library focused on simple game development workflows',
-      sourceKind: 'submit',
+      sourceKind: 'import_doc',
       sourceRef: 'test',
-      confidence: 0.9,
     })
     indexer.upsertFact({
       factText: 'raylib provides rendering, input handling, and audio capabilities',
-      sourceKind: 'submit',
+      sourceKind: 'import_doc',
       sourceRef: 'test',
-      confidence: 0.9,
     })
 
     const rows = indexer.searchFacts('What is raylib for, and what are its main capabilities?', 5)
     expect(rows.length).toBeGreaterThan(0)
-    expect(rows.some(row => row.fact_text.includes('raylib'))).toBe(true)
+    expect(rows.some(row => row.text.includes('raylib'))).toBe(true)
 
     indexer.close()
   })
 
-  it('[TC-11] Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
+  it('[TC-9] Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -416,7 +326,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-12] Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
+  it('[TC-10] Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })

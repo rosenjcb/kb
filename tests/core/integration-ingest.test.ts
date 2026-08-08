@@ -28,10 +28,14 @@ function liveFacts(): FactRow[] {
 }
 
 describe('ingestIntegrationSignals', () => {
-  it('[TC-74] emits package_name_of, depends_on, and is_repo facts from package.json', async () => {
+  it('[TC-69] emits package_name_of, depends_on, and is_repo facts from package.json', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
-      JSON.stringify({ name: '@acme/auth', dependencies: { '@acme/shared': '1.0.0' }, devDependencies: { vitest: '3' } })
+      JSON.stringify({
+        name: '@acme/auth',
+        dependencies: { '@acme/shared': '1.0.0' },
+        devDependencies: { vitest: '3' },
+      })
     )
 
     const result = await ingestIntegrationSignals({
@@ -45,37 +49,40 @@ describe('ingestIntegrationSignals', () => {
     expect(result.dependencyFacts).toBe(2)
 
     const facts = liveFacts()
-    const byPredicate = (p: string) => facts.filter(f => f.predicate === p)
-    expect(byPredicate('package_name_of')[0]).toMatchObject({ subject: '@acme/auth', object: 'acme-auth' })
-    expect(byPredicate('depends_on').map(f => f.object).sort()).toEqual(['@acme/shared', 'vitest'])
-    expect(byPredicate('is_repo')[0]?.object).toBe('https://github.com/acme/auth')
-    // Every fact is tagged with the repo slug.
+    const texts = facts.map(f => f.text)
+    expect(texts.some(t => t.includes('Package @acme/auth') && t.includes('acme-auth'))).toBe(true)
+    expect(texts.some(t => t.includes('depends on package @acme/shared'))).toBe(true)
+    expect(texts.some(t => t.includes('depends on package vitest'))).toBe(true)
+    expect(texts.some(t => t.includes('https://github.com/acme/auth'))).toBe(true)
     expect(facts.every(f => f.git_repo === 'acme-auth')).toBe(true)
   })
 
-  it('[TC-75] extracts service hosts from .env URL values', async () => {
+  it('[TC-70] extracts service hosts from .env URL values', async () => {
     await writeFile(
       path.join(scanDir, '.env'),
-      ['# comment', 'PORT=3000', 'AUTH_URL=https://auth-svc.internal/login', 'LOCAL=http://localhost:5432'].join('\n')
+      ['# comment', 'PORT=3000', 'AUTH_URL=https://auth-svc.internal/login', 'LOCAL=http://localhost:5432'].join(
+        '\n'
+      )
     )
 
     const result = await ingestIntegrationSignals({ baseDir, scanDir, gitRepo: 'web' })
 
-    expect(result.serviceRefFacts).toBe(1) // localhost is filtered out
-    const refs = liveFacts().filter(f => f.predicate === 'references_service')
-    expect(refs[0]?.object).toBe('auth-svc.internal')
+    expect(result.serviceRefFacts).toBe(1)
+    expect(
+      liveFacts().some(f => f.text.includes('references service auth-svc.internal'))
+    ).toBe(true)
   })
 
-  it('[TC-76] re-ingest clears stale integration facts (removed dependency disappears)', async () => {
+  it('[TC-71] re-ingest clears stale integration facts (removed dependency disappears)', async () => {
     await writeFile(path.join(scanDir, 'package.json'), JSON.stringify({ name: 'svc', dependencies: { old: '1' } }))
     await ingestIntegrationSignals({ baseDir, scanDir, gitRepo: 'svc' })
-    expect(liveFacts().some(f => f.predicate === 'depends_on' && f.object === 'old')).toBe(true)
+    expect(liveFacts().some(f => f.text.includes('depends on package old'))).toBe(true)
 
     await writeFile(path.join(scanDir, 'package.json'), JSON.stringify({ name: 'svc', dependencies: { fresh: '1' } }))
     await ingestIntegrationSignals({ baseDir, scanDir, gitRepo: 'svc' })
 
-    const deps = liveFacts().filter(f => f.predicate === 'depends_on').map(f => f.object)
-    expect(deps).toContain('fresh')
-    expect(deps).not.toContain('old')
+    const texts = liveFacts().map(f => f.text)
+    expect(texts.some(t => t.includes('depends on package fresh'))).toBe(true)
+    expect(texts.some(t => t.includes('depends on package old'))).toBe(false)
   })
 })

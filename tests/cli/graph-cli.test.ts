@@ -72,8 +72,8 @@ describe('runGraphCommand — output routing', () => {
 
     await runGraphCommand(tempDir, {}, out)
 
-    expect(lines.some(l => l.includes('Knowledge graph summary'))).toBe(true)
-    expect(lines.some(l => l.includes('Triplets:'))).toBe(true)
+    expect(lines.some(l => l.includes('Doc ↔ code map summary'))).toBe(true)
+    expect(lines.some(l => l.includes('Documents:'))).toBe(true)
     expect(lines.some(l => l.includes('Symbols:'))).toBe(true)
     expect(consoleSpy).not.toHaveBeenCalled()
   })
@@ -106,15 +106,15 @@ describe('runGraphCommand — output routing', () => {
 
     await runGraphCommand(tempDir, { pathFrom: 'A', pathTo: 'B' }, out)
 
-    expect(lines.some(l => l.includes('No path found'))).toBe(true)
+    expect(lines.some(l => l.includes('Path search over a structural code graph is not available'))).toBe(true)
   })
 
-  it('[TC-192] reports entity-not-found through the out parameter', async () => {
+  it('[TC-192] reports no matching documents/symbols through the out parameter', async () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
     await runGraphCommand(tempDir, { entity: 'Unknown' }, out)
 
-    expect(lines.some(l => l.includes('not found') || l.includes('No facts found'))).toBe(true)
+    expect(lines.some(l => l.includes('No documents or symbols matching'))).toBe(true)
   })
 })

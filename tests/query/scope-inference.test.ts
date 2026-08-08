@@ -204,7 +204,7 @@ describe('inferQueryScope — LLM classifier tier', () => {
 })
 
 describe('runEntityIndexCycle — end to end', () => {
-  it('harvests, links facts by exact subject/object match, and detects collisions', async () => {
+  it('harvests, links units by exact alias match, and detects collisions', async () => {
     const scanDir = await mkdtemp(path.join(os.tmpdir(), 'kb-entity-cycle-scan-'))
     try {
       await mkdir(scanDir, { recursive: true })
@@ -219,12 +219,12 @@ describe('runEntityIndexCycle — end to end', () => {
 
       const indexer = new SqliteKbIndexer({ dbPath })
       try {
-        indexer.upsertFact({
-          factText: 'The internal service validates payment auth tokens.',
-          triplet: { subject: 'internal', predicate: 'validates', object: 'tokens' },
-          sourceKind: 'import_doc',
-          sourceRef: 'payments-core/README.md#s1',
+        indexer.upsertCodeSymbol({
           gitRepo: 'payments-core',
+          relPath: 'src/internal.ts',
+          name: 'internal',
+          kind: 'function',
+          sourceText: 'export function internal() { return 1 }',
         })
       } finally {
         indexer.close()

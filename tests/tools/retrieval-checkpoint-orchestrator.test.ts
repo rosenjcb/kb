@@ -3,14 +3,14 @@ import { buildCheckpointRecord } from '@kb/core/tools/retrieval-checkpoint-orche
 import { assessResultCount } from '@kb/core/core/evidence-label.js'
 
 describe('retrieval-checkpoint-orchestrator', () => {
-  it('[TC-86] Given result counts, then assessResultCount returns deterministic labels', () => {
+  it('[TC-62] Given result counts, then assessResultCount returns deterministic labels', () => {
     expect(assessResultCount(0)).toBe('none')
     expect(assessResultCount(1)).toBe('weak')
     expect(assessResultCount(2)).toBe('moderate')
     expect(assessResultCount(3)).toBe('strong')
   })
 
-  it('[TC-87] Given a strong hybrid hit, then next action is return', () => {
+  it('[TC-63] Given a strong hybrid hit, then next action is return', () => {
     const record = buildCheckpointRecord({
       stage: 'hybrid_primary',
       totalResults: 3,
@@ -23,7 +23,7 @@ describe('retrieval-checkpoint-orchestrator', () => {
     expect(record.nextAction).toBe('return')
   })
 
-  it('[TC-88] Given a lexical stage with no evidence, then next action advances to rewrite retry', () => {
+  it('[TC-64] Given a lexical stage with no evidence, then next action advances to rewrite retry', () => {
     const record = buildCheckpointRecord({
       stage: 'lexical_recovery',
       totalResults: 0,
@@ -35,7 +35,7 @@ describe('retrieval-checkpoint-orchestrator', () => {
     expect(record.nextAction).toBe('advance')
   })
 
-  it('[TC-89] Given rewrite retry stage, then next action always returns', () => {
+  it('[TC-65] Given rewrite retry stage, then next action always returns', () => {
     const record = buildCheckpointRecord({
       stage: 'query_rewrite_retry',
       totalResults: 0,

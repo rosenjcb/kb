@@ -305,7 +305,7 @@ See companion doc for full vocabulary where applicable.
 | TC-189 | FR-18 | routes --format dot output through the out parameter | pass |
 | TC-190 | FR-18 | routes --format json output through the out parameter | pass |
 | TC-191 | FR-18 | reports no-path-found through the out parameter | pass |
-| TC-192 | FR-18 | reports entity-not-found through the out parameter | pass |
+| TC-192 | FR-18 | reports no matching documents/symbols through the out parameter | pass |
 | TC-193 | FR-19 | returns null diff when no manifest exists yet (first run) | pass |
 | TC-194 | FR-19 | round-trips manifest writes and detects changed/new files only | pass |
 | TC-195 | FR-19 | treats unchanged contents as a no-op diff | pass |

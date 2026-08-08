@@ -26,14 +26,14 @@ async function seedFact(baseDir: string, factText: string): Promise<void> {
 async function listFactTexts(baseDir: string): Promise<string[]> {
   const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
   try {
-    return indexer.listFactsForQuery(20).map(row => row.fact_text)
+    return indexer.listFactsForQuery(20).map(row => row.text)
   } finally {
     indexer.close()
   }
 }
 
 describe('invalidateFactTool', () => {
-  it('[TC-64] replaces a canonical fact with replacement', async () => {
+  it('[TC-40] replaces a canonical fact with replacement', async () => {
     const baseDir = await createTempBase()
     await seedFact(baseDir, 'We deploy to GCP')
 
@@ -52,7 +52,7 @@ describe('invalidateFactTool', () => {
     expect(result.changes[0]?.factId).toBeDefined()
   })
 
-  it('[TC-65] removes a canonical fact if no replacement', async () => {
+  it('[TC-41] removes a canonical fact if no replacement', async () => {
     const baseDir = await createTempBase()
     await seedFact(baseDir, 'We deploy to GCP')
 
@@ -68,7 +68,7 @@ describe('invalidateFactTool', () => {
     expect(updated).not.toContain('We deploy to GCP')
   })
 
-  it('[TC-66] does not inspect or edit arbitrary repo files beside the KB store', async () => {
+  it('[TC-42] does not inspect or edit arbitrary repo files beside the KB store', async () => {
     const baseDir = await createTempBase()
     const unrelatedFile = path.join(baseDir, 'example.ts')
     await fs.writeFile(unrelatedFile, 'const text = "We deploy to GCP"\n', 'utf8')
@@ -87,7 +87,7 @@ describe('invalidateFactTool', () => {
     expect(unrelatedContent).toContain('We deploy to GCP')
   })
 
-  it('[TC-67] matches stored fact when oldFact has extra whitespace (same normalization as upsert)', async () => {
+  it('[TC-43] matches stored fact when oldFact has extra whitespace (same normalization as upsert)', async () => {
     const baseDir = await createTempBase()
     await seedFact(baseDir, 'We deploy to GCP')
 
@@ -106,7 +106,7 @@ describe('invalidateFactTool', () => {
     expect(result.changes).toHaveLength(1)
   })
 
-  it('[TC-68] returns error if no matches exist in KB documents', async () => {
+  it('[TC-44] returns error if no matches exist in KB documents', async () => {
     const baseDir = await createTempBase()
     await seedFact(baseDir, 'We deploy to AWS')
 

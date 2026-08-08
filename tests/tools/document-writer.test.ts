@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { type DocumentWriter, executeWriteDocumentTool } from '@kb/core/tools/document-writer.js'
 
 describe('executeWriteDocumentTool', () => {
-  it('[TC-69] Given valid write_document input, then should return the writer result', async () => {
+  it('[TC-45] Given valid write_document input, then should return the writer result', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(async input => ({
         id: input.documentId ?? 'doc-1',
@@ -22,7 +22,7 @@ describe('executeWriteDocumentTool', () => {
     expect(writer.writeDocument).toHaveBeenCalledTimes(1)
   })
 
-  it('[TC-70] Given non-object tool input, then should throw validation error', async () => {
+  it('[TC-46] Given non-object tool input, then should throw validation error', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(),
     }
@@ -32,7 +32,7 @@ describe('executeWriteDocumentTool', () => {
     )
   })
 
-  it('[TC-71] Given empty title input, then should throw validation error', async () => {
+  it('[TC-47] Given empty title input, then should throw validation error', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(),
     }
@@ -42,7 +42,7 @@ describe('executeWriteDocumentTool', () => {
     ).rejects.toThrow('write_document: title cannot be empty')
   })
 
-  it('[TC-72] Given non-string tags entries, then should throw validation error', async () => {
+  it('[TC-48] Given non-string tags entries, then should throw validation error', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(),
     }
@@ -52,7 +52,7 @@ describe('executeWriteDocumentTool', () => {
     ).rejects.toThrow('write_document: tags must be an array of strings when provided')
   })
 
-  it('[TC-73] Given valid document type, then should pass parsed type to writer', async () => {
+  it('[TC-49] Given valid document type, then should pass parsed type to writer', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(async input => ({
         id: input.documentId ?? 'doc-type',
@@ -68,7 +68,7 @@ describe('executeWriteDocumentTool', () => {
     expect(writer.writeDocument).toHaveBeenCalledWith(expect.objectContaining({ type: 'howto' }))
   })
 
-  it('[TC-74] Given invalid document type, then should throw validation error', async () => {
+  it('[TC-50] Given invalid document type, then should throw validation error', async () => {
     const writer: DocumentWriter = {
       writeDocument: vi.fn(),
     }

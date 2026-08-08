@@ -25,27 +25,16 @@ afterEach(async () => {
 })
 
 function makeIndexer() {
-  const factIndexer = new SqliteKbIndexer({ dbPath })
-  const indexer = new TreeSitterIndexer(dbPath, factIndexer)
-  return { indexer, factIndexer }
+  const symbolIndexer = new SqliteKbIndexer({ dbPath })
+  const indexer = new TreeSitterIndexer(dbPath, symbolIndexer)
+  return { indexer, factIndexer: symbolIndexer, symbolIndexer }
 }
 
-function queryFacts(db: Database, name: string, filePath: string): boolean {
+function querySymbol(db: Database, name: string, filePath: string): boolean {
   return (
-    db
-      .prepare(
-        "SELECT 1 FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND subject=? AND object=? AND tombstoned_at IS NULL"
-      )
-      .get(name, filePath) !== undefined
+    db.prepare('SELECT 1 FROM code_symbols WHERE name = ? AND rel_path = ?').get(name, filePath) !==
+    undefined
   )
-}
-
-function queryImportFacts(db: Database) {
-  return db
-    .prepare(
-      "SELECT subject, object FROM facts WHERE source_kind='import_code' AND predicate='imports' AND tombstoned_at IS NULL"
-    )
-    .all() as Array<{ subject: string; object: string }>
 }
 
 function queryCodeFileState(db: Database, filePath: string): boolean {
@@ -70,10 +59,10 @@ describe('TreeSitterIndexer — Go', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'Start', 'server.go')).toBe(true)
-    expect(queryFacts(db, 'Server', 'server.go')).toBe(true)
+    expect(querySymbol(db, 'Start', 'server.go')).toBe(true)
+    expect(querySymbol(db, 'Server', 'server.go')).toBe(true)
     // unexported should not be indexed
-    expect(queryFacts(db, 'internalHelper', 'server.go')).toBe(false)
+    expect(querySymbol(db, 'internalHelper', 'server.go')).toBe(false)
     db.close()
   })
 
@@ -92,8 +81,8 @@ describe('TreeSitterIndexer — Go', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'ServeHTTP', 'handler.go')).toBe(true)
-    expect(queryFacts(db, 'internalReset', 'handler.go')).toBe(false)
+    expect(querySymbol(db, 'ServeHTTP', 'handler.go')).toBe(true)
+    expect(querySymbol(db, 'internalReset', 'handler.go')).toBe(false)
     db.close()
   })
 
@@ -110,23 +99,22 @@ describe('TreeSitterIndexer — Go', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'MaxRetries', 'config.go')).toBe(true)
-    expect(queryFacts(db, 'DefaultAddr', 'config.go')).toBe(true)
-    expect(queryFacts(db, 'internalTimeout', 'config.go')).toBe(false)
-    expect(queryFacts(db, 'privateKey', 'config.go')).toBe(false)
+    expect(querySymbol(db, 'MaxRetries', 'config.go')).toBe(true)
+    expect(querySymbol(db, 'DefaultAddr', 'config.go')).toBe(true)
+    expect(querySymbol(db, 'internalTimeout', 'config.go')).toBe(false)
+    expect(querySymbol(db, 'privateKey', 'config.go')).toBe(false)
     db.close()
   })
 
-  it('[TC-4] emits IMPORTS_FILE edges for resolvable local Go imports', async () => {
+  it('[TC-4] does not emit structural import edges (v1 indexes symbols only)', async () => {
     await mkdir(join(repoRoot, 'pkg'), { recursive: true })
     await writeFile(join(repoRoot, 'pkg', 'util.go'), 'package pkg\nfunc Helper() {}')
-    await writeFile(join(repoRoot, 'main.go'), 'package main\nimport "./pkg"\nfunc main() {}')
+    await writeFile(join(repoRoot, 'main.go'), 'package main\nimport \"./pkg\"\nfunc main() {}')
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
     indexer.close()
     factIndexer.close()
-
     expect(stats.files).toBeGreaterThanOrEqual(1)
     expect(stats.errors).toBe(0)
   })
@@ -185,9 +173,9 @@ describe('TreeSitterIndexer — TypeScript', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'MyService', 'src/utils.ts')).toBe(true)
-    expect(queryFacts(db, 'compute', 'src/utils.ts')).toBe(true)
-    expect(queryFacts(db, 'VERSION', 'src/utils.ts')).toBe(true)
+    expect(querySymbol(db, 'MyService', 'src/utils.ts')).toBe(true)
+    expect(querySymbol(db, 'compute', 'src/utils.ts')).toBe(true)
+    expect(querySymbol(db, 'VERSION', 'src/utils.ts')).toBe(true)
     db.close()
   })
 
@@ -204,16 +192,16 @@ describe('TreeSitterIndexer — TypeScript', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'Config', 'src/types.ts')).toBe(true)
-    expect(queryFacts(db, 'Handler', 'src/types.ts')).toBe(true)
+    expect(querySymbol(db, 'Config', 'src/types.ts')).toBe(true)
+    expect(querySymbol(db, 'Handler', 'src/types.ts')).toBe(true)
     db.close()
   })
 
-  it('[TC-9] emits IMPORTS_FILE facts for local TS imports', async () => {
+  it('[TC-9] does not emit IMPORTS_FILE facts (v1 indexes symbols only)', async () => {
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(
       join(repoRoot, 'src', 'b.ts'),
-      "import { x } from './a'\nexport const y = x + 1"
+      "import { x } from './a'\nexport const y = x + 1\n"
     )
 
     const { indexer, factIndexer } = makeIndexer()
@@ -221,19 +209,15 @@ describe('TreeSitterIndexer — TypeScript', () => {
     indexer.close()
     factIndexer.close()
 
-    expect(stats.edges).toBeGreaterThanOrEqual(1)
-
+    expect(stats.symbols).toBeGreaterThanOrEqual(2)
     const db = new Database(dbPath)
     runMigrations(db)
-    const importFacts = queryImportFacts(db)
+    expect(querySymbol(db, 'x', 'src/a.ts')).toBe(true)
+    expect(querySymbol(db, 'y', 'src/b.ts')).toBe(true)
     db.close()
-
-    expect(importFacts.length).toBeGreaterThanOrEqual(1)
-    const edge = importFacts.find(e => e.subject === 'src/b.ts')
-    expect(edge?.object).toBe('src/a.ts')
   })
 
-  it('[TC-28] emits EXTENDS and IMPLEMENTS structural facts for classes', async () => {
+  it('[TC-17] does not emit EXTENDS/IMPLEMENTS structural facts (v1 symbols only)', async () => {
     await writeFile(
       join(repoRoot, 'src', 'animal.ts'),
       `export interface Animal { speak(): string }
@@ -247,26 +231,17 @@ export class Dog extends Pet implements Animal, Comparable { speak() { return 'w
 
     const db = new Database(dbPath)
     runMigrations(db)
-    const structural = db
-      .prepare(
-        "SELECT subject, predicate, object FROM facts WHERE source_kind='import_code' AND predicate IN ('extends','implements') AND tombstoned_at IS NULL"
-      )
-      .all() as Array<{ subject: string; predicate: string; object: string }>
+    expect(querySymbol(db, 'Dog', 'src/animal.ts')).toBe(true)
+    expect(querySymbol(db, 'Animal', 'src/animal.ts')).toBe(true)
     db.close()
-
-    expect(structural).toContainEqual({ subject: 'Dog', predicate: 'extends', object: 'Pet' })
-    expect(structural).toContainEqual({ subject: 'Dog', predicate: 'implements', object: 'Animal' })
-    expect(structural).toContainEqual({
-      subject: 'Dog',
-      predicate: 'implements',
-      object: 'Comparable',
-    })
   })
 
-  it('[TC-29] includes the value in fact text for exported constants with literal initializers', async () => {
+  it('[TC-18] stores source_text for exported constants with literal initializers', async () => {
     await writeFile(
       join(repoRoot, 'src', 'limits.ts'),
-      `export const MAX_RETRIES = 5\nexport const VERSION = 'v1.2.3'\nexport const DEBUG = false`
+      `export const MAX_RETRIES = 5
+export const VERSION = 'v1.2.3'
+export const DEBUG = false`
     )
 
     const { indexer, factIndexer } = makeIndexer()
@@ -276,21 +251,15 @@ export class Dog extends Pet implements Animal, Comparable { speak() { return 'w
 
     const db = new Database(dbPath)
     runMigrations(db)
-    const texts = (
-      db
-        .prepare(
-          "SELECT fact_text FROM facts WHERE source_kind='import_code' AND predicate='exported_from' AND tombstoned_at IS NULL"
-        )
-        .all() as Array<{ fact_text: string }>
-    ).map(f => f.fact_text)
+    const texts = db
+      .prepare('SELECT name, source_text FROM code_symbols WHERE rel_path = ?')
+      .all('src/limits.ts') as Array<{ name: string; source_text: string | null }>
     db.close()
-
-    expect(texts.some(t => t.includes('MAX_RETRIES') && t.includes('5'))).toBe(true)
-    expect(texts.some(t => t.includes('VERSION') && t.includes('v1.2.3'))).toBe(true)
-    expect(texts.some(t => t.includes('DEBUG') && t.includes('false'))).toBe(true)
+    expect(texts.some(r => r.name === 'MAX_RETRIES' && (r.source_text ?? '').includes('5'))).toBe(true)
+    expect(texts.some(r => r.name === 'VERSION' && (r.source_text ?? '').includes('v1.2.3'))).toBe(true)
   })
 
-  it('[TC-30] extracts top-level non-exported constants with literal values, skipping complex ones', async () => {
+  it('[TC-19] indexes top-level non-exported constants with literal values as symbols', async () => {
     await writeFile(
       join(repoRoot, 'src', 'config.ts'),
       `const ABSOLUTE_MAX_ITERATIONS = 512
@@ -307,25 +276,15 @@ export function getMax() { return ABSOLUTE_MAX_ITERATIONS }`
 
     const db = new Database(dbPath)
     runMigrations(db)
-    const definedTexts = (
-      db
-        .prepare(
-          "SELECT fact_text FROM facts WHERE source_kind='import_code' AND predicate='defined_in' AND tombstoned_at IS NULL"
-        )
-        .all() as Array<{ fact_text: string }>
-    ).map(f => f.fact_text)
+    expect(querySymbol(db, 'ABSOLUTE_MAX_ITERATIONS', 'src/config.ts')).toBe(true)
+    expect(querySymbol(db, 'THRESHOLD', 'src/config.ts')).toBe(true)
+    expect(querySymbol(db, 'getMax', 'src/config.ts')).toBe(true)
+    expect(querySymbol(db, 'STOP_WORDS', 'src/config.ts')).toBe(false)
+    expect(querySymbol(db, 'MUTABLE', 'src/config.ts')).toBe(false)
     db.close()
-
-    expect(definedTexts.some(t => t.includes('ABSOLUTE_MAX_ITERATIONS') && t.includes('512'))).toBe(
-      true
-    )
-    expect(definedTexts.some(t => t.includes('THRESHOLD') && t.includes('0.58'))).toBe(true)
-    // Complex initializers (Set) and `let` declarations are not captured as constants.
-    expect(definedTexts.every(t => !t.includes('STOP_WORDS'))).toBe(true)
-    expect(definedTexts.every(t => !t.includes('MUTABLE'))).toBe(true)
   })
 
-  it('[TC-31] indexes only the files passed as candidateFiles', async () => {
+  it('[TC-20] indexes only the files passed as candidateFiles', async () => {
     await mkdir(join(repoRoot, 'packages', 'catalog', 'src'), { recursive: true })
     await writeFile(join(repoRoot, 'src', 'index.ts'), 'export const ROOT = true')
     await writeFile(
@@ -346,15 +305,15 @@ export function getMax() { return ABSOLUTE_MAX_ITERATIONS }`
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'ROOT', 'src/index.ts')).toBe(true)
-    expect(queryFacts(db, 'Widget', 'packages/catalog/src/widget.ts')).toBe(true)
-    expect(queryFacts(db, 'SKIP', 'src/ignored.ts')).toBe(false)
+    expect(querySymbol(db, 'ROOT', 'src/index.ts')).toBe(true)
+    expect(querySymbol(db, 'Widget', 'packages/catalog/src/widget.ts')).toBe(true)
+    expect(querySymbol(db, 'SKIP', 'src/ignored.ts')).toBe(false)
     db.close()
   })
 })
 
 describe('CodeGraphStore (tree-sitter backed)', () => {
-  it('[TC-32] finds exported symbols matching query terms via FTS', async () => {
+  it('[TC-21] finds exported symbols matching query terms via FTS', async () => {
     await writeFile(join(repoRoot, 'src', 'engine.ts'), 'export class Engine { run() {} }')
     await writeFile(
       join(repoRoot, 'src', 'car.ts'),
@@ -373,7 +332,7 @@ describe('CodeGraphStore (tree-sitter backed)', () => {
     expect(results.map(n => n.name)).toContain('Engine')
   })
 
-  it('[TC-33] getSummary returns symbol and file counts', async () => {
+  it('[TC-22] getSummary returns symbol and file counts', async () => {
     await writeFile(join(repoRoot, 'src', 'a.ts'), 'export const x = 1')
     await writeFile(join(repoRoot, 'src', 'b.ts'), "import { x } from './a'\nexport const y = 2")
 
@@ -407,7 +366,7 @@ describe('TreeSitterIndexer — TSX', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'Button', 'src/Button.tsx')).toBe(true)
+    expect(querySymbol(db, 'Button', 'src/Button.tsx')).toBe(true)
     db.close()
   })
 })
@@ -430,8 +389,8 @@ describe('TreeSitterIndexer — Python', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'public_fn', 'app.py')).toBe(true)
-    expect(queryFacts(db, 'Widget', 'app.py')).toBe(true)
+    expect(querySymbol(db, 'public_fn', 'app.py')).toBe(true)
+    expect(querySymbol(db, 'Widget', 'app.py')).toBe(true)
     db.close()
   })
 })
@@ -449,14 +408,14 @@ describe('TreeSitterIndexer — Rust', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'run', 'lib.rs')).toBe(true)
-    expect(queryFacts(db, 'Engine', 'lib.rs')).toBe(true)
+    expect(querySymbol(db, 'run', 'lib.rs')).toBe(true)
+    expect(querySymbol(db, 'Engine', 'lib.rs')).toBe(true)
     db.close()
   })
 })
 
 describe('TreeSitterIndexer — Haskell', () => {
-  it('[TC-16] indexes functions, data types, classes, and type aliases', async () => {
+  it('[smoke] indexes functions, data types, classes, and type aliases', async () => {
     await writeFile(
       join(repoRoot, 'Ast.hs'),
       `module Ast (Token(..), parse) where
@@ -479,11 +438,11 @@ parse s = TWord s
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'parse', 'Ast.hs')).toBe(true)
-    expect(queryFacts(db, 'Token', 'Ast.hs')).toBe(true)
-    expect(queryFacts(db, 'Id', 'Ast.hs')).toBe(true)
-    expect(queryFacts(db, 'Name', 'Ast.hs')).toBe(true)
-    expect(queryFacts(db, 'Analyzer', 'Ast.hs')).toBe(true)
+    expect(querySymbol(db, 'parse', 'Ast.hs')).toBe(true)
+    expect(querySymbol(db, 'Token', 'Ast.hs')).toBe(true)
+    expect(querySymbol(db, 'Id', 'Ast.hs')).toBe(true)
+    expect(querySymbol(db, 'Name', 'Ast.hs')).toBe(true)
+    expect(querySymbol(db, 'Analyzer', 'Ast.hs')).toBe(true)
     db.close()
   })
 })
@@ -501,7 +460,7 @@ describe('TreeSitterIndexer — HTML', () => {
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryFacts(db, 'root', 'index.html')).toBe(true)
+    expect(querySymbol(db, 'root', 'index.html')).toBe(true)
     db.close()
   })
 })

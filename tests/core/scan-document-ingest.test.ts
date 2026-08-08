@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,11 +7,9 @@ import { retrieveHybrid } from '@kb/core/tools/hybrid-retriever.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 let tmpDir: string
-let baseDir: string
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), 'kb-doc-index-'))
-  baseDir = tmpDir
 })
 
 afterEach(async () => {
@@ -19,8 +17,8 @@ afterEach(async () => {
 })
 
 describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
-  it('indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS', async () => {
-    const indexer = new SqliteKbIndexer({ dbPath: join(baseDir, '.kb-index.sqlite') })
+  it('[TC-186] indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS', async () => {
+    const indexer = new SqliteKbIndexer({ dbPath: join(tmpDir, '.kb-index.sqlite') })
     indexer.upsertCodeSymbol({
       gitRepo: 'demo',
       relPath: 'src/auth.ts',
@@ -31,7 +29,7 @@ describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
     indexer.close()
 
     const result = await indexSourceMarkdownFilesAsDocuments({
-      baseDir,
+      baseDir: tmpDir,
       gitRepo: 'demo',
       matchAstNodes: true,
       files: {
@@ -43,7 +41,7 @@ describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
     expect(result.documentsUpserted).toBe(1)
     expect(result.linksWritten).toBeGreaterThanOrEqual(1)
 
-    const reader = new SqliteKbIndexer({ dbPath: join(baseDir, '.kb-index.sqlite') })
+    const reader = new SqliteKbIndexer({ dbPath: join(tmpDir, '.kb-index.sqlite') })
     const docs = reader.listDocumentsByRepo('demo')
     expect(docs).toHaveLength(1)
     expect(docs[0]?.title).toMatch(/AuthService/i)

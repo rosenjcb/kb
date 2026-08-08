@@ -76,7 +76,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(12)
   })
 
-  it('[TC-3] Given query_truth without explicit limit, then defaults to 500 facts', async () => {
+  it('[TC-3] Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -87,7 +87,7 @@ describe('DefaultIntentRouter', () => {
       },
     })
 
-    expect(decision.operationInput.limit).toBe(500)
+    expect(decision.operationInput.limit).toBe(40)
   })
 
   it('[TC-4] Given a collector passed to the constructor, then query_truth operationInput carries it through', async () => {

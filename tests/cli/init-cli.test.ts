@@ -208,16 +208,16 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.apply).toBe(true)
   })
 
-  it('[TC-200] Given --stop-after document-facts, then parsing returns document-facts', () => {
-    const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'document-facts'])
+  it('[TC-200] Given --stop-after document-index, then parsing returns document-index', () => {
+    const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'document-index'])
 
-    expect(parsed.stopAfter).toBe('document-facts')
+    expect(parsed.stopAfter).toBe('document-index')
   })
 
   it('[TC-201] Given init cycle validation, then exactly 5 phases are defined without pass-graph', () => {
-    const expectedCycles: Array<'read-inputs' | 'document-facts' | 'import-docs' | 'write' | 'ast-facts'> = [
+    const expectedCycles: Array<'read-inputs' | 'document-index' | 'import-docs' | 'write' | 'ast-facts'> = [
       'read-inputs',
-      'document-facts',
+      'document-index',
       'import-docs',
       'write',
       'ast-facts',
@@ -680,7 +680,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
-  it('[TC-212] Given no markdown sources under the working directory, then document-facts stage is skipped', async () => {
+  it('[TC-212] Given no markdown sources under the working directory, then document-index stage is skipped', async () => {
     const cwd = await createTempProject({
       'package.json': '{"name":"test"}',
     })
@@ -693,7 +693,7 @@ describe('init-cli interview checkpoints', () => {
     const result = await runKbInit({
       base: 'no-markdown-sources',
       nonInteractive: true,
-      stopAfter: 'document-facts',
+      stopAfter: 'document-index',
       cwd,
       gitTargets: [{ url: repo, branch: 'main' }],
       progressSink(line) {
@@ -706,7 +706,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('document-facts') &&
+          line.includes('document-index') &&
           line.includes('skipped (no markdown documents found)')
       )
     ).toBe(true)
@@ -738,7 +738,7 @@ describe('init-cli interview checkpoints', () => {
       true
     )
     expect(
-      lines.some(line => line.includes('document-facts') && line.includes('README.md'))
+      lines.some(line => line.includes('document-index') && line.includes('README.md'))
     ).toBe(true)
     expect(lines.some(line => line.includes('import-docs') && line.includes('README.md'))).toBe(
       true
@@ -825,7 +825,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('document-facts') &&
+          line.includes('document-index') &&
           line.includes('0 changed, 2 unchanged file(s)')
       )
     ).toBe(true)
@@ -874,7 +874,7 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('document-facts') &&
+          line.includes('document-index') &&
           line.includes('1 changed, 1 unchanged') &&
           line.includes('docs/README.md')
       )

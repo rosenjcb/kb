@@ -15,11 +15,11 @@ function minimalSession(answers: DocGenerateSession['answers'], prompt = 'p'): D
 }
 
 describe('squeezeKbDocumentTitle', () => {
-  it('[TC-30] strips trailing sentence punctuation', () => {
+  it('[TC-25] strips trailing sentence punctuation', () => {
     expect(squeezeKbDocumentTitle('KB overview for developers.')).toBe('KB overview for developers')
   })
 
-  it('[TC-31] truncates long run-on sentences by word and char caps', () => {
+  it('[TC-26] truncates long run-on sentences by word and char caps', () => {
     const long =
       'Reader can create or refresh a project KB base from existing markdown so kb query and agents return grounded answers for that repository and beyond.'
     const out = squeezeKbDocumentTitle(long)
@@ -28,13 +28,13 @@ describe('squeezeKbDocumentTitle', () => {
     expect(out.endsWith('.')).toBe(false)
   })
 
-  it('[TC-32] uses first line only', () => {
+  it('[TC-27] uses first line only', () => {
     expect(squeezeKbDocumentTitle('Short title\nMore stuff')).toBe('Short title')
   })
 })
 
 describe('deriveDocumentTitle', () => {
-  it('[TC-33] prefers documentTitle over oneLineThesis', () => {
+  it('[TC-28] prefers documentTitle over oneLineThesis', () => {
     const t = deriveDocumentTitle(
       minimalSession([
         { key: 'documentTitle', question: '', answer: 'KB overview for AI-assisted development' },
@@ -48,7 +48,7 @@ describe('deriveDocumentTitle', () => {
     expect(t).toBe('KB overview for AI-assisted development')
   })
 
-  it('[TC-34] falls back to squeezed thesis when documentTitle missing', () => {
+  it('[TC-29] falls back to squeezed thesis when documentTitle missing', () => {
     const t = deriveDocumentTitle(
       minimalSession([
         {

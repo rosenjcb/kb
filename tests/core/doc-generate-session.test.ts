@@ -22,7 +22,7 @@ afterEach(async () => {
 })
 
 describe('doc-generate-session', () => {
-  it('[TC-22] Given new session, then first pending index is 0 and not all resolved', async () => {
+  it('[TC-17] Given new session, then first pending index is 0 and not all resolved', async () => {
     const session = createSessionRecord({
       prompt: 'Explain auth',
       docType: 'reference',
@@ -35,7 +35,7 @@ describe('doc-generate-session', () => {
     expect(allAnswerSlotsResolved(session)).toBe(false)
   })
 
-  it('[TC-23] Given answers applied until last, then status becomes ready', async () => {
+  it('[TC-18] Given answers applied until last, then status becomes ready', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-'))
     tempDirs.push(dir)
     const session = createSessionRecord({
@@ -64,7 +64,7 @@ describe('doc-generate-session', () => {
     expect(allAnswerSlotsResolved(s)).toBe(true)
   })
 
-  it('[TC-24] Given skip on pending slot, then advances and can reach ready', async () => {
+  it('[TC-19] Given skip on pending slot, then advances and can reach ready', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-'))
     tempDirs.push(dir)
     const session = createSessionRecord({
@@ -84,7 +84,7 @@ describe('doc-generate-session', () => {
     expect(s?.answers[1].answer).toBe('pick A')
   })
 
-  it('[TC-25] Given setSessionDraft twice, then revisions log holds unified diff', async () => {
+  it('[TC-20] Given setSessionDraft twice, then revisions log holds unified diff', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-'))
     tempDirs.push(dir)
     const session = createSessionRecord({
@@ -121,7 +121,7 @@ describe('doc-generate-session', () => {
     expect(s?.revisions?.[0]?.diff).toContain('+beta')
   })
 
-  it('[TC-26] Given sections provided, then status is ready immediately with no gathering phase', () => {
+  it('[TC-21] Given sections provided, then status is ready immediately with no gathering phase', () => {
     const sections: UserDefinedDocSection[] = [
       { name: 'Overview', description: 'High-level summary' },
       { name: 'Usage', description: 'How to use it' },
@@ -139,7 +139,7 @@ describe('doc-generate-session', () => {
     expect(allAnswerSlotsResolved(session)).toBe(true)
   })
 
-  it('[TC-27] Given sections provided, then sections are persisted and reloaded correctly', async () => {
+  it('[TC-22] Given sections provided, then sections are persisted and reloaded correctly', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-sections-'))
     tempDirs.push(dir)
     const sections: UserDefinedDocSection[] = [
@@ -158,7 +158,7 @@ describe('doc-generate-session', () => {
     expect(loaded?.status).toBe('ready')
   })
 
-  it('[TC-28] Given no sections, then status starts as gathering with non-empty questions', () => {
+  it('[TC-23] Given no sections, then status starts as gathering with non-empty questions', () => {
     const session = createSessionRecord({
       prompt: 'normal flow',
       docType: 'howto',
@@ -168,7 +168,7 @@ describe('doc-generate-session', () => {
     expect(session.sections).toBeUndefined()
   })
 
-  it('[TC-29] Given acceptSessionDraft, then status finalized and draft preserved', async () => {
+  it('[TC-24] Given acceptSessionDraft, then status finalized and draft preserved', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-doc-session-'))
     tempDirs.push(dir)
     const session = createSessionRecord({
