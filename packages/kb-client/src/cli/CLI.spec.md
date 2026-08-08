@@ -463,9 +463,9 @@ See companion doc for full vocabulary where applicable.
 | TC-347 | FR-29 | Given a custom progress sink, then publish progress avoids direct stderr writes | pass |
 | TC-348 | FR-29 | Given notion state with stale pages, then preview reports removedPages | pass |
 | TC-349 | FR-29 | Given apply with notion state, then archives stale pages and returns removedPages | pass |
-| TC-350 | FR-30 | Given more than TOP_SOURCE_PREVIEW_LIMIT hits, then footer says top N of M ranked | pass |
-| TC-351 | FR-30 | Given at most TOP_SOURCE_PREVIEW_LIMIT hits, then footer says all M ranked | pass |
-| TC-352 | FR-30 | Given no hits, then footer is (none) | pass |
+| TC-350 | FR-30 | Given more than TOP_SOURCE_PREVIEW_LIMIT cited files, then footer says top N of M file(s) | pass |
+| TC-351 | FR-30 | Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M file(s), folding symbols | pass |
+| TC-352 | FR-30 | Given no openable hits (incl. dropped fact:// refs), then footer is (none) | pass |
 | TC-353 | FR-31 | Given no existing skill files, then installs all agents and returns installed actions | pass |
 | TC-354 | FR-31 | Given already-installed skill with matching hash, then action is skipped | pass |
 | TC-355 | FR-31 | Given stale skill hash, then action is updated | pass |

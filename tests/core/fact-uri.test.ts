@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatFactUri, sourceRefToPath } from '@kb/core/core/fact-uri.js'
+import {
+  formatFactUri,
+  isOpenableSourcePath,
+  sourceRefToPath,
+} from '@kb/core/core/fact-uri.js'
 
 describe('formatFactUri', () => {
   it('[TC-61] strips fact- prefix before scheme so sources line does not repeat fact', () => {
@@ -45,5 +49,36 @@ describe('sourceRefToPath', () => {
     expect(
       sourceRefToPath('rosenjcb-kb/skills/kb:dev-workflow/SKILL.md#s53', 'rosenjcb-kb')
     ).toEqual({ path: 'rosenjcb-kb/skills/kb:dev-workflow/SKILL.md' })
+  })
+
+  it('[TC-69] returns undefined for heritage/import hash refs (no openable path)', () => {
+    // These hash the file away; surfacing them yields a bogus `edge:<sha>` filename.
+    expect(sourceRefToPath('ast:edge:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
+    expect(sourceRefToPath('ast:import:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
+  })
+
+  it('[TC-70] returns undefined for document-id slugs (not workspace paths)', () => {
+    // Legacy original_docs wrote sanitizeId(path) as source_ref, producing citations
+    // like `rosenjcb-kb/src-core-ast-source-text-md` that no agent can open.
+    expect(sourceRefToPath('src-core-ast-source-text-md', 'rosenjcb-kb')).toBeUndefined()
+    expect(sourceRefToPath('src-core-init-md')).toBeUndefined()
+    expect(sourceRefToPath('readme-md')).toBeUndefined()
+    expect(sourceRefToPath('evaluation-md#s0')).toBeUndefined()
+  })
+
+  it('[TC-71] returns undefined for synthetic integration provenance refs', () => {
+    expect(sourceRefToPath('rosenjcb-kb/integration:dep:vitest', 'rosenjcb-kb')).toBeUndefined()
+    expect(sourceRefToPath('integration:repo')).toBeUndefined()
+  })
+
+  it('[TC-72] still accepts real paths, including extensionless well-known names', () => {
+    expect(sourceRefToPath('packages/kb-core/src/core/AST_SOURCE_TEXT.md#s3', 'rosenjcb-kb')).toEqual(
+      {
+        path: 'rosenjcb-kb/packages/kb-core/src/core/AST_SOURCE_TEXT.md',
+      }
+    )
+    expect(sourceRefToPath('Makefile')).toEqual({ path: 'Makefile' })
+    expect(isOpenableSourcePath('src-core-init-md')).toBe(false)
+    expect(isOpenableSourcePath('packages/kb-core/src/core/INIT.md')).toBe(true)
   })
 })

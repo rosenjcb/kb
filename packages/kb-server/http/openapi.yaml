@@ -472,15 +472,57 @@ components:
           description: When false, skip LLM synthesis and return facts only.
         verbose:
           type: boolean
+          default: false
+          description: >
+            When false (default), return the lean agent payload: answer +
+            `{path, symbols?}` citations + evidence/notes — no fact dump or
+            retrieval telemetry. When true, return the full evidence payload
+            (`sources` as GroupedSource with facts, plus `results` and `retrieval`).
         trace:
           type: boolean
           description: >
             When true, write an opt-in deep retrieval trace dump on the server
             (`KB_HOME/traces`) and return its path as `traceFile` in the response.
+            Prefer pairing with `verbose: true` so `traceFile` is included.
         base:
           type: string
           description: Per-call base override (else the `X-KB-Base` header).
       description: Requires `q` (or `query`).
+
+    LeanSource:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Openable repo-relative (or `slug/relPath`) file path.
+        symbols:
+          type: array
+          items: { type: string }
+          description: Folded fact subjects when known; omitted when empty.
+
+    GroupedSourceFact:
+      type: object
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        snippet: { type: string }
+
+    GroupedSource:
+      type: object
+      required: [path, label, symbols, facts, factCount]
+      properties:
+        path: { type: string }
+        gitRepo: { type: string }
+        label: { type: string }
+        href: { type: string }
+        symbols:
+          type: array
+          items: { type: string }
+        facts:
+          type: array
+          items: { $ref: "#/components/schemas/GroupedSourceFact" }
+        factCount: { type: integer }
 
     QuerySource:
       type: object
@@ -488,6 +530,8 @@ components:
         id: { type: string }
         title: { type: string }
         filePath: { type: string }
+        gitRepo: { type: string }
+        symbol: { type: string }
         tags:
           type: array
           items: { type: string }
@@ -524,7 +568,10 @@ components:
 
     QueryResponse:
       type: object
-      required: [status, answer, results, retrieval]
+      required: [status, answer, sources]
+      description: >
+        Lean by default (`sources` = LeanSource[]). With `verbose: true`,
+        `sources` becomes GroupedSource[] and `results` / `retrieval` are present.
       properties:
         status:
           type: string
@@ -536,11 +583,22 @@ components:
             Synthesized answer, or null when synthesize=false / none produced.
             A null answer is not a retrieval verdict — check `answerError` before
             concluding the knowledge base had nothing to say.
+        sources:
+          type: array
+          description: >
+            Lean citations (`{path, symbols?}`) by default; full GroupedSource
+            objects when `verbose: true`.
+          items:
+            oneOf:
+              - { $ref: "#/components/schemas/LeanSource" }
+              - { $ref: "#/components/schemas/GroupedSource" }
         results:
           type: array
+          description: Raw per-fact rows. Present only when `verbose: true`.
           items: { $ref: "#/components/schemas/QuerySource" }
         retrieval:
           type: object
+          description: Retrieval telemetry. Present only when `verbose: true`.
           properties:
             method: { type: string }
             detail: { type: string }
@@ -551,6 +609,15 @@ components:
                 curation) skipped after an LLM error. Retrieval still succeeded, but
                 ranking and filtering are weaker than usual.
               items: { $ref: "#/components/schemas/LLMFailure" }
+        evidence:
+          type: string
+          enum: [none, weak, moderate, strong]
+        notes:
+          type: array
+          items: { type: string }
+          description: >
+            Lean-payload caveats (verify hint, ungrounded file refs, synthesis
+            outage). Present when relevant; omitted on quiet successes.
         answerError:
           allOf: [{ $ref: "#/components/schemas/LLMFailure" }]
           description: >-

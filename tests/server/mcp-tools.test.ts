@@ -78,17 +78,18 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).toContain('synth:true')
   })
 
-  it('[TC-109] default response is answer + compact citations, no fact dump or retrieval metadata', async () => {
+  it('[TC-109] default response is answer + lean citations, no fact dump or retrieval metadata', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBe('synth:true')
-    expect(body.sources).toEqual(['src/auth/login.ts (loginHandler)'])
+    expect(body.sources).toEqual([{ path: 'src/auth/login.ts', symbols: ['loginHandler'] }])
     // The noise the trimmed payload exists to drop:
     expect(body.retrieval).toBeUndefined()
     expect(body.results).toBeUndefined()
     expect(result.content[0].text).not.toContain('facts-loop')
     expect(result.content[0].text).not.toContain('snippet')
+    expect(result.content[0].text).not.toContain('factCount')
   })
 
   it('[TC-111] verbose:true opts into the full evidence payload', async () => {
@@ -102,6 +103,11 @@ describe('dispatchMcpToolCall', () => {
     expect(body.results).toHaveLength(1)
     expect(body.results[0].filePath).toBe('src/auth/login.ts')
     expect(body.retrieval).toEqual({ method: 'facts-loop', detail: 'passes:1;ponds:6;facts:104' })
+    expect(body.sources[0]).toMatchObject({
+      path: 'src/auth/login.ts',
+      symbols: ['loginHandler'],
+      factCount: 1,
+    })
   })
 
   it('[TC-110] advertises the verbose flag in the tool schema', () => {
@@ -479,7 +485,7 @@ describe('kb_query synthesis failure', () => {
     expect(body.answerError.kind).toBe('insufficient_credits')
     expect(body.notes[0]).toContain('Answer synthesis failed')
     // Sources still ship — retrieval worked, only the answer-writing step failed.
-    expect(body.sources).toEqual(['src/auth/login.ts'])
+    expect(body.sources).toEqual([{ path: 'src/auth/login.ts' }])
   })
 
   it('[TC-161] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {

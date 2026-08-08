@@ -114,54 +114,10 @@ function authHeaders(extra) {
   return h
 }
 
-// Source links are per-base: the server's /v1/bases advertises each base's repos
-// (slug → browse url + branch), so a source's `gitRepo` slug maps to the right
-// GitHub blob URL for whichever base is selected.
-function reposForCurrentBase() {
-  return baseRepos[currentBase] || []
-}
-/** Pick the repo a source belongs to: by gitRepo slug, else sole repo, else path segment. */
-function repoForSource(src) {
-  const repos = reposForCurrentBase()
-  if (!repos.length) return null
-  if (src?.gitRepo) {
-    const match = repos.find(r => r.slug === src.gitRepo)
-    if (match) return match
-  }
-  if (repos.length === 1) return repos[0]
-  const seg = String(src?.filePath || '')
-    .replace(/^\.\//, '')
-    .split('/')[0]
-  return repos.find(r => r.slug === seg) || null
-}
-/** Strip the git-repo slug prefix → repo-relative path, or null if not a file. */
-function relPathForSource(filePath, repo) {
-  let p = String(filePath || '')
-    .trim()
-    .replace(/\\/g, '/')
-    .replace(/^\.\//, '')
-  if (!p || p.startsWith('fact://') || /^[a-z][a-z0-9+.-]*:/i.test(p)) return null
-  if (repo?.slug && (p === repo.slug || p.startsWith(`${repo.slug}/`))) {
-    p = p.slice(repo.slug.length).replace(/^\//, '')
-  }
-  p = p.replace(/#.*$/, '') // drop segment anchors
-  return p || null
-}
-/** Repo-relative label shown for a source (falls back to the raw path). */
-function sourceLabel(src) {
-  const raw = (src && (src.filePath || src.title || src.id)) || 'unknown'
-  const rel = relPathForSource(raw, repoForSource(src))
-  return rel || raw
-}
-/** GitHub (or other) blob URL for a source in the current base, or null. */
-function sourceGithubUrl(src) {
-  const repo = repoForSource(src)
-  if (!repo || !repo.url) return null
-  const rel = relPathForSource(src?.filePath || '', repo)
-  if (!rel) return null
-  const branch = repo.branch || 'HEAD'
-  return `${repo.url}/blob/${branch}/${rel.split('/').map(encodeURIComponent).join('/')}`
-}
+// Source citations arrive pre-resolved from the server: the chat stream emits
+// source-centric entries (one per file, fact subjects folded into `symbols`, the
+// blob `href` already built and non-openable refs dropped), so the client only
+// renders them — no per-base repo lookup, dedupe, or URL building here.
 function escapeHtml(s) {
   return s.replace(
     /[&<>"']/g,
@@ -379,23 +335,18 @@ function addAssistantMessage() {
       if (sources?.length) {
         const s = document.createElement('div')
         s.className = 'sources'
-        const seen = new Set()
-        const unique = []
-        for (const src of sources) {
-          const rel = sourceLabel(src)
-          const key = (rel + (src.symbol ? `#${src.symbol}` : '')).toLowerCase()
-          if (seen.has(key)) continue
-          seen.add(key)
-          unique.push(src)
-        }
-        s.innerHTML = `<div class="label">Sources</div>${unique
+        // `sources` are source-centric (one per file), already deduped and
+        // link-resolved server-side. Fact subjects are folded into `symbols`.
+        s.innerHTML = `<div class="label">Sources</div>${sources
           .map((src, i) => {
-            const rel = sourceLabel(src)
-            const href = sourceGithubUrl(src)
-            const sym = src.symbol ? ` <span class="sym">· ${escapeHtml(src.symbol)}</span>` : ''
-            const pathHtml = href
-              ? `<a class="path" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(rel)}</a>`
-              : `<span class="path">${escapeHtml(rel)}</span>`
+            const label = src.label || src.path || 'unknown'
+            const symbols = Array.isArray(src.symbols) ? src.symbols : []
+            const sym = symbols.length
+              ? ` <span class="sym">· ${escapeHtml(symbols.join(', '))}</span>`
+              : ''
+            const pathHtml = src.href
+              ? `<a class="path" href="${escapeHtml(src.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
+              : `<span class="path">${escapeHtml(label)}</span>`
             return `<div class="source"><span class="num">${i + 1}.</span>${pathHtml}${sym}</div>`
           })
           .join('')}`

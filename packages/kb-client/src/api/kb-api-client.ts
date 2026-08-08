@@ -5,10 +5,10 @@ import type {
   ApiErrorBody,
   ChatRequest,
   ChatStreamEvent,
+  GroupedSource,
   HealthResponse,
   QueryRequest,
   QueryResponse,
-  QuerySource,
 } from './types.js'
 
 const DEFAULT_TIMEOUT_MS = 60_000
@@ -187,7 +187,7 @@ function parseSsePart(part: string): ChatStreamEvent | undefined {
       return {
         type: 'answer',
         text: payload.text,
-        sources: Array.isArray(payload.sources) ? (payload.sources as QuerySource[]) : [],
+        sources: Array.isArray(payload.sources) ? (payload.sources as GroupedSource[]) : [],
         factsRetrieved: typeof payload.factsRetrieved === 'number' ? payload.factsRetrieved : 0,
       }
     }

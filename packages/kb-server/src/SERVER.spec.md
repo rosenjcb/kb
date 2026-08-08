@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-02T23:10:00Z
+timestamp: 2026-08-08T19:40:00Z
 ---
 
 ### Intro
@@ -34,9 +34,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
-| FR-4 | Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is trimmed to the original query + answer + source citations, with the full evidence dump behind `verbose: true` |
+| FR-4 | [UPDATED] Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true` |
 | FR-5 | Parse and run periodic reindex scheduler |
-| FR-6 | Serialize IntentResult to REST JSON, and to the trimmed MCP payload (answer + deduped/capped citations + verify/grounding notes) |
+| FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`) |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
@@ -69,7 +69,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-3 | FR-2 | serves /healthz without auth | pass |
 | TC-4 | FR-2 | returns 200 on /healthz while bootstrap indexing (liveness; ok=false in body) | pass |
 | TC-5 | FR-2 | rejects /v1/query without a valid key | pass |
-| TC-6 | FR-2 | answers /v1/query with a serialized body when authorized | pass |
+| TC-6 | FR-2 | [UPDATED] answers /v1/query with a lean agent body when authorized (no `results`/`retrieval`) | pass |
 | TC-7 | FR-2 | forwards trace: true to the service query pipeline | pass |
 | TC-8 | FR-2 | returns 503 for /v1/query while the server is bootstrapping its first index | pass |
 | TC-9 | FR-2 | returns 400 when q is missing | pass |
@@ -172,10 +172,10 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-106 | FR-16 | answers preflight OPTIONS with 204 and no auth for an allowed origin | pass |
 | TC-107 | FR-16 | rejects preflight OPTIONS from a disallowed origin with 405 | pass |
 | TC-108 | FR-17 | serves `/v1/query` while scheduled reindex is in progress (not bootstrap) | pass |
-| TC-109 | FR-4 | default response is answer + compact citations, no fact dump or retrieval metadata | pass |
+| TC-109 | FR-4 | [UPDATED] default response is answer + lean `{path, symbols?}` citations, no fact dump or retrieval metadata | pass |
 | TC-110 | FR-4 | advertises the verbose flag in the tool schema | pass |
 | TC-111 | FR-4 | verbose:true opts into the full evidence payload | pass |
-| TC-112 | FR-6 | trims to answer + citations and drops retrieval metadata and the fact dump | pass |
+| TC-112 | FR-6 | [UPDATED] trims to answer + lean citations and drops retrieval metadata and the fact dump | pass |
 | TC-113 | FR-6 | adds a verify note when evidence is below the floor | pass |
 | TC-114 | FR-6 | dedupes citations per file, folds in symbols, and caps the list at 5 | pass |
 | TC-115 | FR-6 | flags answer file references that match no cited source path | pass |
@@ -183,6 +183,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-117 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
 | TC-118 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
 | TC-119 | FR-6 | grounding reports each ungrounded file once | pass |
+| TC-162 | FR-6 | [UPDATED] full/verbose serializer exposes source-centric `sources` (files, symbols folded, non-openable dropped) alongside raw `results` | pass |
 | TC-120 | FR-18 | warm: given `--from <prior-snapshot>` and `--repo`/`--branch`, adopts the prior index, re-clones the repo, and reindexes only changed files at `--out` | pass |
 | TC-121 | FR-18 | cold: given `--repo` with no `--from`, clones fresh and produces a full index at `--out` | pass |
 | TC-122 | FR-18 | cold mode with neither `--from` nor `--repo` errors instead of hanging | pass |
@@ -225,6 +226,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-159 | FR-24 | no answer and no failure | original evidence note unchanged, no answerError |
 | TC-160 | FR-24 | kb_query when synthesis failed | answerError in payload, sources still cited |
 | TC-161 | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
+| TC-163 | FR-6 | [NEW] REST `/v1/query` with `verbose: true` returns full evidence dump (`results`, `retrieval.detail`, GroupedSource facts) | pass |
 
 ### Related docs
 

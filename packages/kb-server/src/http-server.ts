@@ -27,7 +27,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { handleAdminRoute } from './admin-routes.js'
-import { serializeQueryResult } from '@kb/core/service/serialize.js'
+import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
 import { log } from './logger.js'
 import { resolveServerVersion } from './version.js'
 import { BOOTSTRAP_INDEXING_MESSAGE, type KbService } from '@kb/core/service/kb-service.js'
@@ -605,14 +605,20 @@ export function createHttpServer(options: HttpServerOptions): Server {
         }),
         timeout,
       ])
-      const serialized = serializeQueryResult(result)
+      // Lean agent payload by default; full evidence dump only when verbose:true.
+      const serialized =
+        body.verbose === true ? serializeQueryResult(result) : serializeMcpQueryResult(result)
       const answerError = serialized.answerError
+      const full = body.verbose === true ? (serialized as ReturnType<typeof serializeQueryResult>) : null
       log.info('query complete', {
         requestId: ctx.requestId,
-        resultsCount: serialized.results.length,
+        sourcesCount: serialized.sources.length,
+        ...(full
+          ? { resultsCount: full.results.length, retrievalMethod: full.retrieval.method }
+          : {}),
         hasAnswer: serialized.answer !== null,
         status: serialized.status,
-        retrievalMethod: serialized.retrieval.method,
+        verbose: body.verbose === true,
         ...(answerError
           ? { answerError: answerError.kind, answerErrorMessage: answerError.message }
           : {}),

@@ -125,16 +125,16 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
 **Tools exposed:** `kb_query`, its feedback channel `submit_feedback`, and the
 pending-feedback queue `get_feedback_requests` (nothing else). `kb_query` is an
 **agent-to-agent** channel: the client asks a direct natural-language question
-and always gets an answer-first response. The **default payload is trimmed**
-to `query` (echoed back) + `answer` + `sources` (compact citations,
-`path (symbol)`, deduped per file and capped at 5) plus `evidence`,
-`requestId` (for feedback correlation — it matches the `x-request-id` header
-and the RunReport `sessionId` in `~/.kb/logs/`), and optional `notes` — a
-verify hint when evidence is below `strong`, and a warning when the prose names a
-file absent from the cited sources. The full evidence payload (per-fact
-snippets, tags, `retrieval` metadata) is opt-in via `verbose: true`. No
-`synthesize` flag; it always synthesizes. A fact-id drill-down tool may return
-later.
+and always gets an answer-first response. The **default payload is lean**:
+`query` (echoed back) + `answer` + `sources` (`{ path, symbols? }` objects,
+deduped per file and capped at 5) plus `evidence`, `requestId` (for feedback
+correlation — it matches the `x-request-id` header and the RunReport
+`sessionId` in `~/.kb/logs/`), and optional `notes` — a verify hint when
+evidence is below `strong`, and a warning when the prose names a file absent
+from the cited sources. Omitted by default: fact ids/snippets, `factCount`,
+`results`, and `retrieval.method`/`detail`. The full evidence payload is
+opt-in via `verbose: true`. No `synthesize` flag; it always synthesizes. A
+fact-id drill-down tool may return later.
 
 **Feedback loop:** `submit_feedback` (args: `helped` = `yes`/`partial`/`no`,
 optional `notes`, `answer`, `query`, `requestId`, and 0–4 `scores` on the
@@ -270,7 +270,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Gotchas
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
-- REST `synthesize` defaults true; MCP `kb_query` **always** synthesizes and returns the trimmed answer + citations payload by default (`verbose: true` for the full evidence dump).
+- REST `synthesize` defaults true; both REST and MCP `kb_query` return the lean agent payload by default (`{path, symbols?}` sources, no fact dump); `verbose: true` opts into the full evidence dump.
 - `answer: null` is not a retrieval verdict. Check `answerError` before concluding the base is
   thin — a spent credit balance and "nothing indexed" used to look identical on the wire.
 - Fly `kb-demo` is **Pages chatbot only** — no Slack secrets on that app; see [`../FLY.md`](../FLY.md).

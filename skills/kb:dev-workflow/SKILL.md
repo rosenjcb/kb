@@ -12,8 +12,8 @@ description: >-
 ## MCP connection → `kb_query` for discovery
 
 This session has a **kb MCP** connection. Use **`kb_query`** to discover how the
-codebase works: ask a real question, get an answer plus compact source citations
-(`path (symbol)`), then verify by opening those files.
+codebase works: ask a real question, get an answer plus lean source citations
+(`{ path, symbols? }`), then verify by opening those files.
 
 KB is not a keyword box. Ask like a teammate. Use follow-up questions to dig —
 not repo-wide fishing first.
@@ -43,7 +43,7 @@ Thin answer → ask a **narrower** follow-up. Do not switch to broad grep yet.
 | Part | Use it to… |
 |------|------------|
 | Synthesized **answer** | Working hypothesis / plan |
-| **sources[]** citations (`path (symbol)`) | Open *only* these files next |
+| **sources[]** citations (`{ path, symbols? }`) | Open *only* these files next |
 | **notes[]** | Verify hints — act on them before relying on the answer |
 | **answerError** | The answer step *failed*. Do **not** read `answer: null` as "the KB has nothing" — retry, or report the outage |
 | **AGENT_INSTRUCTION** (rare, sampled) | Required follow-up: resolve via `submit_feedback` (one string `requestId`, not an array) |

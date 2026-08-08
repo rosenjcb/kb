@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
 import {
   chatSourceReposFromBaseRepos,
-  formatChatReply,
-  formatChatSourcesFooter,
-  normalizeChatSources,
   resolveChatSourceDisplay,
 } from '@kb/core/service/chat-reply.js'
+import {
+  formatGroupedChatReply,
+  formatGroupedSourcesFooter,
+  groupSources,
+} from '@kb/core/service/source-grouping.js'
 import type { BaseRepo } from '@kb/core/storage/base-repos.js'
 
 const kbRepo = {
@@ -38,7 +40,7 @@ describe('gitRemoteToBrowseUrl', () => {
 })
 
 describe('chatSourceReposFromBaseRepos', () => {
-  it('[TC-7] keeps only browsable remotes with a real branch name', () => {
+  it('[TC-7] keeps browsable remotes; a bare HEAD clone still links via HEAD', () => {
     const repos: BaseRepo[] = [
       {
         gitUrl: 'https://github.com/rosenjcb/kb.git',
@@ -59,20 +61,27 @@ describe('chatSourceReposFromBaseRepos', () => {
         dir: 'repos/acme-x',
       },
     ]
-    expect(chatSourceReposFromBaseRepos(repos)).toEqual([kbRepo])
+    // Local remote (no browse URL) is dropped; the bare-HEAD clone is kept and
+    // links against `HEAD`, which the forge resolves to its default branch.
+    expect(chatSourceReposFromBaseRepos(repos)).toEqual([
+      kbRepo,
+      { slug: 'acme-x', browseUrl: 'https://github.com/acme/x', branch: 'HEAD' },
+    ])
   })
 })
 
-describe('resolveChatSourceDisplay / normalizeChatSources', () => {
+describe('resolveChatSourceDisplay', () => {
   it('[TC-1] keeps fact:// ids and drops other schemes', () => {
     expect(
       resolveChatSourceDisplay({ filePath: 'fact://abc123' }, [kbRepo])?.label,
     ).toBe('fact://abc123')
     expect(resolveChatSourceDisplay({ filePath: 'https://example.com/x' }, [kbRepo])).toBeNull()
   })
+})
 
-  it('[TC-2] dedupes and builds per-repo blob hrefs from the registry', () => {
-    const out = normalizeChatSources(
+describe('groupSources', () => {
+  it('[TC-2] dedupes by file, folds symbols, builds hrefs, drops fact:// ids', () => {
+    const out = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
@@ -81,60 +90,71 @@ describe('resolveChatSourceDisplay / normalizeChatSources', () => {
       ],
       { sourceRepos: [kbRepo] },
     )
-    expect(out).toEqual([
+    expect(out.map(g => ({ path: g.path, href: g.href, symbols: g.symbols }))).toEqual([
       {
-        label: 'packages/kb-core/src/core/CHAT.md',
+        path: 'packages/kb-core/src/core/CHAT.md',
         href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
+        symbols: [],
       },
       {
-        label: 'src/tools/x.ts',
+        path: 'src/tools/x.ts',
         href: 'https://github.com/rosenjcb/kb/blob/main/src/tools/x.ts',
-        symbol: 'foo',
+        symbols: ['foo'],
       },
-      { label: 'fact://deadbeef' },
     ])
+    // The two identical CHAT.md facts collapse to one file with a fact count of 2.
+    expect(out[0].factCount).toBe(2)
+  })
+
+  it('[TC-9] caps the file list at maxSources but still folds later facts', () => {
+    const sources = Array.from({ length: 5 }, (_, i) => ({ filePath: `src/f${i}.ts` }))
+    // A repeat of an already-cited file must not be dropped by the cap.
+    sources.push({ filePath: 'src/f0.ts' })
+    const out = groupSources(sources, { maxSources: 3 })
+    expect(out.map(g => g.path)).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts'])
+    expect(out[0].factCount).toBe(2)
   })
 
   it('[TC-8] multi-repo: each slug uses its own browse URL and primary branch', () => {
-    const out = normalizeChatSources(
+    const out = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
         { filePath: 'raysan5-raylib/src/raudio.c', gitRepo: 'raysan5-raylib' },
       ],
       { sourceRepos: [kbRepo, raylibRepo] },
     )
-    expect(out).toEqual([
+    expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
       {
-        label: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md',
+        path: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md',
         href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
       },
       {
-        label: 'raysan5-raylib/src/raudio.c',
+        path: 'raysan5-raylib/src/raudio.c',
         href: 'https://github.com/raysan5/raylib/blob/master/src/raudio.c',
       },
     ])
   })
 
   it('[TC-8] unknown slug keeps a path label without href', () => {
-    const out = normalizeChatSources(
-      [{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }],
-      { sourceRepos: [kbRepo] },
-    )
-    expect(out).toEqual([{ label: 'other-slug/README.md' }])
+    const out = groupSources([{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }], {
+      sourceRepos: [kbRepo],
+    })
+    expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
+      { path: 'other-slug/README.md', href: undefined },
+    ])
   })
 })
 
-describe('formatChatReply', () => {
+describe('formatGroupedChatReply', () => {
   it('[TC-3] appends a plain Sources footer', () => {
-    const text = formatChatReply(
-      'Hello.',
+    const grouped = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
       ],
       { sourceRepos: [kbRepo] },
     )
-    expect(text).toBe(
+    expect(formatGroupedChatReply('Hello.', grouped)).toBe(
       [
         'Hello.',
         '',
@@ -145,14 +165,11 @@ describe('formatChatReply', () => {
   })
 
   it('[TC-4] formats Slack mrkdwn with per-repo clickable links', () => {
-    const text = formatChatReply(
-      'Hello.',
+    const grouped = groupSources(
       [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
-      {
-        flavor: 'slack',
-        sourceRepos: [kbRepo],
-      },
+      { sourceRepos: [kbRepo] },
     )
+    const text = formatGroupedChatReply('Hello.', grouped, 'slack')
     expect(text).toContain('*Sources*')
     expect(text).toContain(
       '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
@@ -160,7 +177,7 @@ describe('formatChatReply', () => {
   })
 
   it('[TC-3] returns answer alone when sources are empty', () => {
-    expect(formatChatReply('Just text.', [])).toBe('Just text.')
-    expect(formatChatSourcesFooter([])).toBe('')
+    expect(formatGroupedChatReply('Just text.', [])).toBe('Just text.')
+    expect(formatGroupedSourcesFooter([])).toBe('')
   })
 })
