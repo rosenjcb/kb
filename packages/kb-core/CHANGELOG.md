@@ -1,5 +1,17 @@
 # @kb/core
 
+## 1.6.5
+
+### Patch Changes
+
+- Make answer citations source-centric: cite the ranked _files_ (with their fact
+  subjects folded in as symbols) instead of one entry per fact. A single canonical
+  `groupSources` model in `@kb/core` now backs every surface (HTTP demo, Slack,
+  CLI, MCP, REST), so they no longer drift. This fixes repeated files, drops
+  non-openable refs (`fact://` ids, `ast:edge:<sha>`/`ast:import:<sha>` hashes that
+  surfaced as bogus `edge:<sha>` filenames), unifies blob-link construction, and
+  lets a bare-`HEAD` clone still produce Slack links.
+
 ## 1.6.4
 
 ### Patch Changes

@@ -105,7 +105,7 @@ describe('intent-cli formatting', () => {
       'retrieval> hybrid (facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on)'
     )
     expect(output).toContain('matches> 1 ranked facts')
-    expect(output).toContain('sources> all 1 ranked: cli-facts')
+    expect(output).toContain('sources> all 1 file(s): /tmp/cli-facts.md')
   })
 
   it('[TC-261] prints minimal intent help with only the supported commands', () => {

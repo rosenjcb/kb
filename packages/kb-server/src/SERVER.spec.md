@@ -36,7 +36,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
 | FR-4 | Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is trimmed to the original query + answer + source citations, with the full evidence dump behind `verbose: true` |
 | FR-5 | Parse and run periodic reindex scheduler |
-| FR-6 | Serialize IntentResult to REST JSON, and to the trimmed MCP payload (answer + deduped/capped citations + verify/grounding notes) |
+| FR-6 | Serialize IntentResult to REST JSON (source-centric `sources` = ranked files with folded symbols, plus raw `results`), and to the trimmed MCP payload (answer + deduped/capped citations + verify/grounding notes) |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
@@ -183,6 +183,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-117 | FR-6 | grounding matches by basename so relative prose paths ground against absolute evidence paths | pass |
 | TC-118 | FR-6 | grounding ignores non-file tokens: product names, property access, bare words | pass |
 | TC-119 | FR-6 | grounding reports each ungrounded file once | pass |
+| TC-162 | FR-6 | REST body exposes source-centric `sources` (files, symbols folded, non-openable dropped) alongside raw `results` | pass |
 | TC-120 | FR-18 | warm: given `--from <prior-snapshot>` and `--repo`/`--branch`, adopts the prior index, re-clones the repo, and reindexes only changed files at `--out` | pass |
 | TC-121 | FR-18 | cold: given `--repo` with no `--from`, clones fresh and produces a full index at `--out` | pass |
 | TC-122 | FR-18 | cold mode with neither `--from` nor `--repo` errors instead of hanging | pass |

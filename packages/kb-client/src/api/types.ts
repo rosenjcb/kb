@@ -48,6 +48,24 @@ export interface QuerySource {
   snippet?: string
 }
 
+/** One underlying fact folded under its file. */
+export interface GroupedSourceFact {
+  id?: string
+  symbol?: string
+  snippet?: string
+}
+
+/** Source-centric citation: one cited file with its folded fact subjects + blob href. */
+export interface GroupedSource {
+  path: string
+  gitRepo?: string
+  label: string
+  href?: string
+  symbols: string[]
+  facts: GroupedSourceFact[]
+  factCount: number
+}
+
 /** Why an LLM-backed stage failed, as reported by the server. */
 export interface LLMFailureResponse {
   stage: string
@@ -61,6 +79,9 @@ export interface LLMFailureResponse {
 export interface QueryResponse {
   status: string
   answer?: string | null
+  /** Source-centric citations (ranked files, symbols folded). Prefer over `results`. */
+  sources?: GroupedSource[]
+  /** Raw per-fact rows. Kept for verbose/programmatic use. */
   results: QuerySource[]
   retrieval?: { method?: string; detail?: string; degraded?: LLMFailureResponse[] }
   evidence?: EvidenceLabel
@@ -80,7 +101,7 @@ export type ChatStreamEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'reasoning'; text: string }
   | { type: 'meta'; text: string }
-  | { type: 'answer'; text: string; sources: QuerySource[]; factsRetrieved: number }
+  | { type: 'answer'; text: string; sources: GroupedSource[]; factsRetrieved: number }
   | { type: 'error'; message: string }
   | { type: 'done' }
 

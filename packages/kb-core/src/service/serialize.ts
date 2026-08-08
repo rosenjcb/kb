@@ -8,6 +8,7 @@ import { type EvidenceLabel, isEvidenceAtLeast } from '@kb/core/core/evidence-la
 import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
+import { type GroupedSource, groupSources } from './source-grouping.js'
 
 export interface QuerySource {
   id?: string
@@ -32,6 +33,12 @@ export interface QuerySource {
 export interface QueryResponseBody {
   status: IntentResult['status']
   answer: string | null
+  /**
+   * Source-centric citations: the ranked *files*, each with its folded fact
+   * subjects. This is what surfaces should show. Prefer this over `results`.
+   */
+  sources: GroupedSource[]
+  /** Raw per-fact rows (one per symbol/chunk). Kept for verbose/programmatic use. */
   results: QuerySource[]
   retrieval: {
     method?: string
@@ -91,7 +98,7 @@ function gitRepoFromItem(item: ReadDocumentsResultItem): string | undefined {
   return undefined
 }
 
-function toSource(item: ReadDocumentsResultItem): QuerySource {
+export function toSource(item: ReadDocumentsResultItem): QuerySource {
   // Prefer the physical source file (what an agent can open/grep) over the
   // opaque `fact://` URI; fall back to the URI only when provenance is unknown.
   const location = item.metadata?.sourcePath ?? item.metadata?.filePath
@@ -220,25 +227,17 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
   return ungrounded
 }
 
-/** Dedupe evidence by file (order preserved), fold in symbols, cap the list. */
+/**
+ * Compact `path (symbol, …)` citations for the lean MCP payload. Reuses the
+ * canonical {@link groupSources} (drops non-openable refs, dedupes by file, folds
+ * symbols) at MCP's tighter caps. No repo registry here, so no hrefs — the MCP
+ * payload is repo-relative paths, which is what agents open/grep.
+ */
 function formatMcpSources(results: QuerySource[]): string[] {
-  const byPath = new Map<string, string[]>()
-  for (const r of results) {
-    const p = r.filePath?.trim()
-    if (!p) continue
-    let symbols = byPath.get(p)
-    if (!symbols) {
-      symbols = []
-      byPath.set(p, symbols)
-    }
-    const symbol = r.symbol?.trim()
-    if (symbol && !symbols.includes(symbol) && symbols.length < MCP_MAX_SYMBOLS_PER_SOURCE) {
-      symbols.push(symbol)
-    }
-  }
-  return [...byPath.entries()]
-    .slice(0, MCP_MAX_SOURCES)
-    .map(([p, symbols]) => (symbols.length > 0 ? `${p} (${symbols.join(', ')})` : p))
+  return groupSources(results, {
+    maxSources: MCP_MAX_SOURCES,
+    maxSymbolsPerSource: MCP_MAX_SYMBOLS_PER_SOURCE,
+  }).map(g => (g.symbols.length > 0 ? `${g.path} (${g.symbols.join(', ')})` : g.path))
 }
 
 /**
@@ -298,10 +297,12 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
   const results = Array.isArray(data.results) ? data.results : []
 
   const degraded = data.retrieval?.degraded
+  const querySources = results.map(toSource)
   return {
     status: result.status,
     answer: data.answer?.trim() || null,
-    results: results.map(toSource),
+    sources: groupSources(querySources),
+    results: querySources,
     retrieval: {
       method: data.retrieval?.method,
       detail: data.retrieval?.detail,

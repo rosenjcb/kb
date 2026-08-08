@@ -15,13 +15,8 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import {
-  chatSourceReposFromBaseRepos,
-  formatChatReply,
-} from '@kb/core/service/chat-reply.js'
-import type { QuerySource } from '@kb/core/service/serialize.js'
 import type { KbHealth, KbService } from '@kb/core/service/kb-service.js'
-import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { type GroupedSource, formatGroupedChatReply } from '@kb/core/service/source-grouping.js'
 import { log } from './logger.js'
 
 export interface SlackOptions {
@@ -205,9 +200,10 @@ async function replyWithChat(
   threadTs: string | undefined,
   sessionId: string,
 ): Promise<void> {
-  // Same chat stream as HTTP `/v1/chat` / the Pages demo: answer + sources[].
+  // Same chat stream as HTTP `/v1/chat` / the Pages demo: answer + source-centric
+  // `sources[]` (grouped by file, blob hrefs already resolved by chat-stream).
   let answer = ''
-  let sources: QuerySource[] = []
+  let sources: GroupedSource[] = []
   let errorMessage = ''
   for await (const event of service.chat({ sessionId, message })) {
     if (event.type === 'answer') {
@@ -218,13 +214,7 @@ async function replyWithChat(
     }
   }
   if (answer) {
-    // Per-repo blob links from the volume registry (clone gitUrl + gitBranch).
-    // No global KB_SOURCE_* — each slug uses its own primary branch.
-    const sourceRepos = chatSourceReposFromBaseRepos(await discoverBaseRepos(service.baseDir))
-    const text = formatChatReply(answer, sources, {
-      flavor: 'slack',
-      sourceRepos,
-    })
+    const text = formatGroupedChatReply(answer, sources, 'slack')
     await postSlackMessage(slackOpts.botToken, channel, text, threadTs)
   } else if (errorMessage) {
     // Surface the real failure (e.g. a retired-model 404) instead of silently

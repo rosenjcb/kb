@@ -1,9 +1,10 @@
-import type { QuerySource } from './serialize.js'
+import type { GroupedSource } from './source-grouping.js'
 
 export type ChatEvent =
   | { type: 'reasoning'; text: string }
   | { type: 'meta'; text: string }
-  | { type: 'answer'; text: string; sources: QuerySource[]; factsRetrieved: number }
+  /** `sources` are source-centric (one entry per file, symbols folded), with blob hrefs baked in. */
+  | { type: 'answer'; text: string; sources: GroupedSource[]; factsRetrieved: number }
   | { type: 'error'; message: string }
   | { type: 'done'; inputTokens?: number; outputTokens?: number }
 

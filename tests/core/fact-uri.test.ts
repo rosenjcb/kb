@@ -46,4 +46,10 @@ describe('sourceRefToPath', () => {
       sourceRefToPath('rosenjcb-kb/skills/kb:dev-workflow/SKILL.md#s53', 'rosenjcb-kb')
     ).toEqual({ path: 'rosenjcb-kb/skills/kb:dev-workflow/SKILL.md' })
   })
+
+  it('[TC-69] returns undefined for heritage/import hash refs (no openable path)', () => {
+    // These hash the file away; surfacing them yields a bogus `edge:<sha>` filename.
+    expect(sourceRefToPath('ast:edge:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
+    expect(sourceRefToPath('ast:import:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
+  })
 })

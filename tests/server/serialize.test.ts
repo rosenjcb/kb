@@ -89,6 +89,28 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].filePath).toBe('fact://def456')
   })
 
+  it('[TC-162] exposes source-centric `sources` (files, symbols folded, non-openable dropped)', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      data: {
+        results: [
+          { metadata: { id: 'f1', title: 'a', sourcePath: 'src/a.ts', symbol: 'alpha' } },
+          { metadata: { id: 'f2', title: 'a', sourcePath: 'src/a.ts', symbol: 'beta' } },
+          { metadata: { id: 'f3', title: 'unknown', filePath: 'fact://deadbeef' } },
+        ],
+      },
+    })
+    // Two facts for src/a.ts collapse to one file with both symbols; the fact:// row drops.
+    expect(body.sources).toHaveLength(1)
+    expect(body.sources[0]).toMatchObject({
+      path: 'src/a.ts',
+      symbols: ['alpha', 'beta'],
+      factCount: 2,
+    })
+    // The raw per-fact rows are still available.
+    expect(body.results).toHaveLength(3)
+  })
+
   it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
     const body = serializeQueryResult({
       status: 'accepted',

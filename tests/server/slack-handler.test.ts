@@ -349,12 +349,26 @@ describe('dispatchSlackEvent chat sources', () => {
         yield {
           type: 'answer' as const,
           text: 'Chat uses multi-turn synthesis.',
+          // chat-stream already grouped these into source-centric entries with
+          // hrefs resolved; slack-handler just renders them.
           sources: [
-            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
-            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
             {
-              filePath: 'rosenjcb-kb/packages/kb-core/src/core/EVIDENCE_SUMMARY.md',
+              path: 'packages/kb-core/src/core/CHAT.md',
+              label: 'packages/kb-core/src/core/CHAT.md',
+              href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
               gitRepo: 'rosenjcb-kb',
+              symbols: [],
+              facts: [],
+              factCount: 2,
+            },
+            {
+              path: 'packages/kb-core/src/core/EVIDENCE_SUMMARY.md',
+              label: 'packages/kb-core/src/core/EVIDENCE_SUMMARY.md',
+              href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/EVIDENCE_SUMMARY.md',
+              gitRepo: 'rosenjcb-kb',
+              symbols: [],
+              facts: [],
+              factCount: 1,
             },
           ],
           factsRetrieved: 2,
@@ -409,7 +423,15 @@ describe('dispatchSlackEvent chat sources', () => {
           type: 'answer' as const,
           text: 'See the chat design.',
           sources: [
-            { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
+            {
+              path: 'packages/kb-core/src/core/CHAT.md',
+              label: 'packages/kb-core/src/core/CHAT.md',
+              href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
+              gitRepo: 'rosenjcb-kb',
+              symbols: [],
+              facts: [],
+              factCount: 1,
+            },
           ],
           factsRetrieved: 1,
         }

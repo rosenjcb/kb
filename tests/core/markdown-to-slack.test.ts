@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatChatReply } from '@kb/core/service/chat-reply.js'
 import {
   inlineMarkdownToSlack,
   markdownToSlackMrkdwn,
 } from '@kb/core/service/markdown-to-slack.js'
+import { formatGroupedChatReply, groupSources } from '@kb/core/service/source-grouping.js'
 
 describe('inlineMarkdownToSlack', () => {
   it('[TC-5] maps bold, links, and code to Slack mrkdwn', () => {
@@ -50,13 +50,11 @@ describe('markdownToSlackMrkdwn', () => {
   })
 })
 
-describe('formatChatReply slack flavor', () => {
+describe('formatGroupedChatReply slack flavor', () => {
   it('[TC-6] converts the answer body to mrkdwn before appending Sources', () => {
-    const text = formatChatReply(
-      '### Overview\n\n**Chat** uses tools.',
+    const grouped = groupSources(
       [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
       {
-        flavor: 'slack',
         sourceRepos: [
           {
             slug: 'rosenjcb-kb',
@@ -66,6 +64,7 @@ describe('formatChatReply slack flavor', () => {
         ],
       },
     )
+    const text = formatGroupedChatReply('### Overview\n\n**Chat** uses tools.', grouped, 'slack')
     expect(text).toContain('*Overview*')
     expect(text).toContain('*Chat* uses tools.')
     expect(text).toContain('*Sources*')

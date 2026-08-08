@@ -1,50 +1,33 @@
-import { formatFactUri } from '@kb/core/core/fact-uri.js'
+import type { ReadDocumentsResultItem } from './intent-cli.js'
+import { toSource } from '../service/serialize.js'
+import { DEFAULT_SOURCE_LIMIT, groupSources } from '../service/source-grouping.js'
 
-export interface ReadDocumentsLikeResult {
-  results?: Array<{
-    metadata?: {
-      id?: string
-      title?: string
-      filePath?: string
-    }
-    content?: string
-  }>
-  retrieval?: {
-    method?: string
-    detail?: string
-    checkpoints?: Array<{
-      stage?: string
-      status?: string
-      nextAction?: string
-      confidence?: number
-    }>
-  }
+/** Human footer cap for `sources>` — highest-ranked cited *files*. */
+export const TOP_SOURCE_PREVIEW_LIMIT = DEFAULT_SOURCE_LIMIT
+
+/** Compact `path (symbol, …)` citation for one grouped file. */
+function formatSourceRef(source: { path: string; symbols: string[] }): string {
+  return source.symbols.length > 0 ? `${source.path} (${source.symbols.join(', ')})` : source.path
 }
 
-/** Human footer cap for `sources>` — highest-ranked fact ids only. */
-export const TOP_SOURCE_PREVIEW_LIMIT = 10
+/**
+ * Terminal `sources>` value — the ranked *files* (not raw facts), deduped by path
+ * with their fact subjects folded in, capped at {@link TOP_SOURCE_PREVIEW_LIMIT}.
+ * Non-openable refs (`fact://` ids, `edge:<sha>`) are dropped by `groupSources`.
+ */
+export function formatReadDocumentSourcesPreview(
+  results: ReadDocumentsResultItem[] | undefined
+): string {
+  if (!Array.isArray(results) || results.length === 0) return '(none)'
 
-export function formatReadDocumentSourceIds(results: ReadDocumentsLikeResult['results']): string[] {
-  if (!Array.isArray(results) || results.length === 0) return []
+  // Group without a ceiling to count distinct files, then show the top N.
+  const allFiles = groupSources(results.map(toSource), { maxSources: Number.MAX_SAFE_INTEGER })
+  if (allFiles.length === 0) return '(none)'
 
-  const ids = results
-    .map(result => result.metadata?.id)
-    .filter((value): value is string => Boolean(value))
-
-  return [...new Set(ids)].slice(0, TOP_SOURCE_PREVIEW_LIMIT)
-}
-
-/** Terminal `sources>` value — explicitly marks top-N of ranked pool. */
-export function formatReadDocumentSourcesPreview(results: ReadDocumentsLikeResult['results']): string {
-  const total = Array.isArray(results) ? results.length : 0
-  if (total === 0) return '(none)'
-
-  const sourceIds = formatReadDocumentSourceIds(results)
-  if (sourceIds.length === 0) return '(none)'
-
-  const refs = sourceIds.map(formatFactUri).join('; ')
-  if (total <= TOP_SOURCE_PREVIEW_LIMIT) {
-    return `all ${total} ranked: ${refs}`
+  const shown = allFiles.slice(0, TOP_SOURCE_PREVIEW_LIMIT)
+  const refs = shown.map(formatSourceRef).join('; ')
+  if (allFiles.length <= TOP_SOURCE_PREVIEW_LIMIT) {
+    return `all ${allFiles.length} file(s): ${refs}`
   }
-  return `top ${sourceIds.length} of ${total} ranked: ${refs}`
+  return `top ${shown.length} of ${allFiles.length} file(s): ${refs}`
 }

@@ -35,6 +35,10 @@ export function sourceRefToPath(
 
   if (ref.startsWith('ast:')) {
     const body = ref.slice('ast:'.length)
+    // Heritage/import hash refs (`ast:edge:<sha>`, `ast:import:<sha>`) encode no
+    // openable path — they hash the file away. Surfacing them yields a bogus
+    // `edge:<sha>` "filename", so treat them as non-file refs.
+    if (body.startsWith('edge:') || body.startsWith('import:')) return undefined
     const at = body.lastIndexOf('@')
     relPath = at === -1 ? body : body.slice(0, at)
     symbol = at === -1 ? undefined : body.slice(at + 1) || undefined
