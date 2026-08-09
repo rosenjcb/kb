@@ -8,7 +8,6 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { coerceDocType } from '../core/doc-taxonomy'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { segmentMarkdownForFacts } from '../core/sentence-split'
 import type {
   AppendToDocumentInput,
@@ -487,7 +486,6 @@ export class SqliteDocumentWriter implements DocumentWriterExtended {
     for (const factText of segments) {
       this.indexer.upsertFact({
         factText,
-        triplet: placeholderTripletFromFactText(factText),
         sourceKind,
         sourceRef,
         evidence: 'descriptive',

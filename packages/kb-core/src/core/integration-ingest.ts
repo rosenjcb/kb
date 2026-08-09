@@ -79,7 +79,6 @@ export async function ingestIntegrationSignals(
 
     indexer.upsertFact({
       factText: `Repository ${slug} is tracked from ${input.gitUrl ?? slug}.`,
-      triplet: { subject: slug, predicate: 'is_repo', object: input.gitUrl ?? slug },
       sourceKind: 'import_doc',
       sourceRef: `${refPrefix}repo`,
       evidence: INTEGRATION_EVIDENCE,
@@ -93,7 +92,6 @@ export async function ingestIntegrationSignals(
         result.packageName = name
         indexer.upsertFact({
           factText: `Package ${name} is provided by repository ${slug}.`,
-          triplet: { subject: name, predicate: 'package_name_of', object: slug },
           sourceKind: 'import_doc',
           sourceRef: `${refPrefix}package`,
           evidence: INTEGRATION_EVIDENCE,
@@ -110,7 +108,6 @@ export async function ingestIntegrationSignals(
       for (const dep of deps) {
         indexer.upsertFact({
           factText: `Repository ${slug} depends on package ${dep}.`,
-          triplet: { subject: slug, predicate: 'depends_on', object: dep },
           sourceKind: 'import_doc',
           sourceRef: `${refPrefix}dep:${dep}`,
           evidence: INTEGRATION_EVIDENCE,
@@ -135,7 +132,6 @@ export async function ingestIntegrationSignals(
           seenHosts.add(host)
           indexer.upsertFact({
             factText: `Repository ${slug} references service ${host}.`,
-            triplet: { subject: slug, predicate: 'references_service', object: host },
             sourceKind: 'import_doc',
             sourceRef: `${refPrefix}env:${host}`,
             evidence: INTEGRATION_EVIDENCE,

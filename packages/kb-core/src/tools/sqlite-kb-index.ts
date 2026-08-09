@@ -112,20 +112,13 @@ export interface DocumentUpsertInput {
   isOriginal?: boolean
 }
 
-export interface FactTriplet {
-  subject: string
-  predicate: string
-  object: string
-}
-
 /**
  * Curated fact write. `facts` is no longer a derived sentence store — it holds only
- * user/curated assertions, so the triplet/source-kind fields the sentence pipeline used
- * to supply are accepted and ignored by the legacy `upsertFact` shim.
+ * user/curated assertions, so the `sourceKind` field the sentence pipeline used to supply
+ * is accepted and ignored by the legacy `upsertFact` shim.
  */
 export interface FactUpsertInput {
   factText: string
-  triplet?: FactTriplet
   sourceKind?: 'import_doc' | 'import_code'
   sourceRef?: string
   /** What kind of evidence this fact is — see `core/fact-evidence`. */
@@ -754,7 +747,7 @@ export class SqliteKbIndexer {
 
   invalidateFact(
     oldFact: string,
-    replacement?: { factText: string; triplet?: FactTriplet }
+    replacement?: { factText: string }
   ): { changed: number; replacementId?: string } {
     const id = factIdFromText(normalizeFactText(oldFact))
     if (!this.tombstoneFactById(id)) return { changed: 0 }

@@ -154,13 +154,11 @@ describe('EntityRegistry', () => {
     try {
       factA = indexer.upsertFact({
         factText: 'The internal service validates auth tokens.',
-        triplet: { subject: 'internal', predicate: 'validates', object: 'auth tokens' },
         sourceKind: 'import_doc',
         sourceRef: 'test:a',
       }).id
       factB = indexer.upsertFact({
         factText: 'The internal service emits metrics.',
-        triplet: { subject: 'internal', predicate: 'emits', object: 'metrics' },
         sourceKind: 'import_doc',
         sourceRef: 'test:b',
       }).id

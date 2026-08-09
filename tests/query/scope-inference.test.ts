@@ -29,14 +29,12 @@ function seedCollisionScenario(): { serviceFact: string; surfaceFact: string } {
   try {
     serviceFact = indexer.upsertFact({
       factText: 'The internal service validates payment auth tokens.',
-      triplet: { subject: 'internal', predicate: 'validates', object: 'payment auth tokens' },
       sourceKind: 'import_doc',
       sourceRef: 'payments-core/README.md#s1',
       gitRepo: 'payments-core',
     }).id
     surfaceFact = indexer.upsertFact({
       factText: 'Internal Services surface shows operational dashboards.',
-      triplet: { subject: 'Internal Services', predicate: 'shows', object: 'operational dashboards' },
       sourceKind: 'import_doc',
       sourceRef: 'platform-ui/README.md#s1',
       gitRepo: 'platform-ui',

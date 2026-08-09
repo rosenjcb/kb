@@ -1,6 +1,5 @@
 import { type EvidenceLabel, isEvidenceAtLeast } from '../core/evidence-label'
 import path from 'node:path'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import { renderDiffBundle, renderTextDiff } from '../core/git-diff-preview'
 import { invalidateFactTool } from './invalidate-fact-tool'
 import { SqliteKbIndexer } from './sqlite-kb-index'
@@ -480,7 +479,6 @@ async function applyMutations(input: {
         if (mutation.newFact) {
           const result = indexer.upsertFact({
             factText: mutation.newFact,
-            triplet: placeholderTripletFromFactText(mutation.newFact),
             sourceKind: 'import_code',
             sourceRef: 'rescan',
             evidence: 'curated',
