@@ -25,7 +25,7 @@ describe('evidence-summary', () => {
         {
           metadata: {
             id: 'fact-export',
-            title: 'expandQueryWithGraph exported from graph-query-expansion.ts',
+            title: 'codeSymbolToUnit exported from hybrid-retriever.ts',
             tags: ['import_code', 'code-graph', 'fact'],
           },
         },

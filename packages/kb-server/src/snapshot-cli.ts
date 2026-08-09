@@ -46,7 +46,7 @@ import {
   readSnapshotManifest,
   writeSnapshotManifest,
 } from '@kb/core/storage/snapshot.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import type { ServerLogger } from './server-cli.js'
 
 const INDEX_BASENAME = '.kb-index.sqlite'

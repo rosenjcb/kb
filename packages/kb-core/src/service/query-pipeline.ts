@@ -17,7 +17,7 @@ import {
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
 import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 import { basename } from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'

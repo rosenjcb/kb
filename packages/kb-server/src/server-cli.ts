@@ -27,7 +27,7 @@ import {
 } from '@kb/core/storage/base-selection.js'
 import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import { streamChatTurn } from './chat-stream.js'
 import {
   removePidFile,
@@ -109,8 +109,8 @@ interface ResolvedBase {
  * Resolve which base to build + serve. The name comes from the bootstrap plan
  * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env); when none is
  * declared, prefer a base the operator already selected locally (`kb base use`),
- * and otherwise bind the golden default slug `base` — the cluster's well-known
- * default, à la Postgres's `postgres` maintenance DB. `kb-server start` never
+ * and otherwise bind the golden default slug `default` — the cluster's well-known
+ * base, à la Postgres's `postgres` maintenance DB. `kb-server start` never
  * requires naming a base to boot.
  */
 export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {

@@ -51,13 +51,16 @@ export const FACT_EVIDENCE_KINDS = [
 export type FactEvidenceKind = (typeof FACT_EVIDENCE_KINDS)[number]
 
 /**
- * The one numeric table. Consumed only by ranking (`facts-query-research-orchestrator`),
- * where a score has to be arithmetic.
+ * The one numeric table — a label→weight map for evidence-weighted ranking.
  *
- * These values are the pre-existing per-write-site constants, carried over
- * unchanged so the representation change is provably behavior-neutral. Every one
- * of them is a guess inherited from the float era — they are what the ablation
- * harness (#207) exists to test, and should not be treated as established.
+ * NOTE: the hybrid retriever ranks by Reciprocal Rank Fusion over lexical + neural lanes,
+ * not by these weights, so `factEvidenceWeight` / `factEvidenceWeightSql` currently have no
+ * live caller. The evidence *label* itself is still live (stored on `facts.evidence`, shown
+ * by `kb facts`); only the numeric weighting is dormant, kept here as a single source of
+ * truth if an evidence-aware re-rank returns.
+ *
+ * These values are the pre-existing per-write-site constants, each a guess inherited from
+ * the float era — not established, and what the ablation harness (#207) exists to test.
  */
 const FACT_EVIDENCE_WEIGHTS: Record<FactEvidenceKind, number> = {
   incidental: 0.3,
