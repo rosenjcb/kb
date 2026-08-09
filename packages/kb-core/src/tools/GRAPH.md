@@ -94,5 +94,5 @@ package assets — no native compilation. Adding a language needs one `LANG_CONF
 
 ## Related docs
 
-- Behavioral spec → [`GRAPH.spec.md`](GRAPH.spec.md)
+- AST indexing spec → [`TREE_SITTER_INDEXER.spec.md`](TREE_SITTER_INDEXER.spec.md)
 - Retrieval that uses the map → [`hybrid-retriever.ts`](hybrid-retriever.ts)
