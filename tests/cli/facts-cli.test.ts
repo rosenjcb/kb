@@ -52,10 +52,12 @@ describe('runFactsCommand', () => {
 
     const listed = await runFactsCommand(['list', '--base', baseDir, '--limit', '10'])
     expect(listed).toContain('Unique orchid retrieval')
-    expect(listed).toContain('repo: (unscoped)')
+    expect(listed).toContain('(unscoped)')
+    expect(listed).toContain('1 fact in base')
 
     const searched = await runFactsCommand(['search', 'orchid retrieval', '--base', baseDir])
     expect(searched).toContain('Unique orchid')
+    expect(searched).toContain('match')
   })
 
   it('[TC-165] Given fact id, show returns that row', async () => {
@@ -75,6 +77,7 @@ describe('runFactsCommand', () => {
 
     const out = await runFactsCommand(['show', id, '--base', baseDir])
     expect(out).toContain('Show by id test fact body.')
-    expect(out).toContain(`id: ${id}`)
+    expect(out).toContain(`id:        ${id}`)
+    expect(out).toContain('repo:')
   })
 })
