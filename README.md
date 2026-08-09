@@ -78,13 +78,13 @@ Leave that terminal running (or add `-d` to background it). It comes up on `loca
 Point the `default` base at a repo and it starts archiving (clone → index; the first run takes a minute depending on repo size):
 
 ```bash
-kb-server base add-repo default --git https://github.com/acme/auth-svc
+kb-server base add-repo --base default --git https://github.com/acme/auth-svc
 ```
 
-Add more any time (pin a branch per repo with `<url>#branch`):
+The target base is always the explicit `--base` flag — no positional, no implicit default. Add more any time (pin a branch per repo with `<url>#branch`):
 
 ```bash
-kb-server base add-repo default --git https://github.com/acme/web#develop
+kb-server base add-repo --base default --git https://github.com/acme/web#develop
 ```
 
 **Prefer to skip the empty state?** Pass the repos right at boot — same result:
@@ -96,7 +96,7 @@ kb-server start --git https://github.com/acme/auth-svc --with-mcp
 **Want a separate, named base** (kept apart from `default`)? Create it with at least one repo, then query it with `--base`:
 
 ```bash
-kb-server base create acme --git https://github.com/acme/auth --git https://github.com/acme/web#develop
+kb-server base create --base acme --git https://github.com/acme/auth --git https://github.com/acme/web#develop
 kb-server base list          # see every base on this server
 ```
 

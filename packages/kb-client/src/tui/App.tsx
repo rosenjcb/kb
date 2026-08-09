@@ -433,7 +433,7 @@ export function App({
             type: 'error',
             content:
               'Deleting a base is an operator action on the server, not a client command. ' +
-              'Run `kb-server base delete <base>` on the server host (or `kb-server uninstall --purge` ' +
+              'Run `kb-server base delete --base <base>` on the server host (or `kb-server uninstall --purge` ' +
               'to remove all server data). In the client you can only switch bases: /base use <base>.',
           })
           return

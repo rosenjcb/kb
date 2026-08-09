@@ -184,7 +184,7 @@ async function planBootstrapTask(
 
   log(
     `Base "${base.baseRef}" is empty — no repos indexed yet. Add one to start archiving:
-    kb-server base add-repo ${base.baseRef} --git <url>
+    kb-server base add-repo --base ${base.baseRef} --git <url>
   (CI/CD can instead pass --git / KB_SERVER_BASE_GIT_REPOS at start.) The server is up and will report an empty base until then.`
   )
   return null
@@ -573,10 +573,11 @@ Commands:
   restart       Stop then start -d.
   status        Report whether kb-server is running (pid + /healthz).
   init          Bootstrap KB_HOME and server config, then print next steps.
-  base <list|delete <name> [--yes]>
-        Operator base management. \`base list\` shows initialized bases; \`base delete
-        <name>\` removes one base and all its data (prompts unless --yes). Base
-        creation happens at boot via \`start --base <name> --git <repo>\`.
+  base <list | create | add-repo | delete> --base <name> [--git <url>…] [--yes]
+        Operator base management. \`create\`/\`add-repo\` build or extend a base from
+        \`--git\` repos; \`list\` shows initialized bases; \`delete\` removes one base and
+        all its data (prompts unless --yes). The target base is always the explicit
+        --base flag. Run \`kb-server base --help\` for details.
   service <install|uninstall|status> [--no-start]
         Register/manage kb-server as a launchd (macOS) / systemd --user (Linux)
         service that starts on login. (install is an alias for service install.)

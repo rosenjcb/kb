@@ -6,6 +6,9 @@
  * --base <name> --git <repo>` builds a base from env/flags for CI/CD, while these
  * commands let a local admin create bases and attach repos interactively. None of this
  * is reachable from the `kb` client — the client can only switch bases (`kb base use`).
+ *
+ * The target base is always an explicit `--base <name>` flag (never a positional or an
+ * implicit default), so it is unambiguous which base a command touches.
  */
 
 import { existsSync } from 'node:fs'
@@ -38,21 +41,30 @@ async function prompt(question: string): Promise<string> {
 const BASE_USAGE = `Usage: kb-server base <command>
 
 Commands:
-  list                              List all initialized bases on this server.
-  create <name> --git <url>…        Create a base and index one or more git repos.
-  add-repo <name> --git <url>…      Add git repos to an existing base and re-index.
-  delete <name> [--yes|-y]          Delete a base and all its data on this server.
+  list                                 List all initialized bases on this server.
+  create   --base <name> --git <url>…  Create a base and index one or more git repos.
+  add-repo --base <name> --git <url>…  Add git repos to an existing base and re-index.
+  delete   --base <name> [--yes|-y]    Delete a base and all its data on this server.
 
 Notes:
+  • The target base is always the explicit --base flag (no positional, no implicit default).
   • --git is repeatable; pin a branch with url#branch.
   • CI/CD can still build a base at boot: \`kb-server start --base <name> --git <url>\`.
   • To remove all server data instead of one base, use \`kb-server uninstall --purge\`.
 
 Examples:
-  kb-server base create raylib --git https://github.com/raysan5/raylib
-  kb-server base add-repo raylib --git https://github.com/raysan5/raygui#main
+  kb-server base create   --base raylib --git https://github.com/raysan5/raylib
+  kb-server base add-repo  --base default --git https://github.com/raysan5/raygui#main
   kb-server base list
-  kb-server base delete raylib --yes`
+  kb-server base delete   --base raylib --yes`
+
+/** Read the value after a single-value flag (e.g. `--base <name>`). */
+function readFlagValue(args: string[], flag: string): string | undefined {
+  const idx = args.indexOf(flag)
+  if (idx === -1) return undefined
+  const value = args[idx + 1]
+  return value && !value.startsWith('-') ? value : undefined
+}
 
 /** Collect repeatable `--git <url>` values into parsed GitTargets. */
 function parseGitTargets(args: string[]): GitTarget[] {
@@ -78,7 +90,7 @@ async function runBaseList(out: ServerLogger): Promise<void> {
   const bases = await listAllBases()
   if (bases.length === 0) {
     out.log('No initialized bases found.')
-    out.log('Create one with `kb-server base create <name> --git <url>`.')
+    out.log('Create one with `kb-server base create --base <name> --git <url>`.')
     return
   }
   out.log('KB bases (server)')
@@ -89,31 +101,33 @@ async function runBaseList(out: ServerLogger): Promise<void> {
 }
 
 async function runBaseCreate(args: string[], out: ServerLogger): Promise<void> {
-  const name = args.find(token => !token.startsWith('-'))
+  const name = readFlagValue(args, '--base')
   const targets = parseGitTargets(args)
 
   if (!name) {
-    out.error('A base name is required: kb-server base create <name> --git <url>')
+    out.error('--base <name> is required: kb-server base create --base <name> --git <url>')
     process.exitCode = 1
     return
   }
   if (name === DEFAULT_BASE_SLUG) {
     out.error(
       `The "${DEFAULT_BASE_SLUG}" base always exists — you don't create it. Add repos with ` +
-        `\`kb-server base add-repo ${DEFAULT_BASE_SLUG} --git <url>\`.`
+        `\`kb-server base add-repo --base ${DEFAULT_BASE_SLUG} --git <url>\`.`
     )
     process.exitCode = 1
     return
   }
   if (baseIndexExists(name)) {
     out.error(
-      `Base "${name}" already exists. Add more repos with \`kb-server base add-repo ${name} --git <url>\`.`
+      `Base "${name}" already exists. Add more repos with \`kb-server base add-repo --base ${name} --git <url>\`.`
     )
     process.exitCode = 1
     return
   }
   if (targets.length === 0) {
-    out.error('At least one repo is required: kb-server base create <name> --git <url> [--git <url>…]')
+    out.error(
+      'At least one repo is required: kb-server base create --base <name> --git <url> [--git <url>…]'
+    )
     process.exitCode = 1
     return
   }
@@ -129,11 +143,11 @@ async function runBaseCreate(args: string[], out: ServerLogger): Promise<void> {
 }
 
 async function runBaseAddRepo(args: string[], out: ServerLogger): Promise<void> {
-  const name = args.find(token => !token.startsWith('-'))
+  const name = readFlagValue(args, '--base')
   const targets = parseGitTargets(args)
 
   if (!name) {
-    out.error('A base name is required: kb-server base add-repo <name> --git <url>')
+    out.error('--base <name> is required: kb-server base add-repo --base <name> --git <url>')
     process.exitCode = 1
     return
   }
@@ -141,13 +155,15 @@ async function runBaseAddRepo(args: string[], out: ServerLogger): Promise<void> 
   // created first. `create` requires repos, so a known non-default base always has an index.
   if (name !== DEFAULT_BASE_SLUG && !baseIndexExists(name)) {
     out.error(
-      `No base "${name}" on this server. Create it first with \`kb-server base create ${name} --git <url>\`.`
+      `No base "${name}" on this server. Create it first with \`kb-server base create --base ${name} --git <url>\`.`
     )
     process.exitCode = 1
     return
   }
   if (targets.length === 0) {
-    out.error('At least one repo is required: kb-server base add-repo <name> --git <url> [--git <url>…]')
+    out.error(
+      'At least one repo is required: kb-server base add-repo --base <name> --git <url> [--git <url>…]'
+    )
     process.exitCode = 1
     return
   }
@@ -167,10 +183,10 @@ async function runBaseAddRepo(args: string[], out: ServerLogger): Promise<void> 
 async function runBaseDelete(args: string[], out: ServerLogger): Promise<void> {
   const yes =
     args.includes('--yes') || args.includes('-y') || args.includes('--force') || args.includes('-f')
-  const name = args.find(token => !token.startsWith('-'))
+  const name = readFlagValue(args, '--base')
 
   if (!name) {
-    out.error('A base name is required: kb-server base delete <name>')
+    out.error('--base <name> is required: kb-server base delete --base <name>')
     process.exitCode = 1
     return
   }

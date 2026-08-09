@@ -347,7 +347,7 @@ async function runServerBaseCommand(
   if (subCmd === 'delete') {
     out.error(
       'Deleting a base is an operator action run on the server host, not via the admin CLI. ' +
-        'Run `kb-server base delete <base>` directly on the server (or `kb-server uninstall --purge`).'
+        'Run `kb-server base delete --base <base>` directly on the server (or `kb-server uninstall --purge`).'
     )
     return 1
   }

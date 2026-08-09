@@ -29,7 +29,7 @@ export class BaseNotFoundError extends Error {
   constructor(public readonly slug: string) {
     super(
       `unknown base "${slug}": no index found on this server. Create it with ` +
-        `\`kb-server base create ${slug} --git <url>\`, or omit the base to use the server default.`
+        `\`kb-server base create --base ${slug} --git <url>\`, or omit the base to use the server default.`
     )
     this.name = 'BaseNotFoundError'
   }

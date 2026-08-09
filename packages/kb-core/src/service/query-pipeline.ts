@@ -82,7 +82,7 @@ export async function runQueryPipeline(
       status: 'uncertain',
       evidence: 'none',
       explanation: `This base ("${baseName}") is empty — no repositories have been indexed yet.`,
-      recommendedAction: `An operator can add one on the server: \`kb-server base add-repo ${baseName} --git <url>\`.`,
+      recommendedAction: `An operator can add one on the server: \`kb-server base add-repo --base ${baseName} --git <url>\`.`,
     }
   }
 

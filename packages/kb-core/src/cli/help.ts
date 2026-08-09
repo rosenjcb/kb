@@ -65,7 +65,7 @@ export function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base list', mode)}`,
     '',
     'Base creation and deletion are operator actions on the server host',
-    '(`kb-server start --base <name> --git <repo>` / `kb-server base delete <name>`).',
+    '(`kb-server start --base <name> --git <repo>` / `kb-server base delete --base <name>`).',
   ].join('\n')
 }
 

@@ -52,7 +52,7 @@ afterEach(async () => {
 describe('kb-server base create', () => {
   it('[TC-164] refuses to create the reserved default base', async () => {
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['create', 'default', '--git', 'https://x/y'], out)
+    await runServerBaseCommand(['create', '--base', 'default', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('always exists')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
@@ -60,7 +60,7 @@ describe('kb-server base create', () => {
 
   it('[TC-165] requires at least one --git for a named base', async () => {
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['create', 'acme'], out)
+    await runServerBaseCommand(['create', '--base', 'acme'], out)
     expect(lines.join('\n')).toContain('At least one repo')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
@@ -69,7 +69,7 @@ describe('kb-server base create', () => {
   it('[TC-166] refuses to create a base that already exists', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['create', 'acme', '--git', 'https://x/y'], out)
+    await runServerBaseCommand(['create', '--base', 'acme', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('already exists')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
@@ -78,7 +78,7 @@ describe('kb-server base create', () => {
   it('[TC-167] builds a new named base from its repos', async () => {
     const { out } = makeOut()
     await runServerBaseCommand(
-      ['create', 'acme', '--git', 'https://github.com/x/y', '--git', 'https://github.com/a/b'],
+      ['create', '--base', 'acme', '--git', 'https://github.com/x/y', '--git', 'https://github.com/a/b'],
       out
     )
     expect(mockRunKbInit).toHaveBeenCalledTimes(1)
@@ -94,7 +94,7 @@ describe('kb-server base create', () => {
 describe('kb-server base add-repo', () => {
   it('[TC-168] refuses to add repos to a non-existent named base', async () => {
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['add-repo', 'ghost', '--git', 'https://x/y'], out)
+    await runServerBaseCommand(['add-repo', '--base', 'ghost', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('Create it first')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
@@ -102,7 +102,7 @@ describe('kb-server base add-repo', () => {
 
   it('[TC-169] allows adding a repo to the empty default base', async () => {
     const { out } = makeOut()
-    await runServerBaseCommand(['add-repo', 'default', '--git', 'https://github.com/x/y'], out)
+    await runServerBaseCommand(['add-repo', '--base', 'default', '--git', 'https://github.com/x/y'], out)
     expect(mockRunKbInit).toHaveBeenCalledTimes(1)
     expect(mockRunKbInit.mock.calls[0]?.[0]?.base).toBe('default')
   })
@@ -110,7 +110,7 @@ describe('kb-server base add-repo', () => {
   it('[TC-170] requires at least one --git', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['add-repo', 'acme'], out)
+    await runServerBaseCommand(['add-repo', '--base', 'acme'], out)
     expect(lines.join('\n')).toContain('At least one repo')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
@@ -134,14 +134,14 @@ describe('kb-server base list / delete', () => {
   it('[TC-173] delete requires a base name', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--yes'], out)
-    expect(lines.join('\n')).toContain('base name is required')
+    expect(lines.join('\n')).toContain('--base <name> is required')
     expect(process.exitCode).toBe(1)
   })
 
   it('[TC-174] deletes a base with --yes', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
-    await runServerBaseCommand(['delete', 'acme', '--yes'], out)
+    await runServerBaseCommand(['delete', '--base', 'acme', '--yes'], out)
     expect(lines.join('\n')).toContain('Deleted base: acme')
   })
 

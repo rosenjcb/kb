@@ -133,20 +133,21 @@ clear "this base is empty" message until a repo is added.
 
 ```bash
 # Populate the default base — this is what starts archiving:
-kb-server base add-repo default --git https://github.com/acme/auth
-kb-server base add-repo default --git https://github.com/acme/web#develop   # pin a branch
+kb-server base add-repo --base default --git https://github.com/acme/auth
+kb-server base add-repo --base default --git https://github.com/acme/web#develop   # pin a branch
 
 # Create a separate named base (requires at least one repo):
-kb-server base create acme --git https://github.com/acme/auth --git https://github.com/acme/web
+kb-server base create --base acme --git https://github.com/acme/auth --git https://github.com/acme/web
 
 # Inspect / remove:
 kb-server base list
-kb-server base delete acme            # prompts; pass --yes to skip (or --purge everything via uninstall)
+kb-server base delete --base acme     # prompts; pass --yes to skip (or --purge everything via uninstall)
 ```
 
-`--git` is repeatable and accepts `url#branch`. `create` is for **new named** bases and
-always needs at least one repo; `default` is the one base allowed to exist empty, so you
-populate it with `add-repo` rather than `create`. For CI/CD, the boot-time
+The target base is always the explicit `--base` flag — never a positional or an implicit
+default. `--git` is repeatable and accepts `url#branch`. `create` is for **new named**
+bases and always needs at least one repo; `default` is the one base allowed to exist
+empty, so you populate it with `add-repo` rather than `create`. For CI/CD, the boot-time
 `kb-server start --base <name> --git <url>` path still builds a base from flags/env with no
 separate command.
 

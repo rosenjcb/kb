@@ -179,9 +179,9 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     '"(server default)"); `base use <base>` switches to a named base for this client.',
     '',
     'Bases are created and deleted on the server (operator actions): a base is built by',
-    '`kb-server start --base <name> --git <repo>` and removed by `kb-server base delete',
-    '<name>`. The repos a base indexes and the paths it skips are declared on the server',
-    'via KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
+    '`kb-server base create --base <name> --git <repo>` and removed by',
+    '`kb-server base delete --base <name>`. The repos a base indexes and the paths it skips',
+    'are declared on the server — see packages/kb-server/README.md.',
     '',
     'Examples:',
     `  ${cmd('base', mode)}`,
@@ -227,7 +227,7 @@ export async function runMainWithOutput(
     if (subCmd === 'delete') {
       out.error(
         'Deleting a base is an operator action on the server, not a client command. ' +
-          'Run `kb-server base delete <base>` on the server host (or `kb-server uninstall --purge` ' +
+          'Run `kb-server base delete --base <base>` on the server host (or `kb-server uninstall --purge` ' +
           'to remove all server data). The client can only switch bases: `kb base use <base>`.'
       )
       if (mode === 'cli') process.exitCode = 1
