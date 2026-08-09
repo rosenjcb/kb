@@ -9,9 +9,9 @@ timestamp: 2026-06-27T00:00:00Z
 
 # Fact Curator
 
-After `FactsQueryResearchOrchestrator` grows its BFS "islands" and dumps a scored fact
-pool, that pool carries facts that are *reachable* but not *relevant* to the actual
-question. The curator is the relevance gate that runs before synthesis: it keeps the
+After deep hybrid retrieval fans out over sub-queries and fuses a scored unit pool (RRF),
+that pool carries units that are *retrievable* but not *relevant* to the actual question.
+The curator is the relevance gate that runs before synthesis: it keeps the
 minimal set that answers the question, hard-drops the rest, and — because dropping is
 aggressive — re-discovers anything it finds missing. It replaces the old
 `facts-relevance-filter.ts` (a one-shot keep-list with a 15% floor).
