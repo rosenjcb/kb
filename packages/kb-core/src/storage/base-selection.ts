@@ -15,9 +15,11 @@ export interface BaseSelectionConfig {
  * Golden default base slug — the cluster's well-known base, the way Postgres
  * ships a `postgres` maintenance database. `kb-server start` binds this when no
  * base is named, so operators never have to pick one just to boot, and clients
- * that omit a base land here. See issue #173 / the Postgres analogy in README.
+ * that omit a base land here. It is the one base allowed to exist empty (no repos
+ * indexed yet); every other base is created with at least one git repo. See the
+ * Postgres analogy in the kb-server README.
  */
-export const DEFAULT_BASE_SLUG = 'base'
+export const DEFAULT_BASE_SLUG = 'default'
 
 function isPathLike(base: string): boolean {
   return base.startsWith('/') || base.startsWith('.') || base.startsWith('~')
@@ -271,24 +273,6 @@ export async function deleteBase(
   }
 
   return { basePath, clearedActive, purgedPaths }
-}
-
-export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('base delete', mode)} — delete a base and all its data`,
-    '',
-    'Usage:',
-    `  ${cmd('base delete <base> [--force]', mode)}`,
-    '',
-    'Removes the session directory and clears the base from config.',
-    mode === 'tui'
-      ? '--force is required in the TUI (stdin is owned by the shell).'
-      : 'Prompts for confirmation unless --force is passed.',
-    '',
-    'Examples:',
-    `  ${cmd('base delete ci-test --force', mode)}`,
-    ...(mode === 'cli' ? [`  ${cmd('base delete old-project', mode)}`] : []),
-  ].join('\n')
 }
 
 export function formatDeleteBaseResult(

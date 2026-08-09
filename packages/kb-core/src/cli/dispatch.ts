@@ -16,9 +16,7 @@ import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
 import { isInitCancelledError, parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import {
-  deleteBase,
   ensureOperationalBaseDir,
-  formatDeleteBaseResult,
   listAllBases,
   resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
@@ -62,7 +60,6 @@ import {
   runViewCommand,
 } from '@kb/core/cli/view-cli.js'
 import {
-  printBaseDeleteHelp,
   printBaseHelp,
   printCliHelp,
   printDocsHelp,
@@ -374,24 +371,11 @@ async function runServerBaseCommand(
   }
 
   if (subCmd === 'delete') {
-    const deleteArgs = subArgs.slice(1)
-    if (deleteArgs.includes('--help') || deleteArgs.includes('-h') || deleteArgs[0] === 'help') {
-      out.log(printBaseDeleteHelp(mode))
-      return 0
-    }
-    const base = deleteArgs.find(token => !token.startsWith('--'))
-    if (!base) {
-      out.error(printBaseDeleteHelp(mode))
-      return 1
-    }
-    const force = deleteArgs.includes('--force') || deleteArgs.includes('-f')
-    if (!force) {
-      out.error(`Server requires --force to delete a base: ${cmd(`base delete ${base} --force`, mode)}`)
-      return 1
-    }
-    const result = await deleteBase(base)
-    out.log(formatDeleteBaseResult(base, result, mode))
-    return 0
+    out.error(
+      'Deleting a base is an operator action run on the server host, not via the admin CLI. ' +
+        'Run `kb-server base delete <base>` directly on the server (or `kb-server uninstall --purge`).'
+    )
+    return 1
   }
 
   out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)

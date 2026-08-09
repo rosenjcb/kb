@@ -104,7 +104,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
     'Core commands:',
-    '  base        Manage KB bases (use, delete)',
+    '  base        Manage KB bases (use, list)',
     '  graph       Inspect or edit the knowledge graph',
     '  entities    Inspect harvested entities (services, surfaces) and name collisions',
     '  docs        Browse KB documents',
@@ -175,18 +175,18 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base list', mode)}                     List all initialized bases`,
     `  ${cmd('base use <base>', mode)}               Switch the active base`,
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
-    `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
     'With no active base selected you are on the server\'s own default base (shown as',
     '"(server default)"); `base use <base>` switches to a named base for this client.',
     '',
-    'The repos a base indexes and the paths it skips are declared on the server via',
-    'KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
+    'Bases are created and deleted on the server (operator actions): a base is built by',
+    '`kb-server start --base <name> --git <repo>` and removed by `kb-server base delete',
+    '<name>`. The repos a base indexes and the paths it skips are declared on the server',
+    'via KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
     '',
     'Examples:',
     `  ${cmd('base', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
-    `  ${cmd('base delete ci-test --force', mode)}`,
   ].join('\n')
 }
 
@@ -218,9 +218,20 @@ export async function runMainWithOutput(
     const subArgs = args.slice(1)
     const subCmd = subArgs[0]
 
-    // Only `base use` is client-local; list/delete already forwarded above.
+    // Only `base use` (and `base delete`, which we refuse) are client-local; `base list`
+    // was already forwarded above.
     if (subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
       out.log(printBaseHelp(mode))
+      return
+    }
+
+    if (subCmd === 'delete') {
+      out.error(
+        'Deleting a base is an operator action on the server, not a client command. ' +
+          'Run `kb-server base delete <base>` on the server host (or `kb-server uninstall --purge` ' +
+          'to remove all server data). The client can only switch bases: `kb base use <base>`.'
+      )
+      if (mode === 'cli') process.exitCode = 1
       return
     }
 

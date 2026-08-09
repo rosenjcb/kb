@@ -28,7 +28,8 @@ import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
 export class BaseNotFoundError extends Error {
   constructor(public readonly slug: string) {
     super(
-      `unknown base "${slug}": no index found on this server. Build it first (kb init / scan) or omit --base to use the server default.`
+      `unknown base "${slug}": no index found on this server. Create it with ` +
+        `\`kb-server base create ${slug} --git <url>\`, or omit the base to use the server default.`
     )
     this.name = 'BaseNotFoundError'
   }

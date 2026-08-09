@@ -20,12 +20,14 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['sync'])).toBe(true)
     expect(isClientLocalCommand(['base', 'use', 'demo'])).toBe(true)
     expect(isClientLocalCommand(['base', '--help'])).toBe(true)
+    // `base delete` is refused client-side (operator action), so it stays local rather
+    // than forwarding to the server admin CLI.
+    expect(isClientLocalCommand(['base', 'delete', 'x'])).toBe(true)
   })
 
   it('[TC-29] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
-    expect(isClientLocalCommand(['base', 'delete', 'x', '--force'])).toBe(false)
     expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
   })
 })

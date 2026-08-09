@@ -64,16 +64,9 @@ export function printBaseHelp(mode: CmdMode = 'cli'): string {
     '',
     'Usage:',
     `  ${cmd('base list', mode)}`,
-    `  ${cmd('base delete <base> [--force]', mode)}`,
-  ].join('\n')
-}
-
-export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('base delete <base>', mode)}`,
     '',
-    'Flags:',
-    '  --force, -f   Skip confirmation',
+    'Base creation and deletion are operator actions on the server host',
+    '(`kb-server start --base <name> --git <repo>` / `kb-server base delete <name>`).',
   ].join('\n')
 }
 

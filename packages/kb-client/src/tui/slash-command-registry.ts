@@ -47,7 +47,6 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
 
   // base subcommands
   { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
-  { path: ['base', 'delete'], description: 'delete a KB base', contexts: ['idle'] },
 
   // logs subcommands
   { path: ['logs', 'list'], description: 'list run reports', contexts: ['idle'] },

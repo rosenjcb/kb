@@ -124,6 +124,32 @@ For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` 
 set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
 through an in-memory auth header, so cloned repos do not need tokenized remotes.
 
+### Managing bases (operator commands)
+
+Base lifecycle lives on `kb-server`, never on the `kb` client (the client can only
+*switch* bases with `kb base use <name>`). The server always comes up with a built-in
+**`default`** base — it may start empty, and any interaction with an empty base returns a
+clear "this base is empty" message until a repo is added.
+
+```bash
+# Populate the default base — this is what starts archiving:
+kb-server base add-repo default --git https://github.com/acme/auth
+kb-server base add-repo default --git https://github.com/acme/web#develop   # pin a branch
+
+# Create a separate named base (requires at least one repo):
+kb-server base create acme --git https://github.com/acme/auth --git https://github.com/acme/web
+
+# Inspect / remove:
+kb-server base list
+kb-server base delete acme            # prompts; pass --yes to skip (or --purge everything via uninstall)
+```
+
+`--git` is repeatable and accepts `url#branch`. `create` is for **new named** bases and
+always needs at least one repo; `default` is the one base allowed to exist empty, so you
+populate it with `add-repo` rather than `create`. For CI/CD, the boot-time
+`kb-server start --base <name> --git <url>` path still builds a base from flags/env with no
+separate command.
+
 ### Build once, warm-start serving nodes (snapshot handoff)
 
 The expensive work is the **initial build** (clone + scan + index + facts + embeddings).

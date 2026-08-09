@@ -122,10 +122,10 @@ See companion doc for full vocabulary where applicable.
 | TC-6 | FR-2 | Given kb base use <base>, then sets activeBase and prints resolved path | pass |
 | TC-8 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
 | TC-9 | FR-2 | Given kb base use --show, then prints current base config | pass |
-| TC-10 | FR-2 | Given kb base --help, then prints base help | pass |
+| TC-10 | FR-2 | Given kb base --help, then prints base help pointing deletion at the server | pass |
 | TC-11 | FR-2 | Given kb base list, then forwards to runRemoteCliCommand | pass |
-| TC-12 | FR-2 | Given kb base delete --force, then forwards to runRemoteCliCommand | pass |
-| TC-13 | FR-2 | Given base delete without --force in TUI, then forwards to remote (server enforces --force) | pass |
+| TC-12 | FR-2 | Given kb base delete, then refuses client-side and does not forward to the server | pass |
+| TC-13 | FR-2 | Given base delete in the TUI, then refuses client-side and does not forward | pass |
 | TC-14 | FR-2 | Given kb --help, then prints --host and core commands | pass |
 | TC-15 | FR-3 | returns [] when the repos/ dir is absent | pass |
 | TC-16 | FR-3 | lists each git clone under repos/, deriving slug + dir from the layout | pass |
@@ -147,8 +147,6 @@ See companion doc for full vocabulary where applicable.
 | TC-38 | FR-4 | Given the base is the active base, then clears it from config | pass |
 | TC-40 | FR-4 | Given the base does not exist on disk, then succeeds without error | pass |
 | TC-41 | FR-4 | Given a path-like base, then throws rather than deleting arbitrary paths | pass |
-| TC-42 | FR-4 | includes base delete usage in CLI mode | pass |
-| TC-43 | FR-4 | includes base delete usage in TUI mode | pass |
 | TC-44 | FR-4 | includes the base name and path in output | pass |
 | TC-45 | FR-4 | mentions cleared active base when applicable | pass |
 | TC-54 | FR-4 | returns empty array when sessions directory does not exist | pass |

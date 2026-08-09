@@ -2,6 +2,7 @@ import type { EvidenceLabel } from '../core/evidence-label'
 import { isOpenableSourcePath } from '../core/fact-uri'
 import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import dayjs from 'dayjs'
@@ -310,6 +311,30 @@ export const DOCUMENT_CONTENT_MAX_CHARS = 20_000
 
 const DOCUMENT_EMBED_MAX_CHARS = 4_000
 const SYMBOL_EMBED_MAX_CHARS = 2_000
+
+/**
+ * True when a base has no retrievable content — the index file is absent, or it exists but
+ * holds zero documents, code symbols, and facts. Used to give an "this base is empty" answer
+ * instead of running retrieval that can only come up empty. A missing file is not created
+ * (guarded by `existsSync`); an unreadable/unmigrated index counts as empty.
+ */
+export function isKbIndexEmpty(dbPath: string): boolean {
+  if (!existsSync(dbPath)) return true
+  let db: DatabaseSync | undefined
+  try {
+    db = new DatabaseSync(dbPath)
+    const row = db
+      .prepare(
+        'SELECT (SELECT COUNT(*) FROM documents) + (SELECT COUNT(*) FROM code_symbols) + (SELECT COUNT(*) FROM facts) AS n'
+      )
+      .get() as { n: number } | undefined
+    return (row?.n ?? 0) === 0
+  } catch {
+    return true
+  } finally {
+    db?.close()
+  }
+}
 
 export class SqliteKbIndexer {
   private readonly db: DatabaseSync

@@ -2,11 +2,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  deleteBase,
-  formatDeleteBaseResult,
-  resolveEffectiveBaseDir,
-} from '@kb/core/storage/base-selection.js'
+import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import { resolveDisplayBase } from '../cli/remote-commands.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
@@ -432,30 +428,16 @@ export function App({
       if (isSlash && firstArg && isOutputOnlyCommand(firstArg, args)) {
         addEntry({ type: 'chat-you', content: trimmed })
 
-        // base delete — confirmation prompt
-        if (
-          firstArg === 'base' &&
-          args[1] === 'delete' &&
-          !args.includes('--force') &&
-          !args.includes('-f')
-        ) {
-          const base = args.slice(2).find(t => !t.startsWith('--'))
-          if (base) {
-            addEntry({
-              type: 'info',
-              content: `Delete base "${base}" and all its data? This cannot be undone. [y/N]`,
-            })
-            setPendingConfirm({
-              question: `Delete base "${base}"?`,
-              onConfirm: async () => {
-                const result = await deleteBase(base)
-                const msg = formatDeleteBaseResult(base, result, 'tui')
-                addEntry({ type: 'result', content: msg })
-                refreshBase()
-              },
-            })
-            return
-          }
+        // base delete — refused: deleting a base is an operator action on the server.
+        if (firstArg === 'base' && args[1] === 'delete') {
+          addEntry({
+            type: 'error',
+            content:
+              'Deleting a base is an operator action on the server, not a client command. ' +
+              'Run `kb-server base delete <base>` on the server host (or `kb-server uninstall --purge` ' +
+              'to remove all server data). In the client you can only switch bases: /base use <base>.',
+          })
+          return
         }
 
         // docs delete — confirmation prompt

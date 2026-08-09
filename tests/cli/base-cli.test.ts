@@ -76,16 +76,18 @@ describe('kb base use', () => {
     expect(lines.join('\n')).toContain('Active base: showbase')
   })
 
-  it('[TC-10] Given kb base --help, then prints base help', async () => {
+  it('[TC-10] Given kb base --help, then prints base help pointing deletion at the server', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', '--help'], out, {} as never)
     expect(lines.join('\n')).toContain('kb base commands')
-    expect(lines.join('\n')).toContain('base delete')
+    expect(lines.join('\n')).toContain('base use')
+    // Deletion is an operator action on kb-server, not a client command.
+    expect(lines.join('\n')).toContain('kb-server base delete')
     expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
   })
 })
 
-describe('kb base list / delete (remote)', () => {
+describe('kb base list (remote) / delete (refused)', () => {
   it('[TC-11] Given kb base list, then forwards to runRemoteCliCommand', async () => {
     const { out } = makeOut()
     await runMainWithOutput(['base', 'list'], out, {} as never)
@@ -98,27 +100,18 @@ describe('kb base list / delete (remote)', () => {
     )
   })
 
-  it('[TC-12] Given kb base delete --force, then forwards to runRemoteCliCommand', async () => {
-    const { out } = makeOut()
+  it('[TC-12] Given kb base delete, then refuses client-side and does not forward to the server', async () => {
+    const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', 'to-delete', '--force'], out, {} as never)
-    expect(mockRunRemoteCliCommand).toHaveBeenCalledTimes(1)
-    expect(mockRunRemoteCliCommand).toHaveBeenCalledWith(
-      ['base', 'delete', 'to-delete', '--force'],
-      out,
-      expect.anything(),
-      'cli'
-    )
+    expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
+    expect(lines.join('\n')).toContain('kb-server base delete')
   })
 
-  it('[TC-13] Given base delete without --force in TUI, then forwards to remote (server enforces --force)', async () => {
-    const { out } = makeOut()
+  it('[TC-13] Given base delete in the TUI, then refuses client-side and does not forward', async () => {
+    const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', 'catalog'], out, {} as never, 'tui')
-    expect(mockRunRemoteCliCommand).toHaveBeenCalledWith(
-      ['base', 'delete', 'catalog'],
-      out,
-      expect.anything(),
-      'tui'
-    )
+    expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
+    expect(lines.join('\n')).toContain('operator')
   })
 })
 

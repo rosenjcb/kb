@@ -183,8 +183,9 @@ async function planBootstrapTask(
   }
 
   log(
-    '⚠  No index and no repos configured. Declare repos via --git or KB_SERVER_BASE_GIT_REPOS ' +
-      '(or KB_GIT_REPOS) and restart to build the index.'
+    `Base "${base.baseRef}" is empty — no repos indexed yet. Add one to start archiving:
+    kb-server base add-repo ${base.baseRef} --git <url>
+  (CI/CD can instead pass --git / KB_SERVER_BASE_GIT_REPOS at start.) The server is up and will report an empty base until then.`
   )
   return null
 }
@@ -572,6 +573,10 @@ Commands:
   restart       Stop then start -d.
   status        Report whether kb-server is running (pid + /healthz).
   init          Bootstrap KB_HOME and server config, then print next steps.
+  base <list|delete <name> [--yes]>
+        Operator base management. \`base list\` shows initialized bases; \`base delete
+        <name>\` removes one base and all its data (prompts unless --yes). Base
+        creation happens at boot via \`start --base <name> --git <repo>\`.
   service <install|uninstall|status> [--no-start]
         Register/manage kb-server as a launchd (macOS) / systemd --user (Linux)
         service that starts on login. (install is an alias for service install.)
@@ -681,6 +686,11 @@ export async function runServerMain(argv: string[]): Promise<void> {
     case 'refresh': {
       const { runServerRefreshCommand } = await import('./refresh-cli.js')
       await runServerRefreshCommand(rest, out)
+      return
+    }
+    case 'base': {
+      const { runServerBaseCommand } = await import('./base-cli.js')
+      await runServerBaseCommand(rest, out)
       return
     }
     default:

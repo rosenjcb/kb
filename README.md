@@ -64,25 +64,43 @@ Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE
 
 ### 2) Start the server
 
-The server needs an LLM API key to synthesize answers and at least one git repo to index:
+The server needs an LLM API key to synthesize answers:
 
 ```bash
 export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
+kb-server start --with-mcp
+```
+
+Leave that terminal running (or add `-d` to background it). It comes up on `localhost:38117` with a base named **`default`** — KB's built-in base, the way Postgres ships a `postgres` database. You never name a base just to start one. At this point `default` is **empty**: the server is up but has nothing indexed yet, and it will say so if you ask it something.
+
+### 2b) Add your favorite repo
+
+Point the `default` base at a repo and it starts archiving (clone → index; the first run takes a minute depending on repo size):
+
+```bash
+kb-server base add-repo default --git https://github.com/acme/auth-svc
+```
+
+Add more any time (pin a branch per repo with `<url>#branch`):
+
+```bash
+kb-server base add-repo default --git https://github.com/acme/web#develop
+```
+
+**Prefer to skip the empty state?** Pass the repos right at boot — same result:
+
+```bash
 kb-server start --git https://github.com/acme/auth-svc --with-mcp
 ```
 
-Leave that terminal running (or add `-d` to background it). The server clones and indexes into a base named **`base`** — KB's default, the way Postgres ships a `postgres` database. You never name a base just to start one. Default address: `localhost:38117`; the first run takes a minute depending on repo size.
-
-Index several repos at once — and name the base if you like:
+**Want a separate, named base** (kept apart from `default`)? Create it with at least one repo, then query it with `--base`:
 
 ```bash
-kb-server start --base acme \
-  --git https://github.com/acme/auth \
-  --git https://github.com/acme/web#develop \
-  --with-mcp
+kb-server base create acme --git https://github.com/acme/auth --git https://github.com/acme/web#develop
+kb-server base list          # see every base on this server
 ```
 
-Pin a branch per repo with `<url>#branch`. In containers you can declare repos with `KB_SERVER_BASE_GIT_REPOS` instead of `--git` flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
+Base lifecycle — `create`, `add-repo`, `list`, `delete` — is an **operator** job on `kb-server`. The `kb` client can only *switch* which base it talks to (`kb base use <name>`), never create or delete one. In containers you can also declare the default base's repos with `KB_SERVER_BASE_GIT_REPOS` instead of flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
 ### 3) Ask something
 

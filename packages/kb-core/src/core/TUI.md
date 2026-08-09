@@ -90,7 +90,7 @@ When adding a new tool, agent, or orchestrator output path: ask "is this metadat
 
 Examples:
 
-- `kb base use` / `kb base delete` must work as both `kb base …` (CLI) and `/base use …` / `/base delete …` (TUI).
+- `kb base use` must work as both `kb base …` (CLI) and `/base use …` (TUI). (Base creation/deletion is an operator action on `kb-server`, not a client/TUI command.)
 - `kb sync` must work as both `kb sync` (CLI) and `/sync` (TUI).
 - Global `kb --host <host:port>` must apply before TUI launch and one-shot commands.
 - A help flag should work from both `kb --help` and `kb query --help`.

@@ -9,7 +9,6 @@ import {
   formatUseCommandHelp,
   getKbHomeDir,
   listAllBases,
-  printBaseDeleteHelp,
   readBaseConfig,
   readOptionalCliValue,
   resolveBaseToDir,
@@ -196,19 +195,6 @@ describe('deleteBase', () => {
 
   it('[TC-41] Given a path-like base, then throws rather than deleting arbitrary paths', async () => {
     await expect(deleteBase('/tmp/some-dir')).rejects.toThrow('named bases')
-  })
-})
-
-describe('printBaseDeleteHelp', () => {
-  it('[TC-42] includes base delete usage in CLI mode', () => {
-    const text = printBaseDeleteHelp('cli')
-    expect(text).toContain('kb base delete')
-    expect(text).toContain('--force')
-  })
-
-  it('[TC-43] includes base delete usage in TUI mode', () => {
-    const text = printBaseDeleteHelp('tui')
-    expect(text).toContain('/base delete')
   })
 })
 

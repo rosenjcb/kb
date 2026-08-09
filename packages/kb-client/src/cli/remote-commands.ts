@@ -49,10 +49,12 @@ export function isClientLocalCommand(args: string[]): boolean {
     return true
   }
   // `base use` is client connection-profile state; `base --help` stays offline.
-  // `base list` / `base delete` run on kb-server.
+  // `base delete` is refused client-side (deletion is an operator action on kb-server),
+  // so keep it local instead of forwarding. `base list` runs on kb-server.
   if (command === 'base') {
     const sub = args[1]
     if (sub === 'use') return true
+    if (sub === 'delete') return true
     if (sub === '--help' || sub === '-h' || sub === 'help') return true
   }
   return false

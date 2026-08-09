@@ -18,6 +18,8 @@ import {
 } from '@kb/core/core/telemetry.js'
 import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
+import { basename } from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
 import {
@@ -69,6 +71,19 @@ export async function runQueryPipeline(
   const query = params.query.trim()
   if (!query) {
     throw new Error('query is required')
+  }
+
+  // An empty base (no repos indexed yet — the default base before anyone adds one) has
+  // nothing to retrieve. Answer with a clear, actionable message instead of running the
+  // pipeline over an empty index and returning a hollow "no evidence" answer.
+  if (isKbIndexEmpty(kbIndexDbPath(baseDir))) {
+    const baseName = basename(baseDir)
+    return {
+      status: 'uncertain',
+      evidence: 'none',
+      explanation: `This base ("${baseName}") is empty — no repositories have been indexed yet.`,
+      recommendedAction: `An operator can add one on the server: \`kb-server base add-repo ${baseName} --git <url>\`.`,
+    }
   }
 
   const llmCounter =
