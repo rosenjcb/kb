@@ -65,6 +65,17 @@ describe('server-connection', () => {
     expect(line).toContain('base: dogfood')
   })
 
+  it('[TC-72] formatConnectionContext labels the server-default base', () => {
+    expect(formatConnectionContext({}, 'base', { serverDefault: true })).toContain(
+      'base: base (server default)'
+    )
+    // A locally selected active base is shown without the label.
+    expect(formatConnectionContext({}, 'dogfood', { serverDefault: false })).toContain(
+      'base: dogfood'
+    )
+    expect(formatConnectionContext({}, 'dogfood')).not.toContain('server default')
+  })
+
   it('[TC-50] resolveActiveBaseName returns KB_BASE (explicit --base / connection-string) first', async () => {
     const prevBase = process.env.KB_BASE
     process.env.KB_BASE = 'raylib'

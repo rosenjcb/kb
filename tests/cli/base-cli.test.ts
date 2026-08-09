@@ -11,13 +11,9 @@ vi.mock('@kb/client/cli/remote-commands.js', async importOriginal => {
   }
 })
 
-import {
-  resolveBaseToDir,
-  writeDefaultBase,
-} from '@kb/core/storage/base-selection.js'
+import { resolveBaseToDir, writeSessionBase } from '@kb/core/storage/base-selection.js'
 import { runMainWithOutput } from '@kb/client/cli/index.js'
 import { runRemoteCliCommand } from '@kb/client/cli/remote-commands.js'
-import { readKbConfig } from '@kb/core/config/kb-config.js'
 
 const mockRunRemoteCliCommand = vi.mocked(runRemoteCliCommand)
 
@@ -64,16 +60,6 @@ describe('kb base use', () => {
     expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
   })
 
-  it('[TC-7] Given kb base use --default <base>, then sets both defaultBase and activeBase', async () => {
-    await initBase('mydefault')
-    const { out, lines } = makeOut()
-    await runMainWithOutput(['base', 'use', '--default', 'mydefault'], out, {} as never)
-    expect(lines.join('\n')).toContain('Default base: mydefault')
-    const config = await readKbConfig()
-    expect(config.defaultBase).toBe('mydefault')
-    expect(config.activeBase).toBe('mydefault')
-  })
-
   it('[TC-8] Given kb base use <base> that does not exist, then errors with server-managed guidance', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
@@ -82,10 +68,12 @@ describe('kb base use', () => {
   })
 
   it('[TC-9] Given kb base use --show, then prints current base config', async () => {
-    await writeDefaultBase('showbase')
+    await initBase('showbase')
+    await writeSessionBase('showbase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', '--show'], out, {} as never)
     expect(lines.join('\n')).toContain('KB base configuration')
+    expect(lines.join('\n')).toContain('Active base: showbase')
   })
 
   it('[TC-10] Given kb base --help, then prints base help', async () => {

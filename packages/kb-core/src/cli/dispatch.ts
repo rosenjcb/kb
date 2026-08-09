@@ -364,10 +364,7 @@ async function runServerBaseCommand(
       lines.push(`  Run \`${cmd('init --base <name>', mode)}\` on the server.`)
     } else {
       for (const b of bases) {
-        const tags: string[] = []
-        if (b.isActive) tags.push('active')
-        if (b.isDefault) tags.push('default')
-        const tagStr = tags.length ? `  [${tags.join(', ')}]` : ''
+        const tagStr = b.isActive ? '  [active]' : ''
         lines.push(`  ${b.name}${tagStr}`)
         lines.push(`    ${b.path}`)
       }

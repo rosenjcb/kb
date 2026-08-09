@@ -65,8 +65,7 @@ Root `package.json` (`kb-workspace`) orchestrates build, test, eval — not ship
 ```
 ~/.kb/
   state/
-    active-base           # session base (from kb base use)
-    default-base          # persistent default base
+    active-base           # session base (from kb base use); the default is the server's
   sessions/<base>/      # SQLite index, docs, repos/<slug>/
   logs/                 # RunReport NDJSON (server + local-mode CLI)
   evaluations/          # eval harvest artifacts

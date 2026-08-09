@@ -66,7 +66,7 @@ export async function ensureServerReady(config: KbConfig): Promise<void> {
 
 /**
  * Discover the server's own default base for display when no base was resolved
- * locally (no `--base`, `.kb` file, active/default base). Best-effort: an
+ * locally (no `--base` and no active base). Best-effort: an
  * unreachable server just leaves the caller's existing "(none)" display as-is —
  * the actual command still gets a real connection error later.
  */
@@ -78,6 +78,28 @@ export async function discoverRemoteDefaultBase(config: KbConfig): Promise<strin
   } catch {
     return undefined
   }
+}
+
+export interface DisplayBase {
+  /** Base name to show, or undefined when the server is unreachable. */
+  name?: string
+  /** True when `name` is the server's own default base rather than a locally chosen active base. */
+  isServerDefault: boolean
+}
+
+/**
+ * Resolve the base to *display* (TUI status bar, CLI banner, chat header). It is the
+ * active base — what the wire sends as `X-KB-Base` — when one is selected; otherwise
+ * the server's own default base, discovered over the wire. Surfacing the server default
+ * (instead of "(none)") makes the base flow obvious: with no `kb base use <base>` you are
+ * on the server's default, never truly baseless. Best-effort: an unreachable server
+ * leaves `name` undefined and callers fall back to "(none)".
+ */
+export async function resolveDisplayBase(config: KbConfig, cwd?: string): Promise<DisplayBase> {
+  const active = await resolveActiveBaseName(config, cwd)
+  if (active) return { name: active, isServerDefault: false }
+  const serverDefault = await discoverRemoteDefaultBase(config)
+  return { name: serverDefault, isServerDefault: serverDefault !== undefined }
 }
 
 export async function runRemoteAdminCli(
@@ -279,9 +301,8 @@ export async function runRemoteChatTurn(
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
-  const sessionBase =
-    (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
-  io.write(formatConnectionContext(kbConfig, sessionBase))
+  const display = await resolveDisplayBase(kbConfig)
+  io.write(formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault }))
 
   let sessionId: string | undefined
 

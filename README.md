@@ -201,8 +201,7 @@ kb docs list|view|generate|rename|delete ...
 ### Other commands
 
 ```
-kb base use <base>             — switch active base
-kb base use --default <base>   — save persistent default
+kb base use <base>             — switch active base (omit to use the server default)
 kb facts list|search|show ...
 kb graph ...
 kb skills install|uninstall

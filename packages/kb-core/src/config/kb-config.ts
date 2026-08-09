@@ -9,17 +9,12 @@ import {
   parseBooleanEnv,
 } from '@kb/core/config/env-boolean.js'
 import { KB_ENV, envVarHint, readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
-import {
-  migrateLegacyConfigJsonBases,
-  readActiveBaseName,
-  readDefaultBaseName,
-} from '@kb/core/storage/base-state.js'
+import { migrateLegacyConfigJsonBases, readActiveBaseName } from '@kb/core/storage/base-state.js'
 
 export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
 
 export interface KbConfig {
   activeBase?: string
-  defaultBase?: string
   /** Remote kb-server connection profile. */
   server?: {
     host?: string
@@ -154,7 +149,6 @@ async function migrateLegacyConfigJsonOnce(): Promise<void> {
     const parsed = JSON.parse(await readFile(legacyPath, 'utf8')) as KbConfig
     await migrateLegacyConfigJsonBases({
       activeBase: parsed.activeBase,
-      defaultBase: parsed.defaultBase,
     })
   } catch {
     await rm(legacyPath, { force: true }).catch(() => {})
@@ -163,13 +157,11 @@ async function migrateLegacyConfigJsonOnce(): Promise<void> {
 
 function buildConfigFromEnv(bases: {
   activeBase?: string
-  defaultBase?: string
 }): KbConfig {
   const host = readEnvHost()
   const config: KbConfig = {
     features: { ...DEFAULT_FEATURES },
     ...(bases.activeBase ? { activeBase: bases.activeBase } : {}),
-    ...(bases.defaultBase ? { defaultBase: bases.defaultBase } : {}),
   }
 
   if (
@@ -250,7 +242,6 @@ export async function readKbConfig(_configFile?: string): Promise<KbConfig> {
   await migrateLegacyConfigJsonOnce()
   return buildConfigFromEnv({
     activeBase: await readActiveBaseName(),
-    defaultBase: await readDefaultBaseName(),
   })
 }
 
@@ -700,15 +691,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
       : undefined
   if (activeBase) {
     normalized.activeBase = activeBase
-  }
-
-  const defaultBase =
-    typeof input.defaultBase === 'string' && input.defaultBase.trim()
-      ? input.defaultBase.trim()
-      : undefined
-
-  if (defaultBase) {
-    normalized.defaultBase = defaultBase
   }
 
   if (input.server && typeof input.server === 'object') {

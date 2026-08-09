@@ -7,7 +7,7 @@ import {
   formatDeleteBaseResult,
   resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
-import { resolveActiveBaseName } from '../api/server-connection.js'
+import { resolveDisplayBase } from '../cli/remote-commands.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { performClientUninstall } from '@kb/core/cli/release-uninstall.js'
@@ -56,6 +56,8 @@ interface Props {
   serverHost?: string
   /** Base resolved by the CLI before launch, so the status bar starts correct. */
   initialBaseName?: string
+  /** Whether initialBaseName is the server's own default base (no local active base). */
+  initialBaseIsServerDefault?: boolean
 }
 
 export function App({
@@ -63,6 +65,7 @@ export function App({
   startupNotices = [],
   serverHost = 'localhost',
   initialBaseName,
+  initialBaseIsServerDefault,
 }: Props) {
   const { exit } = useApp()
 
@@ -73,6 +76,9 @@ export function App({
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
   const [baseName, setBaseName] = useState(initialBaseName ?? '…')
+  const [baseIsServerDefault, setBaseIsServerDefault] = useState(
+    initialBaseIsServerDefault ?? false
+  )
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [baseResolved, setBaseResolved] = useState(false)
 
@@ -139,39 +145,47 @@ export function App({
   }, [updateEntry])
 
   // Single base resolver for the status bar: the displayed name comes from the same
-  // `resolveActiveBaseName` the request path sends as `X-KB-Base`, so the bar can
-  // never disagree with the base kb-server actually serves. The local dir (best
-  // effort) is only used for the uninitialized-index notice.
+  // `resolveDisplayBase` the CLI banner uses — the active base (also sent on the wire as
+  // `X-KB-Base`) or, when none is selected locally, the server's own default base. So the
+  // bar can never disagree with the base kb-server actually serves, and never shows a bare
+  // "(none)" when the server is in fact serving its default. The local dir (best effort)
+  // is only used for the uninitialized-index notice.
   const resolveBaseState = useCallback(async () => {
-    const name = await resolveActiveBaseName(config).catch(() => undefined)
+    const display = await resolveDisplayBase(config).catch(() => ({
+      name: undefined,
+      isServerDefault: false,
+    }))
     let dir = ''
     try {
       dir = (await resolveEffectiveBaseDir()).baseDir
     } catch {
       // No local base dir — remote base or none selected.
     }
-    return { name: name ?? '', dir }
+    return { name: display.name ?? '', isServerDefault: display.isServerDefault, dir }
   }, [config])
 
   const refreshBase = useCallback(() => {
     return resolveBaseState()
-      .then(({ name, dir }) => {
+      .then(({ name, isServerDefault, dir }) => {
         storageDirRef.current = dir
         setBaseName(name)
+        setBaseIsServerDefault(isServerDefault)
       })
       .catch(() => {})
   }, [resolveBaseState])
 
   useEffect(() => {
     resolveBaseState()
-      .then(({ name, dir }) => {
+      .then(({ name, isServerDefault, dir }) => {
         storageDirRef.current = dir
         setBaseName(name)
+        setBaseIsServerDefault(isServerDefault)
         setBaseResolved(true)
       })
       .catch(() => {
         storageDirRef.current = ''
         setBaseName('')
+        setBaseIsServerDefault(false)
         setBaseResolved(true)
       })
   }, [resolveBaseState])
@@ -603,7 +617,11 @@ export function App({
 
   return (
     <Box flexDirection="column">
-      <StatusBar serverHost={serverHost} baseName={baseName} />
+      <StatusBar
+        serverHost={serverHost}
+        baseName={baseName}
+        baseIsServerDefault={baseIsServerDefault}
+      />
       <HistoryPane entries={history} />
       <InputBar
         value={inputValue}

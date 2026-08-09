@@ -72,7 +72,7 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Repo sync pulls each clone on the volume and re-indexes those with new commits |
 | FR-2 | Global CLI routing parses flags, defaults, and dispatches subcommands |
 | FR-3 | Repo slug/dir helpers and on-volume repo discovery |
-| FR-4 | Base selection resolves `--base`, config default, and effective-base precedence |
+| FR-4 | Base selection resolves `--base` and the active base; with none set the server default applies |
 | FR-5 | Chat REPL delegates to kb-server `/v1/chat`; synthesis helpers stay unit-tested in-client |
 | FR-6 | Chat document-generation flow wires doc tools into chat turns |
 | FR-7 | Chat query orchestrator delegates QUERY turns to shared retrieval |
@@ -120,7 +120,6 @@ See companion doc for full vocabulary where applicable.
 | TC-4 | FR-1 | Given multiple repos, then only the changed repo is re-indexed | pass |
 | TC-5 | FR-1 | Given one repo's pull fails, then the other repos still sync | pass |
 | TC-6 | FR-2 | Given kb base use <base>, then sets activeBase and prints resolved path | pass |
-| TC-7 | FR-2 | Given kb base use --default <base>, then sets both defaultBase and activeBase | pass |
 | TC-8 | FR-2 | Given kb base use <base> that does not exist, then errors with server-managed guidance | pass |
 | TC-9 | FR-2 | Given kb base use --show, then prints current base config | pass |
 | TC-10 | FR-2 | Given kb base --help, then prints base help | pass |
@@ -136,36 +135,28 @@ See companion doc for full vocabulary where applicable.
 | TC-20 | FR-4 | alias base resolves to namespaced sessions directory | pass |
 | TC-21 | FR-4 | path-like base resolves relative to cwd | pass |
 | TC-22 | FR-4 | absolute path base is returned as-is | pass |
-| TC-23 | FR-4 | active base in config wins over defaultBase | pass |
-| TC-24 | FR-4 | config.defaultBase is used when KB_BASE is not set | pass |
-| TC-25 | FR-4 | throws when neither activeBase nor config.defaultBase is set | pass |
-| TC-26 | FR-4 | writeDefaultBase persists to config and readBaseConfig reads it back | pass |
-| TC-27 | FR-4 | writeDefaultBase overwrites a prior default | pass |
-| TC-28 | FR-4 | writeSessionBase persists the active base separately from the default | pass |
-| TC-29 | FR-4 | migrates legacy session.json into state files and removes session.json | pass |
+| TC-23 | FR-4 | resolves the active base from config | pass |
+| TC-25 | FR-4 | throws when no activeBase is set (server default takes over) | pass |
+| TC-28 | FR-4 | writeSessionBase persists the active base | pass |
+| TC-29 | FR-4 | migrates legacy session.json into active-base and removes session.json | pass |
 | TC-30 | FR-4 | ensureOperationalBaseDir migrates legacy repo sqlite into KB home | pass |
 | TC-31 | FR-4 | ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace | pass |
 | TC-32 | FR-4 | formatUseCommandHelp shows active session switching | pass |
-| TC-33 | FR-4 | formatDefaultCommandHelp shows persistent default messaging | pass |
-| TC-34 | FR-4 | formatUseCommandHelp uses slash hints in TUI mode | pass |
-| TC-35 | FR-4 | formatDefaultCommandHelp uses slash hints in TUI mode | pass |
 | TC-36 | FR-4 | Given an existing named base, then deletes its session directory | pass |
 | TC-37 | FR-4 | Given legacy + tmp checkpoint artifacts, then purges them too | pass |
 | TC-38 | FR-4 | Given the base is the active base, then clears it from config | pass |
-| TC-39 | FR-4 | Given the base is the selected (default) base, then clears it from config | pass |
 | TC-40 | FR-4 | Given the base does not exist on disk, then succeeds without error | pass |
 | TC-41 | FR-4 | Given a path-like base, then throws rather than deleting arbitrary paths | pass |
 | TC-42 | FR-4 | includes base delete usage in CLI mode | pass |
 | TC-43 | FR-4 | includes base delete usage in TUI mode | pass |
 | TC-44 | FR-4 | includes the base name and path in output | pass |
 | TC-45 | FR-4 | mentions cleared active base when applicable | pass |
-| TC-46 | FR-4 | mentions cleared default base when applicable | pass |
 | TC-54 | FR-4 | returns empty array when sessions directory does not exist | pass |
 | TC-55 | FR-4 | returns only directories that contain .kb-index.sqlite | pass |
-| TC-56 | FR-4 | marks the active and default bases correctly | pass |
+| TC-56 | FR-4 | marks the active base correctly | pass |
 | TC-57 | FR-4 | returns bases sorted alphabetically | pass |
-| TC-60 | FR-4 | resolves the active base first | pass |
-| TC-61 | FR-4 | falls back to the default base when no active base | pass |
+| TC-60 | FR-4 | resolves the configured active base | pass |
+| TC-61 | FR-4 | throws when no active base is configured | pass |
 | TC-63 | FR-4 | readOptionalCliValue returns the following token | pass |
 | TC-64 | FR-4 | readOptionalCliValue returns undefined when flag or value is missing | pass |
 | TC-65 | FR-4 | stripCliFlagWithValue removes --base and its value | pass |

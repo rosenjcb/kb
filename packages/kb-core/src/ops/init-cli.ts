@@ -1467,7 +1467,7 @@ async function resolveInitBaseName(
   }
 
   if (options.rescan) {
-    // Fall back to the selected active / default base (`kb base use`) — no prompt needed.
+    // Fall back to the selected active base (`kb base use`) — no prompt needed.
     try {
       const { baseName } = await resolveEffectiveBaseDir(cwd)
       if (baseName?.trim()) {
@@ -1475,7 +1475,7 @@ async function resolveInitBaseName(
         return baseName
       }
     } catch {
-      // No active / default base selected — fall through to the picker / error.
+      // No active base selected — fall through to the picker / error.
     }
 
     if (options.nonInteractive) {
@@ -1496,8 +1496,7 @@ async function resolveInitBaseName(
 
     questionIO.write?.('\n[kb scan] Available bases:\n')
     for (const b of bases) {
-      const tags = [b.isActive ? 'active' : '', b.isDefault ? 'default' : ''].filter(Boolean)
-      const tagStr = tags.length ? `  [${tags.join(', ')}]` : ''
+      const tagStr = b.isActive ? '  [active]' : ''
       questionIO.write?.(`  ${b.name}${tagStr}\n`)
     }
     questionIO.write?.('\n')

@@ -10,13 +10,11 @@ import path from 'node:path'
 import { CLIENT_VERSION } from '../version.js'
 import {
   ensureOperationalBaseDir,
-  formatDefaultCommandHelp,
   formatUseCommandHelp,
   migrateLegacyKbSessionJson,
   readBaseConfig,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
-  writeDefaultBase,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import {
@@ -44,9 +42,13 @@ import {
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import { discoverRemoteDefaultBase, isClientLocalCommand, runRemoteCliCommand } from './remote-commands.js'
 import {
-  resolveActiveBaseName,
+  discoverRemoteDefaultBase,
+  resolveDisplayBase,
+  isClientLocalCommand,
+  runRemoteCliCommand,
+} from './remote-commands.js'
+import {
   resolveServerConnection,
   formatServerAddress,
   formatConnectionContext,
@@ -172,9 +174,11 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base', mode)}                          Show status and list all bases`,
     `  ${cmd('base list', mode)}                     List all initialized bases`,
     `  ${cmd('base use <base>', mode)}               Switch the active base`,
-    `  ${cmd('base use --default <base>', mode)}     Set the persistent default base`,
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
     `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
+    '',
+    'With no active base selected you are on the server\'s own default base (shown as',
+    '"(server default)"); `base use <base>` switches to a named base for this client.',
     '',
     'The repos a base indexes and the paths it skips are declared on the server via',
     'KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
@@ -223,7 +227,6 @@ export async function runMainWithOutput(
     if (subCmd === 'use') {
       const useArgs = subArgs.slice(1)
       const show = useArgs.includes('--show')
-      const makeDefault = useArgs.includes('--default')
       const help = useArgs.includes('--help') || useArgs.includes('-h') || useArgs[0] === 'help'
       const base = useArgs.find(token => !token.startsWith('--'))
 
@@ -246,13 +249,20 @@ export async function runMainWithOutput(
           out.log(`Base: ${effective.baseName}`)
           out.log(`Resolved path: ${effective.baseDir}`)
         } else {
-          out.log(CLI_ERROR_NO_KB_BASE)
+          // No local active base — surface the server's own default so it's clear which
+          // base commands will actually hit (and that the user isn't truly baseless).
+          const serverDefault = await discoverRemoteDefaultBase(config)
+          if (serverDefault) {
+            out.log('Source: server default')
+            out.log(`Base: ${serverDefault} (server default)`)
+            out.log('No active base selected — using the server default.')
+            out.log(`Run \`${cmd('base use <base>', mode)}\` to switch to a named base.`)
+          } else {
+            out.log(CLI_ERROR_NO_KB_BASE)
+          }
         }
         if (configured.activeBase) {
           out.log(`Active base: ${configured.activeBase}`)
-        }
-        if (configured.defaultBase) {
-          out.log(`Default base: ${configured.defaultBase}`)
         }
         return
       }
@@ -268,11 +278,6 @@ export async function runMainWithOutput(
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
-      if (makeDefault) {
-        await writeDefaultBase(base)
-        out.log(formatDefaultCommandHelp(base, resolved, mode))
-        return
-      }
       out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
@@ -431,12 +436,18 @@ async function main() {
 
     const serverHost = formatServerAddress(resolveServerConnection(kbConfig))
     // One base resolver for the wire and the UI; if none is selected locally, show
-    // the base kb-server will actually serve.
-    const sessionBase =
-      (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
-    startupNotices.unshift(formatConnectionContext(kbConfig, sessionBase))
+    // the base kb-server will actually serve (its own default), labeled as such.
+    const display = await resolveDisplayBase(kbConfig)
+    startupNotices.unshift(
+      formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+    )
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices, serverHost, baseName: sessionBase })
+    await launchTui(kbConfig, {
+      startupNotices,
+      serverHost,
+      baseName: display.name,
+      baseIsServerDefault: display.isServerDefault,
+    })
     return
   }
 
@@ -453,9 +464,10 @@ async function main() {
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
   if (!machineJsonStdout) {
     console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
-    const cliBase =
-      (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
-    console.log(formatConnectionContext(kbConfig, cliBase))
+    const display = await resolveDisplayBase(kbConfig)
+    console.log(
+      formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+    )
     console.log('')
   }
   await runMainWithOutput(args, defaultCliOutput, kbConfig)

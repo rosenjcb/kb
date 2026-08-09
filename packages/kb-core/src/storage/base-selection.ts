@@ -4,16 +4,10 @@ import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 import { type KbConfig, readKbConfig } from '@kb/core/config/kb-config.js'
-import {
-  readActiveBaseName,
-  readDefaultBaseName,
-  writeActiveBaseName,
-  writeDefaultBaseName,
-} from '@kb/core/storage/base-state.js'
+import { readActiveBaseName, writeActiveBaseName } from '@kb/core/storage/base-state.js'
 
 export interface BaseSelectionConfig {
   activeBase?: string
-  defaultBase?: string
   updatedAt?: string
 }
 
@@ -127,13 +121,7 @@ export async function readBaseConfig(): Promise<BaseSelectionConfig> {
   await migrateLegacyKbSessionJson()
   return {
     activeBase: await readActiveBaseName(),
-    defaultBase: await readDefaultBaseName(),
   }
-}
-
-export async function writeDefaultBase(base: string): Promise<BaseSelectionConfig> {
-  await writeDefaultBaseName(base)
-  return readBaseConfig()
 }
 
 export async function writeSessionBase(base: string): Promise<BaseSelectionConfig> {
@@ -143,7 +131,7 @@ export async function writeSessionBase(base: string): Promise<BaseSelectionConfi
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'activeBase' | 'defaultBase'
+  source: 'activeBase'
   baseName: string
 }
 
@@ -151,7 +139,6 @@ export interface BaseInfo {
   name: string
   path: string
   isActive: boolean
-  isDefault: boolean
   lastModified: Date | null
 }
 
@@ -181,7 +168,6 @@ export async function listAllBases(): Promise<BaseInfo[]> {
       name: entry,
       path: basePath,
       isActive: config.activeBase === entry,
-      isDefault: config.defaultBase === entry,
       lastModified,
     })
   }
@@ -192,15 +178,17 @@ export async function listAllBases(): Promise<BaseInfo[]> {
 /**
  * Resolve which base to use.
  *
- * Priority:
- *   1. active base — from `kb base use` (`~/.kb/state/active-base` or `KB_ACTIVE_BASE`).
- *   2. default base — from `kb base use --default` (`~/.kb/state/default-base` or `KB_BASE`).
+ * The active base — set by `kb base use` (`~/.kb/state/active-base` or
+ * `KB_ACTIVE_BASE`) — is the only client-side selection. When none is set the
+ * caller falls back to the server's own default base (see
+ * `discoverRemoteDefaultBase` / `resolveActiveBaseName`), so there is no
+ * persistent client default.
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
 export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
-  configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'defaultBase'> | KbConfig
+  configOverride?: Pick<BaseSelectionConfig, 'activeBase'> | KbConfig
 ): Promise<EffectiveBaseResolution> {
   const activeBase =
     configOverride !== undefined
@@ -217,21 +205,6 @@ export async function resolveEffectiveBaseDir(
     }
   }
 
-  const selected =
-    configOverride !== undefined
-      ? 'defaultBase' in configOverride
-        ? configOverride.defaultBase
-        : undefined
-      : (await readBaseConfig()).defaultBase
-
-  if (selected) {
-    return {
-      baseDir: await ensureOperationalBaseDir(selected, cwd),
-      source: 'defaultBase',
-      baseName: selected,
-    }
-  }
-
   throw new Error(CLI_ERROR_NO_KB_BASE)
 }
 
@@ -239,36 +212,19 @@ export async function resolveEffectiveBaseDir(
 export function formatUseCommandHelp(
   base: string,
   resolvedPath: string,
-  mode: CmdMode = 'cli'
+  _mode: CmdMode = 'cli'
 ): string {
   return [
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Switched the active base for this session.',
-    `Use \`${cmd('base use --default <base>', mode)}\` to save the preferred base for future runs.`,
-  ].join('\n')
-}
-
-/** Format the output after `base use --default` / `default` (CLI vs TUI via `mode`). */
-export function formatDefaultCommandHelp(
-  base: string,
-  resolvedPath: string,
-  mode: CmdMode = 'cli'
-): string {
-  return [
-    `Default base: ${base}`,
-    `Resolved path: ${resolvedPath}`,
-    '',
-    'Saved as the preferred base for future runs.',
-    `Use \`${cmd('base use <base>', mode)}\` when you want to switch bases temporarily.`,
   ].join('\n')
 }
 
 export interface DeleteBaseResult {
   basePath: string
   clearedActive: boolean
-  clearedSelected: boolean
   purgedPaths: string[]
 }
 
@@ -309,16 +265,12 @@ export async function deleteBase(
 
   const config = await readKbConfig()
   const clearedActive = config.activeBase === trimmed
-  const clearedSelected = config.defaultBase === trimmed
 
   if (clearedActive) {
     await rm(path.join(getKbHomeDir(), 'state', 'active-base'), { force: true }).catch(() => {})
   }
-  if (clearedSelected) {
-    await rm(path.join(getKbHomeDir(), 'state', 'default-base'), { force: true }).catch(() => {})
-  }
 
-  return { basePath, clearedActive, clearedSelected, purgedPaths }
+  return { basePath, clearedActive, purgedPaths }
 }
 
 export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
@@ -346,7 +298,6 @@ export function formatDeleteBaseResult(
 ): string {
   const lines = [`Deleted base: ${base}`, `Removed path: ${result.basePath}`]
   if (result.clearedActive) lines.push('Cleared from active base (config.activeBase).')
-  if (result.clearedSelected) lines.push('Cleared from default base (config.defaultBase).')
   lines.push('', `Use \`${cmd('base use <base>', mode)}\` to start a new base.`)
   return lines.join('\n')
 }

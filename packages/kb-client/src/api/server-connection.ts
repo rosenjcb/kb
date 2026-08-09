@@ -41,10 +41,9 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
  * bar, CLI banner, chat header). Because the wire and the UI read the same function,
  * they can never drift. Precedence:
  *   1. explicit per-invocation base — `--base` / `--connection-string` (both land in `KB_BASE`)
- *   2. active base  ┐ via `resolveEffectiveBaseDir` (also honors `KB_ACTIVE_BASE`);
- *   3. default base ┘ set by `kb base use` / `kb base use --default`
- *   4. `config.server.base`
- * Undefined ⇒ kb-server serves its own default base.
+ *   2. active base — via `resolveEffectiveBaseDir` (also honors `KB_ACTIVE_BASE`), set by `kb base use`
+ *   3. `config.server.base`
+ * Undefined ⇒ kb-server serves its own default base (there is no client-side default).
  */
 export async function resolveActiveBaseName(
   config: KbConfig,
@@ -57,7 +56,7 @@ export async function resolveActiveBaseName(
     const trimmed = baseName?.trim()
     if (trimmed) return trimmed
   } catch {
-    // No active / default base selected locally — fall through.
+    // No active base selected locally — fall through to the server default.
   }
   return config.server?.base?.trim() || undefined
 }
@@ -98,9 +97,19 @@ export function formatServerAddress(connection: ServerConnection): string {
   }
 }
 
-/** User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header). */
-export function formatConnectionContext(config: KbConfig, baseName?: string): string {
-  const base = baseName?.trim() || '(none)'
+/**
+ * User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header).
+ * When `serverDefault` is set the base name came from the server's own default base
+ * (no local active base), so we label it that way — the user is never truly
+ * "baseless", they are on the server default until they run `kb base use <base>`.
+ */
+export function formatConnectionContext(
+  config: KbConfig,
+  baseName?: string,
+  opts: { serverDefault?: boolean } = {}
+): string {
+  const name = baseName?.trim()
+  const base = name ? (opts.serverDefault ? `${name} (server default)` : name) : '(none)'
   const host = formatServerAddress(resolveServerConnection(config))
   return `host: ${host} │ base: ${base}`
 }

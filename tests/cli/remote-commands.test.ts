@@ -1,4 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -6,6 +8,7 @@ import {
   discoverRemoteDefaultBase,
   dispatchRemoteChatStreamEvent,
   isClientLocalCommand,
+  resolveDisplayBase,
 } from '@kb/client/cli/remote-commands.js'
 
 describe('isClientLocalCommand', () => {
@@ -48,6 +51,71 @@ describe('discoverRemoteDefaultBase', () => {
       }),
     )
     await expect(discoverRemoteDefaultBase({})).resolves.toBeUndefined()
+  })
+})
+
+describe('resolveDisplayBase', () => {
+  let kbHome: string
+  const prevHome = process.env.KB_HOME
+  const prevBase = process.env.KB_BASE
+  const prevActive = process.env.KB_ACTIVE_BASE
+
+  afterEach(async () => {
+    vi.unstubAllGlobals()
+    if (prevHome === undefined) delete process.env.KB_HOME
+    else process.env.KB_HOME = prevHome
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
+    if (prevActive === undefined) delete process.env.KB_ACTIVE_BASE
+    else process.env.KB_ACTIVE_BASE = prevActive
+    if (kbHome) await rm(kbHome, { recursive: true, force: true })
+  })
+
+  it('[TC-69] returns the active base (isServerDefault false) when one is selected', async () => {
+    process.env.KB_BASE = 'raylib'
+    // No health probe needed — the active base short-circuits before any network call.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('should not probe when an active base is set')
+      }),
+    )
+    await expect(resolveDisplayBase({})).resolves.toEqual({
+      name: 'raylib',
+      isServerDefault: false,
+    })
+  })
+
+  it('[TC-70] falls back to the server default (isServerDefault true) when no active base', async () => {
+    kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
+    process.env.KB_HOME = kbHome
+    delete process.env.KB_BASE
+    delete process.env.KB_ACTIVE_BASE
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'base' }), { status: 200 })),
+    )
+    await expect(resolveDisplayBase({})).resolves.toEqual({
+      name: 'base',
+      isServerDefault: true,
+    })
+  })
+
+  it('[TC-71] reports no base (isServerDefault false) when the server is unreachable', async () => {
+    kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
+    process.env.KB_HOME = kbHome
+    delete process.env.KB_BASE
+    delete process.env.KB_ACTIVE_BASE
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNREFUSED')
+      }),
+    )
+    await expect(resolveDisplayBase({})).resolves.toEqual({
+      name: undefined,
+      isServerDefault: false,
+    })
   })
 })
 
