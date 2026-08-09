@@ -124,7 +124,6 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 
 Current repo direction:
 
-- `kb publish ...` previews by default and only writes on `--apply`.
 - Indexing/reindex is **server-managed** (`KB_GIT_REPOS` on kb-server) — not a client command.
 - Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.

@@ -36,7 +36,6 @@ tests:
   - ../../../../tests/cli/kb-ignore.test.ts
   - ../../../../tests/cli/logs-cli.test.ts
   - ../../../../tests/cli/named-list-interview.test.ts
-  - ../../../../tests/cli/publish-cli.test.ts
   - ../../../../tests/cli/repo-slug.test.ts
   - ../../../../tests/cli/retrieval-fallback.test.ts
   - ../../../../tests/cli/skill-installer.test.ts
@@ -97,7 +96,6 @@ See companion doc for full vocabulary where applicable.
 | FR-26 | kb.ignore patterns exclude paths from indexing |
 | FR-27 | Logs CLI reads structured run reports from the logs directory |
 | FR-28 | Named-list interview parses numbered selections in TTY prompts |
-| FR-29 | Publish CLI pushes companion docs to configured publish targets |
 | FR-30 | Retrieval fallback degrades gracefully when deep retrieval fails |
 | FR-31 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs. The kb-first reminder hook fires only on repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query` — never VCS/build/cloud tooling or pipeline-filter greps), throttles to one reminder per session per 15-minute window, and honors `KB_HOOK_REMINDER=false` |
 | FR-32 | Startup notices print one-time migration and version hints |
@@ -434,12 +432,6 @@ See companion doc for full vocabulary where applicable.
 | TC-341 | FR-28 | Given each added item, then writes running list to output | pass |
 | TC-342 | FR-28 | Given /reject after /complete, then restarts collection from the beginning | pass |
 | TC-343 | FR-28 | Given /cancel on final confirmation, then returns cancel | pass |
-| TC-344 | FR-29 | Given no apply flag, then defaults to preview (apply=false) | pass |
-| TC-345 | FR-29 | Given apply and phase import, then parses explicit execution mode | pass |
-| TC-346 | FR-29 | Given checkpoint and stop flags, then parses resume options | pass |
-| TC-347 | FR-29 | Given a custom progress sink, then publish progress avoids direct stderr writes | pass |
-| TC-348 | FR-29 | Given notion state with stale pages, then preview reports removedPages | pass |
-| TC-349 | FR-29 | Given apply with notion state, then archives stale pages and returns removedPages | pass |
 | TC-350 | FR-30 | Given more than TOP_SOURCE_PREVIEW_LIMIT cited files, then footer says top N of M file(s) | pass |
 | TC-351 | FR-30 | Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M file(s), folding symbols | pass |
 | TC-352 | FR-30 | Given no openable hits (incl. dropped fact:// refs), then footer is (none) | pass |

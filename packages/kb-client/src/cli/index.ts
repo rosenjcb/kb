@@ -109,7 +109,6 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  entities    Inspect harvested entities (services, surfaces) and name collisions',
     '  docs        Browse KB documents',
     '  facts       List, search, or show KB facts',
-    '  publish     Publish KB docs',
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
     '  skills      Manage agent skills',
@@ -207,7 +206,7 @@ export async function runMainWithOutput(
     return
   }
 
-  // Forward server-owned commands (query, docs, facts, graph, logs, publish, base list/delete, …).
+  // Forward server-owned commands (query, docs, facts, graph, logs, base list, …).
   if (!isClientLocalCommand(args)) {
     const code = await runRemoteCliCommand(args, out, config, mode)
     if (code && mode === 'cli') process.exitCode = code

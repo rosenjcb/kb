@@ -16,8 +16,8 @@ unit types** — whole markdown **documents**, exported **code symbols**, and cu
 `doc_code_links`. A post-retrieval curator drops off-topic units before one-shot
 synthesis writes a grounded prose answer.
 
-This is the platform mental model for `kb query`, `kb docs generate`, ingest
-(`kb init` / `kb scan`), and `kb publish`.
+This is the platform mental model for `kb query`, `kb docs generate`, and ingest
+(`kb init` / `kb scan`).
 
 > **History.** Earlier revisions were *facts-first*: sentence-level facts were the
 > only retrieval substrate, documents were publish-only artifacts, and retrieval was
@@ -86,17 +86,15 @@ bounded shallow/deep re-discovery fan-out that is itself re-fused with RRF.
 
 ---
 
-## 4. Documents: retrieval units *and* publish artifacts
+## 4. Documents: first-class retrieval units
 
 | Kind | Meaning |
 |------|---------|
 | **Original** | Authored/imported markdown from source material; indexed as a `documents` unit and mined for `facts`. |
 | **Generated** | Produced by `kb docs generate` (or init synthesis), grounded in retrieved units. |
 
-Both kinds are indexed for retrieval **and** rendered at **publish** time (static site,
-export, "view doc"). Unlike the old facts-first model, a document body is legitimate
-evidence a query can retrieve directly. Publish sync semantics:
-[`publish/PUBLISH.md`](./publish/PUBLISH.md).
+Both kinds are indexed for retrieval and browsable via `kb docs`. Unlike the old
+facts-first model, a document body is legitimate evidence a query can retrieve directly.
 
 ---
 
@@ -182,7 +180,6 @@ flowchart TB
 | **`kb facts`** | CLI + TUI `/facts` for list / search / show (`src/cli/facts-cli.ts`). |
 | **Multi-repo bases** | A base tracks one or more git repos. Each unit carries a `git_repo` origin; retrieval fuses across repos in one pool (no repo-scoped walk, no `fact_edges`). |
 | **`kb init`** | Per repo: `code-index` (AST → `code_symbols` + `import_code` facts), document indexing (`documents`), `document-facts` (segmentation → facts), and `doc_code_links`; followed by cross-repo reconciliation. |
-| **Publish** | Reads stored documents for export. |
 
 ---
 

@@ -14,7 +14,7 @@ timestamp: 2026-06-20T00:00:00Z
 KB uses three loop patterns:
 
 1. **`runIntentLoop`** — the primary harness for the public KB query intent.
-2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init` and `kb publish`.
+2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init`.
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
 
 The public KB query intent delegates to the router-owned retrieval path:

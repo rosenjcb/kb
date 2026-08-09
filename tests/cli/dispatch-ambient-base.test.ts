@@ -38,7 +38,7 @@ describe('applyAmbientBase', () => {
   })
 
   it('[TC-49] scopes every base-aware command, not just docs', () => {
-    for (const command of ['docs', 'facts', 'graph', 'entities', 'logs', 'publish', 'scan']) {
+    for (const command of ['docs', 'facts', 'graph', 'entities', 'logs', 'scan']) {
       expect(applyAmbientBase([command, 'list'], 'eval-kestra')).toContain('--base')
     }
   })

@@ -30,7 +30,6 @@ import type { HistoryEntry, TuiMode } from './types.js'
 function resolveApplyArgs(args: string[]): string[] | null {
   if (args.includes('--apply')) return null
   const first = args[0]
-  if (first === 'publish') return [...args, '--apply']
   if (first === 'invalidate') return [...args, '--apply']
   return null
 }
@@ -41,7 +40,7 @@ function isOutputOnlyCommand(first: string, args: string[]): boolean {
   const known = new Set([
     'query', 'submit', 'invalidate',
     'facts', 'graph', 'docs',
-    'base', 'logs', 'skills', 'publish', 'sync',
+    'base', 'logs', 'skills', 'sync',
   ])
   return known.has(first)
 }

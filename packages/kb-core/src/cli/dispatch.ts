@@ -53,7 +53,6 @@ import {
   runEntitiesCommand,
 } from '@kb/core/cli/entities-cli.js'
 import { runLogsCommand } from '@kb/core/cli/logs-cli.js'
-import { parsePublishCommand, runPublishCommand } from '@kb/core/cli/publish-cli.js'
 import {
   ViewCommandError,
   runListCommand,
@@ -100,7 +99,6 @@ const BASE_SCOPED_COMMANDS = new Set([
   'graph',
   'entities',
   'logs',
-  'publish',
   'init',
   'scan',
 ])
@@ -230,30 +228,6 @@ export async function runServerCommandWithOutput(
       }
       out.error(`❌ ${message}`)
       out.log(printLogsHelp(mode))
-      return 1
-    }
-  }
-
-  if (firstArg === 'publish') {
-    const provider = args[1]
-    if (!provider || provider.startsWith('--')) {
-      out.error('Usage: kb publish <notion> [options]')
-      return 1
-    }
-    try {
-      if (provider === 'notion') {
-        const parsed = parsePublishCommand(args.slice(2))
-        const result = await runPublishCommand({
-          ...parsed,
-          progressSink: line => out.log(line.trimEnd()),
-        })
-        out.log(JSON.stringify(result, null, 2))
-        return 0
-      }
-      out.error(`Unknown provider "${provider}". Usage: kb publish <notion> [options]`)
-      return 1
-    } catch (error) {
-      out.error(`❌ ${error instanceof Error ? error.message : String(error)}`)
       return 1
     }
   }

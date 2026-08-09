@@ -9,7 +9,7 @@
  * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):          Upsert documents.
  *
- * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
+ * Reuses progress reporting and checkpoint patterns from the scan/init cycle helpers.
  */
 
 import { createHash } from 'node:crypto'
