@@ -179,8 +179,8 @@ export class FactsDocumentReader {
   }
 
   /**
-   * Post-retrieval curation: the curator hard-drops off-topic facts from the orchestrator's
-   * island pool and, when it finds gaps, issues bounded shallow re-discovery queries to refill.
+   * Post-retrieval curation: the curator hard-drops off-topic units from the fused retrieval
+   * pool and, when it finds gaps, issues bounded shallow re-discovery queries to refill.
    * Decisions land on `retrieval.curation` (out-of-band) — never in the synthesis context.
    */
   private async curateRelevance(

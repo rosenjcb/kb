@@ -6,7 +6,7 @@ import type { QueryResult } from './facts-document-reader'
 
 /**
  * Fact curator — a judge-in-the-loop replacement for the old post-retrieval relevance
- * filter. After the research orchestrator dumps its island pool, the curator:
+ * filter. After deep hybrid retrieval fuses its unit pool, the curator:
  *
  *   1. **Deterministically auto-keeps** facts with high token overlap (no LLM cost).
  *   2. Sends the remaining candidates to a single **structured LLM verdict** that returns
