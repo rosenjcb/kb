@@ -9,7 +9,6 @@ sources: [./]
 tests:
   - ../../../../tests/tools/document-writer.test.ts
   - ../../../../tests/tools/facts-document-reader.test.ts
-  - ../../../../tests/tools/facts-sufficiency-judge.test.ts
   - ../../../../tests/tools/invalidate-fact-tool.test.ts
   - ../../../../tests/tools/kb-tools-registry-no-doc-writes.test.ts
   - ../../../../tests/tools/markdown-md-writer-tool.test.ts
@@ -47,7 +46,6 @@ See companion doc for full vocabulary where applicable.
 | ID | Requirement |
 |------|------------|
 | FR-1 | Behaviors in sqlite-kb-index.test.ts |
-| FR-2 | Behaviors in facts-sufficiency-judge.test.ts |
 | FR-3 | Hybrid retrieval over documents, code symbols, and curated facts (`hybrid-retriever.test.ts`) |
 | FR-4 | Behaviors in facts-document-reader.test.ts |
 | FR-5 | Behaviors in kb-tools-registry-no-doc-writes.test.ts |
@@ -75,14 +73,6 @@ See companion doc for full vocabulary where applicable.
 | TC-8 | FR-1 | Given natural language query, searchFacts should match token-level evidence | pass |
 | TC-9 | FR-1 | Given lane routing events, then should report lane-level precision and fallback indicators | pass |
 | TC-10 | FR-1 | Given weak lane-routing metrics, then lane rollout assessment should rollback | pass |
-| TC-11 | FR-2 | Given ANSWERABLE response, then returns answerable | pass |
-| TC-12 | FR-2 | Given INSUFFICIENT response, then returns insufficient | pass |
-| TC-13 | FR-2 | Given partial ANSWERABLE prefix in response, then still returns answerable | pass |
-| TC-14 | FR-2 | Given fewer facts than minimum threshold, then returns insufficient without calling LLM | pass |
-| TC-15 | FR-2 | Given LLM throws, then returns insufficient as fallback | pass |
-| TC-16 | FR-2 | Returns true when iteration is a multiple of JUDGE_CALL_INTERVAL and enough relevant facts | pass |
-| TC-17 | FR-2 | Returns false when not on a call interval | pass |
-| TC-18 | FR-2 | Returns false when relevant facts below threshold regardless of interval | pass |
 | TC-19 | FR-4 | expands generic query via LLM and merges results from all sub-queries | pass |
 | TC-20 | FR-4 | skips expansion when query has enough meaningful tokens | pass |
 | TC-21 | FR-4 | falls back to single-query when LLM returns empty expansion | pass |
