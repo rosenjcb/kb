@@ -86,7 +86,7 @@ export function printDocsGenerateHelp(mode: CmdMode = 'cli'): string {
     '--finalize drafts the document (awaiting review). --accept writes it to the KB. --reject revises the draft from your feedback (git-style diff between revisions).',
     '--limit caps supporting facts appended under ## References on finalize / reject (default 20).',
     '',
-    'Architecture: facts-first KB (query, docgen, ingest). See src/core/facts-architecture.md.',
+    'Architecture: hybrid-retrieval KB (query, docgen, ingest). See src/core/facts-architecture.md.',
     '',
     `${cmd('--output human|json', mode)}  (default human). Use json for stdout-only structured payloads (no harness banner).`,
   ].join('\n')

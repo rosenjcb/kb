@@ -20,7 +20,7 @@ flowchart LR
   Notion --> API["Notion section pages"]
 ```
 
-Facts drive Q&A; documents are publish-facing artifacts (see [`../facts-architecture.md`](../facts-architecture.md)).
+Documents are both retrieval units and publish-facing artifacts; publish renders the stored document bodies (see [`../facts-architecture.md`](../facts-architecture.md)).
 
 ## Core pieces
 
