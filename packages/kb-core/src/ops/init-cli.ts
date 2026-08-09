@@ -56,9 +56,9 @@ import {
 } from '@kb/core/storage/repo-slug.js'
 import {
   ensureOperationalBaseDir,
-  findKbFile,
   getKbHomeDir,
   listAllBases,
+  resolveEffectiveBaseDir,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from '@kb/core/config/cli-prerequisites.js'
@@ -1467,20 +1467,24 @@ async function resolveInitBaseName(
   }
 
   if (options.rescan) {
-    // .kb file in CWD or any ancestor takes priority — no prompt needed
-    const kbFileBase = await findKbFile(cwd)
-    if (kbFileBase) {
-      questionIO.write?.(`[kb scan] Using base from .kb file: ${kbFileBase}\n`)
-      return kbFileBase
+    // Fall back to the selected active / default base (`kb base use`) — no prompt needed.
+    try {
+      const { baseName } = await resolveEffectiveBaseDir(cwd)
+      if (baseName?.trim()) {
+        questionIO.write?.(`[kb scan] Using base: ${baseName}\n`)
+        return baseName
+      }
+    } catch {
+      // No active / default base selected — fall through to the picker / error.
     }
 
     if (options.nonInteractive) {
       throw new Error(
-        'No .kb file found in this directory. Pass `--base <name>` or cd into a directory with a .kb file.'
+        'No base selected. Pass `--base <name>` or set one with `kb base use <name>`.'
       )
     }
 
-    // No .kb file — show a list picker so the user explicitly chooses
+    // No base selected — show a list picker so the user explicitly chooses
     const bases = await listAllBases()
     if (bases.length === 0) {
       throw new Error('No initialized bases found. Run `kb init --base <name>` first.')

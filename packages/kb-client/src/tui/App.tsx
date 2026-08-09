@@ -7,6 +7,7 @@ import {
   formatDeleteBaseResult,
   resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
+import { resolveActiveBaseName } from '../api/server-connection.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { performClientUninstall } from '@kb/core/cli/release-uninstall.js'
@@ -53,9 +54,16 @@ interface Props {
   config: KbConfig
   startupNotices?: string[]
   serverHost?: string
+  /** Base resolved by the CLI before launch, so the status bar starts correct. */
+  initialBaseName?: string
 }
 
-export function App({ config, startupNotices = [], serverHost = 'localhost' }: Props) {
+export function App({
+  config,
+  startupNotices = [],
+  serverHost = 'localhost',
+  initialBaseName,
+}: Props) {
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
@@ -64,7 +72,7 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   ])
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
-  const [baseName, setBaseName] = useState('…')
+  const [baseName, setBaseName] = useState(initialBaseName ?? '…')
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [baseResolved, setBaseResolved] = useState(false)
 
@@ -130,20 +138,35 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
     chatResponseBufRef.current = ''
   }, [updateEntry])
 
+  // Single base resolver for the status bar: the displayed name comes from the same
+  // `resolveActiveBaseName` the request path sends as `X-KB-Base`, so the bar can
+  // never disagree with the base kb-server actually serves. The local dir (best
+  // effort) is only used for the uninitialized-index notice.
+  const resolveBaseState = useCallback(async () => {
+    const name = await resolveActiveBaseName(config).catch(() => undefined)
+    let dir = ''
+    try {
+      dir = (await resolveEffectiveBaseDir()).baseDir
+    } catch {
+      // No local base dir — remote base or none selected.
+    }
+    return { name: name ?? '', dir }
+  }, [config])
+
   const refreshBase = useCallback(() => {
-    return resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: n }) => {
-        storageDirRef.current = baseDir
-        setBaseName(n)
+    return resolveBaseState()
+      .then(({ name, dir }) => {
+        storageDirRef.current = dir
+        setBaseName(name)
       })
       .catch(() => {})
-  }, [])
+  }, [resolveBaseState])
 
   useEffect(() => {
-    resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: effectiveBaseName }) => {
-        storageDirRef.current = baseDir
-        setBaseName(effectiveBaseName)
+    resolveBaseState()
+      .then(({ name, dir }) => {
+        storageDirRef.current = dir
+        setBaseName(name)
         setBaseResolved(true)
       })
       .catch(() => {
@@ -151,7 +174,7 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
         setBaseName('')
         setBaseResolved(true)
       })
-  }, [])
+  }, [resolveBaseState])
 
   const startChatSession = useCallback(
     (opts: { verbose?: boolean } = {}) => {
@@ -271,16 +294,16 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   useEffect(() => {
     if (!baseResolved || chatStartedRef.current) return
     chatStartedRef.current = true
-    resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: effectiveBaseName }) => {
-        const hasIndex = existsSync(path.join(baseDir, '.kb-index.sqlite'))
+    resolveBaseState()
+      .then(({ name, dir }) => {
+        const hasIndex = dir ? existsSync(path.join(dir, '.kb-index.sqlite')) : false
         if (!hasIndex) {
-          addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
+          addEntry({ type: 'info', content: uninitializedBaseNotice(name || '(none)') })
         }
         startChatSession()
       })
       .catch(() => startChatSession())
-  }, [baseResolved, startChatSession, addEntry])
+  }, [baseResolved, startChatSession, addEntry, resolveBaseState])
 
   const handleSubmit = useCallback(
     async (value: string) => {

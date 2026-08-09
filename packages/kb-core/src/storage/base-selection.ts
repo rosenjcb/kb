@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
@@ -143,7 +143,7 @@ export async function writeSessionBase(base: string): Promise<BaseSelectionConfi
 
 export interface EffectiveBaseResolution {
   baseDir: string
-  source: 'directory:.kb' | 'activeBase' | 'defaultBase'
+  source: 'activeBase' | 'defaultBase'
   baseName: string
 }
 
@@ -153,29 +153,6 @@ export interface BaseInfo {
   isActive: boolean
   isDefault: boolean
   lastModified: Date | null
-}
-
-/** Walk from startDir up to the filesystem root looking for a `.kb` file. Returns the base name inside or null. */
-export async function findKbFile(startDir: string): Promise<string | null> {
-  let dir = path.resolve(startDir)
-  while (true) {
-    const candidate = path.join(dir, '.kb')
-    try {
-      const contents = await readFile(candidate, 'utf8')
-      const baseName = contents.trim()
-      if (baseName) return baseName
-    } catch {
-      // not found here, keep walking
-    }
-    const parent = path.dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
-}
-
-/** Write a `.kb` file in the given directory containing the base name. */
-export async function writeKbFile(dir: string, baseName: string): Promise<void> {
-  await writeFile(path.join(dir, '.kb'), `${baseName}\n`, 'utf8')
 }
 
 /** List all initialized bases found under `~/.kb/sessions/`. */
@@ -216,9 +193,8 @@ export async function listAllBases(): Promise<BaseInfo[]> {
  * Resolve which base to use.
  *
  * Priority:
- *   1. directory `.kb` file — found by walking CWD up to filesystem root.
- *   2. active base — from `kb base use` (`~/.kb/state/active-base` or `KB_ACTIVE_BASE`).
- *   3. default base — from `kb base use --default` (`~/.kb/state/default-base` or `KB_BASE`).
+ *   1. active base — from `kb base use` (`~/.kb/state/active-base` or `KB_ACTIVE_BASE`).
+ *   2. default base — from `kb base use --default` (`~/.kb/state/default-base` or `KB_BASE`).
  *
  * configOverride is accepted only for testing — real callers omit it.
  */
@@ -226,18 +202,6 @@ export async function resolveEffectiveBaseDir(
   cwd: string = process.cwd(),
   configOverride?: Pick<BaseSelectionConfig, 'activeBase' | 'defaultBase'> | KbConfig
 ): Promise<EffectiveBaseResolution> {
-  // Only check .kb file in real (non-test) invocations
-  if (configOverride === undefined) {
-    const kbFileBase = await findKbFile(cwd)
-    if (kbFileBase) {
-      return {
-        baseDir: await ensureOperationalBaseDir(kbFileBase, cwd),
-        source: 'directory:.kb',
-        baseName: kbFileBase,
-      }
-    }
-  }
-
   const activeBase =
     configOverride !== undefined
       ? 'activeBase' in configOverride
@@ -271,56 +235,34 @@ export async function resolveEffectiveBaseDir(
   throw new Error(CLI_ERROR_NO_KB_BASE)
 }
 
-/**
- * Format the output after `base use <base>` (CLI: `kb base use`, TUI: `/base use`).
- * Pass `kbFileOverride` when a `.kb` file in the directory specifies a different base —
- * the user needs to know that the `.kb` file takes priority over what they just set.
- */
+/** Format the output after `base use <base>` (CLI: `kb base use`, TUI: `/base use`). */
 export function formatUseCommandHelp(
   base: string,
   resolvedPath: string,
-  mode: CmdMode = 'cli',
-  kbFileOverride?: string
+  mode: CmdMode = 'cli'
 ): string {
-  const lines = [
+  return [
     `Using base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Switched the active base for this session.',
     `Use \`${cmd('base use --default <base>', mode)}\` to save the preferred base for future runs.`,
-  ]
-  if (kbFileOverride && kbFileOverride !== base) {
-    lines.push(
-      '',
-      'Note: A .kb file in this directory always takes priority over the active and default bases.',
-      `Commands run here will use "${kbFileOverride}", not "${base}".`
-    )
-  }
-  return lines.join('\n')
+  ].join('\n')
 }
 
 /** Format the output after `base use --default` / `default` (CLI vs TUI via `mode`). */
 export function formatDefaultCommandHelp(
   base: string,
   resolvedPath: string,
-  mode: CmdMode = 'cli',
-  kbFileOverride?: string
+  mode: CmdMode = 'cli'
 ): string {
-  const lines = [
+  return [
     `Default base: ${base}`,
     `Resolved path: ${resolvedPath}`,
     '',
     'Saved as the preferred base for future runs.',
     `Use \`${cmd('base use <base>', mode)}\` when you want to switch bases temporarily.`,
-  ]
-  if (kbFileOverride && kbFileOverride !== base) {
-    lines.push(
-      '',
-      'Note: A .kb file in this directory always takes priority over the active and default bases.',
-      `Commands run here will use "${kbFileOverride}", not "${base}".`
-    )
-  }
-  return lines.join('\n')
+  ].join('\n')
 }
 
 export interface DeleteBaseResult {

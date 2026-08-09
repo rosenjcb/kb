@@ -10,7 +10,6 @@ import path from 'node:path'
 import { CLIENT_VERSION } from '../version.js'
 import {
   ensureOperationalBaseDir,
-  findKbFile,
   formatDefaultCommandHelp,
   formatUseCommandHelp,
   migrateLegacyKbSessionJson,
@@ -47,6 +46,7 @@ import {
 import { printSyncHelp, runSyncCommand } from './sync-cli'
 import { discoverRemoteDefaultBase, isClientLocalCommand, runRemoteCliCommand } from './remote-commands.js'
 import {
+  resolveActiveBaseName,
   resolveServerConnection,
   formatServerAddress,
   formatConnectionContext,
@@ -234,7 +234,6 @@ export async function runMainWithOutput(
 
       if (show || !base) {
         const configured = await readBaseConfig()
-        const kbFileBase = await findKbFile(process.cwd())
         let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
         try {
           effective = await resolveEffectiveBaseDir()
@@ -255,9 +254,6 @@ export async function runMainWithOutput(
         if (configured.defaultBase) {
           out.log(`Default base: ${configured.defaultBase}`)
         }
-        if (kbFileBase) {
-          out.log(`.kb file: ${kbFileBase}  (found in current or ancestor directory)`)
-        }
         return
       }
 
@@ -272,13 +268,12 @@ export async function runMainWithOutput(
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
-      const kbFileBase = await findKbFile(process.cwd())
       if (makeDefault) {
         await writeDefaultBase(base)
-        out.log(formatDefaultCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
+        out.log(formatDefaultCommandHelp(base, resolved, mode))
         return
       }
-      out.log(formatUseCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
+      out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
 
@@ -435,16 +430,13 @@ async function main() {
     }
 
     const serverHost = formatServerAddress(resolveServerConnection(kbConfig))
-    let sessionBase: string | undefined
-    try {
-      sessionBase = (await resolveEffectiveBaseDir()).baseName
-    } catch {
-      // no base selected locally — ask the server which base it defaults to
-      sessionBase = await discoverRemoteDefaultBase(kbConfig)
-    }
+    // One base resolver for the wire and the UI; if none is selected locally, show
+    // the base kb-server will actually serve.
+    const sessionBase =
+      (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
     startupNotices.unshift(formatConnectionContext(kbConfig, sessionBase))
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices, serverHost })
+    await launchTui(kbConfig, { startupNotices, serverHost, baseName: sessionBase })
     return
   }
 
@@ -461,13 +453,8 @@ async function main() {
   const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
   if (!machineJsonStdout) {
     console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
-    let cliBase: string | undefined
-    try {
-      cliBase = (await resolveEffectiveBaseDir()).baseName
-    } catch {
-      // no base selected locally — ask the server which base it defaults to
-      cliBase = await discoverRemoteDefaultBase(kbConfig)
-    }
+    const cliBase =
+      (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
     console.log(formatConnectionContext(kbConfig, cliBase))
     console.log('')
   }

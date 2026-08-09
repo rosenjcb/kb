@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { KbApiClient } from '@kb/client/api/kb-api-client.js'
 import { formatApiError, formatConnectionError } from '@kb/client/api/connection-error.js'
-import { resolveServerConnection, formatConnectionContext } from '@kb/client/api/server-connection.js'
+import {
+  resolveActiveBaseName,
+  resolveServerConnection,
+  resolveServerConnectionWithBase,
+  formatConnectionContext,
+} from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
   it('[TC-1] resolves KB_HOST/KB_PORT defaults to localhost:38117', () => {
@@ -60,11 +65,23 @@ describe('server-connection', () => {
     expect(line).toContain('base: dogfood')
   })
 
-  it('[TC-50] resolveServerConnection carries KB_BASE as the wire base', () => {
+  it('[TC-50] resolveActiveBaseName returns KB_BASE (explicit --base / connection-string) first', async () => {
     const prevBase = process.env.KB_BASE
     process.env.KB_BASE = 'raylib'
-    const conn = resolveServerConnection({})
-    expect(conn.base).toBe('raylib')
+    // The endpoint resolver no longer carries a base — base is resolved separately.
+    expect(resolveServerConnection({}).base).toBeUndefined()
+    expect(await resolveActiveBaseName({})).toBe('raylib')
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
+  })
+
+  it('[TC-67] resolveServerConnectionWithBase sends the same base the UI shows (no drift)', async () => {
+    const prevBase = process.env.KB_BASE
+    process.env.KB_BASE = 'shared-base'
+    const conn = await resolveServerConnectionWithBase({})
+    // The wire base equals the unified resolver used by the status bar / banner.
+    expect(conn.base).toBe(await resolveActiveBaseName({}))
+    expect(conn.base).toBe('shared-base')
     if (prevBase === undefined) delete process.env.KB_BASE
     else process.env.KB_BASE = prevBase
   })

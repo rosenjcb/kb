@@ -160,22 +160,12 @@ See companion doc for full vocabulary where applicable.
 | TC-44 | FR-4 | includes the base name and path in output | pass |
 | TC-45 | FR-4 | mentions cleared active base when applicable | pass |
 | TC-46 | FR-4 | mentions cleared default base when applicable | pass |
-| TC-47 | FR-4 | returns the base name from a .kb file in the given directory | pass |
-| TC-48 | FR-4 | finds a .kb file in an ancestor directory | pass |
-| TC-49 | FR-4 | returns null when no .kb file exists in any ancestor | pass |
-| TC-50 | FR-4 | trims whitespace from the base name | pass |
-| TC-51 | FR-4 | returns null when .kb file is empty | pass |
-| TC-52 | FR-4 | writes a .kb file containing the base name | pass |
-| TC-53 | FR-4 | overwrites an existing .kb file | pass |
 | TC-54 | FR-4 | returns empty array when sessions directory does not exist | pass |
 | TC-55 | FR-4 | returns only directories that contain .kb-index.sqlite | pass |
 | TC-56 | FR-4 | marks the active and default bases correctly | pass |
 | TC-57 | FR-4 | returns bases sorted alphabetically | pass |
-| TC-58 | FR-4 | uses .kb file when no activeBase or defaultBase is configured | pass |
-| TC-59 | FR-4 | .kb file takes priority over config.activeBase | pass |
-| TC-60 | FR-4 | falls back to config.activeBase when no .kb file is found | pass |
-| TC-61 | FR-4 | falls back to config.defaultBase when no .kb file and no activeBase | pass |
-| TC-62 | FR-4 | finds .kb file from a subdirectory via ancestor walk | pass |
+| TC-60 | FR-4 | resolves the active base first | pass |
+| TC-61 | FR-4 | falls back to the default base when no active base | pass |
 | TC-63 | FR-4 | readOptionalCliValue returns the following token | pass |
 | TC-64 | FR-4 | readOptionalCliValue returns undefined when flag or value is missing | pass |
 | TC-65 | FR-4 | stripCliFlagWithValue removes --base and its value | pass |
@@ -334,21 +324,19 @@ See companion doc for full vocabulary where applicable.
 | TC-218 | FR-20 | Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files | pass |
 | TC-219 | FR-20 | Given interactive rescan, then read-inputs does not ask initial interview questions or prompt to proceed | pass |
 | TC-220 | FR-20 | Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt | pass |
-| TC-221 | FR-20 | Given rescan with a .kb file in cwd, uses the pinned base even in non-interactive mode | pass |
-| TC-222 | FR-20 | Given rescan without --base and no .kb file in non-interactive mode, throws with .kb guidance | pass |
+| TC-221 | FR-20 | Given rescan with an active base, uses it in non-interactive mode | pass |
+| TC-222 | FR-20 | Given rescan without --base and no selected base in non-interactive mode, throws guidance | pass |
 | TC-223 | FR-20 | Given a full init cycle, then progress counter shows 6/6 (not 7) | pass |
 | TC-224 | FR-20 | Given a TypeScript-only project, then AST code-index uses no LLM tokens | pass |
-| TC-225 | FR-20 | Given a .kb file in cwd, uses that base without prompting | pass |
-| TC-226 | FR-20 | Given a .kb file in an ancestor dir, uses that base without prompting | pass |
-| TC-227 | FR-20 | Given --base flag, uses it directly without reading .kb file or prompting | pass |
-| TC-228 | FR-20 | Given no .kb file and a single initialized base, auto-selects it without prompting | pass |
-| TC-229 | FR-20 | Given no .kb file and multiple bases, prompts with a list and accepts a typed name | pass |
-| TC-230 | FR-20 | Given no .kb file and multiple bases, passing suggestions list to askQuestion | pass |
-| TC-231 | FR-20 | Given no .kb file and multiple bases, an invalid name throws an error | pass |
-| TC-232 | FR-20 | Given no .kb file and /cancel answer, throws InitCancelledError | pass |
-| TC-233 | FR-20 | Given no .kb file and no initialized bases, throws a helpful error | pass |
-| TC-234 | FR-20 | Given no .kb file and --non-interactive, throws without prompting | pass |
-| TC-235 | FR-20 | After rescan completes, leaves any existing .kb file in cwd unchanged | pass |
+| TC-225 | FR-20 | Given an active base, uses it without prompting | pass |
+| TC-227 | FR-20 | Given --base flag, uses it directly without prompting | pass |
+| TC-228 | FR-20 | Given no selected base and a single initialized base, auto-selects it without prompting | pass |
+| TC-229 | FR-20 | Given no selected base and multiple bases, prompts with a list and accepts a typed name | pass |
+| TC-230 | FR-20 | Given no selected base and multiple bases, passing suggestions list to askQuestion | pass |
+| TC-231 | FR-20 | Given no selected base and multiple bases, an invalid name throws an error | pass |
+| TC-232 | FR-20 | Given no selected base and /cancel answer, throws InitCancelledError | pass |
+| TC-233 | FR-20 | Given no selected base and no initialized bases, throws a helpful error | pass |
+| TC-234 | FR-20 | Given no selected base and --non-interactive, throws without prompting | pass |
 | TC-236 | FR-20 | Given interactive init with a git URL entered first, then clones from that URL | pass |
 | TC-237 | FR-20 | Given --git flag (non-interactive), then clones the repo onto the base volume | pass |
 | TC-238 | FR-20 | Given --git without branch, then clones the remote default branch | pass |

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
-import { findKbFile, resolveBaseToDir, writeKbFile } from '@kb/core/storage/base-selection.js'
+import { resolveBaseToDir, writeSessionBase } from '@kb/core/storage/base-selection.js'
 import { parseInitCommand, parseScanCommand, runKbInit } from '@kb/core/ops/init-cli.js'
 import { buildFrozenSourceSnapshotDoc } from '@kb/core/ops/init-source-snapshots.js'
 import { RunCollector } from '@kb/core/core/telemetry.js'
@@ -999,12 +999,12 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('[TC-221] Given rescan with a .kb file in cwd, uses the pinned base even in non-interactive mode', async () => {
+  it('[TC-221] Given rescan with an active base, uses it in non-interactive mode', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
     await initBase('pinned-rescan-base')
-    await writeKbFile(cwd, 'pinned-rescan-base')
+    await writeSessionBase('pinned-rescan-base')
 
     const result = await runKbInit({
       rescan: true,
@@ -1016,7 +1016,7 @@ describe('init-cli interview checkpoints', () => {
     expect(result.status).toBe('paused')
   })
 
-  it('[TC-222] Given rescan without --base and no .kb file in non-interactive mode, throws with .kb guidance', async () => {
+  it('[TC-222] Given rescan without --base and no selected base in non-interactive mode, throws guidance', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1028,7 +1028,7 @@ describe('init-cli interview checkpoints', () => {
         stopAfter: 'read-inputs',
         cwd,
       })
-    ).rejects.toThrow(/.kb file/)
+    ).rejects.toThrow(/No base selected/)
   })
 
   it('[TC-223] Given a full init cycle, then progress counter shows 6/6 (not 7)', async () => {
@@ -1158,10 +1158,10 @@ async function initBase(name: string): Promise<void> {
 }
 
 describe('kb scan — base resolution', () => {
-  it('[TC-225] Given a .kb file in cwd, uses that base without prompting', async () => {
+  it('[TC-225] Given an active base, uses it without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('pinned-base')
-    await writeKbFile(cwd, 'pinned-base')
+    await writeSessionBase('pinned-base')
     const { io, prompts } = createQuestionIO([])
 
     const result = await runKbInit({
@@ -1175,32 +1175,9 @@ describe('kb scan — base resolution', () => {
 
     expect(result.base).toBe('pinned-base')
     expect(prompts).toHaveLength(0)
-    // .kb file still present and correct
-    expect(await findKbFile(cwd)).toBe('pinned-base')
   })
 
-  it('[TC-226] Given a .kb file in an ancestor dir, uses that base without prompting', async () => {
-    const root = await createTempProject({ 'README.md': '# hi\n' })
-    const cwd = path.join(root, 'src', 'lib')
-    await mkdir(cwd, { recursive: true })
-    await initBase('ancestor-base')
-    await writeKbFile(root, 'ancestor-base')
-    const { io, prompts } = createQuestionIO([])
-
-    const result = await runKbInit({
-      rescan: true,
-      apply: true,
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(result.base).toBe('ancestor-base')
-    expect(prompts).toHaveLength(0)
-  })
-
-  it('[TC-227] Given --base flag, uses it directly without reading .kb file or prompting', async () => {
+  it('[TC-227] Given --base flag, uses it directly without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('explicit-base')
     const { io, prompts } = createQuestionIO([])
@@ -1219,7 +1196,7 @@ describe('kb scan — base resolution', () => {
     expect(prompts).toHaveLength(0)
   })
 
-  it('[TC-228] Given no .kb file and a single initialized base, auto-selects it without prompting', async () => {
+  it('[TC-228] Given no selected base and a single initialized base, auto-selects it without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('solo-base')
     const { io, prompts, writes } = createQuestionIO([])
@@ -1238,7 +1215,7 @@ describe('kb scan — base resolution', () => {
     expect(writes.join('')).toContain('solo-base')
   })
 
-  it('[TC-229] Given no .kb file and multiple bases, prompts with a list and accepts a typed name', async () => {
+  it('[TC-229] Given no selected base and multiple bases, prompts with a list and accepts a typed name', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1259,7 +1236,7 @@ describe('kb scan — base resolution', () => {
     expect(writes.join('')).toContain('beta')
   })
 
-  it('[TC-230] Given no .kb file and multiple bases, passing suggestions list to askQuestion', async () => {
+  it('[TC-230] Given no selected base and multiple bases, passing suggestions list to askQuestion', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1289,7 +1266,7 @@ describe('kb scan — base resolution', () => {
     expect(opts?.suggestions).toContain('beta')
   })
 
-  it('[TC-231] Given no .kb file and multiple bases, an invalid name throws an error', async () => {
+  it('[TC-231] Given no selected base and multiple bases, an invalid name throws an error', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1307,7 +1284,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('Unknown base')
   })
 
-  it('[TC-232] Given no .kb file and /cancel answer, throws InitCancelledError', async () => {
+  it('[TC-232] Given no selected base and /cancel answer, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1325,7 +1302,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('Cancelled')
   })
 
-  it('[TC-233] Given no .kb file and no initialized bases, throws a helpful error', async () => {
+  it('[TC-233] Given no selected base and no initialized bases, throws a helpful error', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO([])
 
@@ -1341,7 +1318,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('No initialized bases found')
   })
 
-  it('[TC-234] Given no .kb file and --non-interactive, throws without prompting', async () => {
+  it('[TC-234] Given no selected base and --non-interactive, throws without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     const { io } = createQuestionIO([])
@@ -1354,26 +1331,9 @@ describe('kb scan — base resolution', () => {
         cwd,
         questionIO: io,
       })
-    ).rejects.toThrow('.kb file')
+    ).rejects.toThrow(/No base selected/)
   })
 
-  it('[TC-235] After rescan completes, leaves any existing .kb file in cwd unchanged', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('written-base')
-    await writeKbFile(cwd, 'written-base')
-    const { io } = createQuestionIO([])
-
-    await runKbInit({
-      rescan: true,
-      apply: true,
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(await findKbFile(cwd)).toBe('written-base')
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1433,8 +1393,6 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
       })
     )
     expect(repos[0]?.dir).toBeTruthy()
-
-    expect(await findKbFile(cwd)).toBeNull()
   })
 
   it('[TC-238] Given --git without branch, then clones the remote default branch', async () => {

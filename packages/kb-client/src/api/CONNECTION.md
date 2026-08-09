@@ -47,9 +47,9 @@ Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The 
 
 ### Base on the wire (`X-KB-Base`)
 
-One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request**: `resolveServerConnection` resolves `ServerConnection.base` (from `--base` / `--connection-string` → `KB_BASE`, then `KB_ACTIVE_BASE`, then `config.server.base`) and `kb-api-client` stamps it as the `X-KB-Base` header on every request. An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
+One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request** via **one** resolver, `resolveActiveBaseName` — `KB_BASE` (explicit `--base` / `--connection-string`) → active base → default base (both via `resolveEffectiveBaseDir`) → `config.server.base`. `resolveServerConnectionWithBase` puts it on `ServerConnection.base` and `kb-api-client` stamps it as the `X-KB-Base` header on every request. **Crucially, the status bar / banner display the same `resolveActiveBaseName`, so the base shown can never disagree with the base served.** An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
 
-The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Client-side `kb base use` only updates the local connection-profile hint (`~/.kb/state/active-base`).
+The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Client-side `kb base use` updates the local base state (`~/.kb/state/active-base`), which `resolveActiveBaseName` then reads. (There is no directory `.kb`-file base pin — that feature was removed; select a base with `--base` or `kb base use`.)
 
 ### Connection string grammar
 
@@ -137,7 +137,7 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 
 - `--host` applies only to the current process; profile env vars persist across shells.
 - `formatServerAddress` strips scheme/path — display is `host:port`, not full URL.
-- TUI `serverHost` prop is the host segment only; base updates async after `resolveEffectiveBaseDir`.
+- TUI `serverHost` prop is the host segment only; the status-bar base updates async from `resolveActiveBaseName` (the same value sent as `X-KB-Base`).
 - `base use` is client-local (writes state files); other `base` subcommands hit server admin CLI in remote mode.
 - `mcp`, `skills`, `uninstall`, and `sync` are always client-local — they rewrite agent configs on the laptop, not server state.
 - Startup is read-only for agent wiring: no skill install, no MCP rewrite until the operator runs `kb skills install` / `kb mcp install`.

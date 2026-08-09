@@ -8,8 +8,12 @@ import {
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import type { ChatStreamEvent, LLMFailureResponse } from '../api/types.js'
-import { resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
-import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
+import {
+  resolveActiveBaseName,
+  resolveServerConnection,
+  resolveServerConnectionWithBase,
+  formatConnectionContext,
+} from '../api/server-connection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
@@ -55,7 +59,7 @@ export function isClientLocalCommand(args: string[]): boolean {
 }
 
 export async function ensureServerReady(config: KbConfig): Promise<void> {
-  const connection = resolveServerConnection(config)
+  const connection = await resolveServerConnectionWithBase(config)
   const client = createKbApiClient(connection)
   await client.connect()
 }
@@ -82,7 +86,7 @@ export async function runRemoteAdminCli(
   config?: KbConfig
 ): Promise<{ exitCode: number }> {
   const kbConfig = config ?? (await readKbConfig())
-  const client = createKbApiClient(resolveServerConnection(kbConfig))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(kbConfig))
   await client.connect()
   const result = await client.adminCli(args)
   if (result.output.trim()) {
@@ -103,7 +107,7 @@ export async function runRemoteCliCommand(
     return await runRemoteIntentCommand(args, out, config, mode)
   }
 
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
   const result = await client.adminCli(args)
   if (result.output.trim()) {
@@ -127,7 +131,7 @@ export async function runRemoteIntentCommand(
   config: KbConfig,
   mode: CmdMode
 ): Promise<number> {
-  const connection = resolveServerConnection(config)
+  const connection = await resolveServerConnectionWithBase(config)
   const client = createKbApiClient(connection)
   await client.connect()
 
@@ -252,7 +256,7 @@ export async function runRemoteChatTurn(
   out: CliOutput,
   config: KbConfig
 ): Promise<{ sessionId: string; answer: string }> {
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
 
   let activeSession = sessionId
@@ -275,12 +279,8 @@ export async function runRemoteChatTurn(
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
-  let sessionBase: string | undefined
-  try {
-    sessionBase = (await resolveEffectiveBaseDir()).baseName
-  } catch {
-    // no base selected
-  }
+  const sessionBase =
+    (await resolveActiveBaseName(kbConfig)) ?? (await discoverRemoteDefaultBase(kbConfig))
   io.write(formatConnectionContext(kbConfig, sessionBase))
 
   let sessionId: string | undefined
@@ -321,7 +321,7 @@ export async function runRemoteSlashCommand(
   write: (line: string) => void,
   config: KbConfig
 ): Promise<{ exitCode: number }> {
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
   const result = await client.adminCli(argv)
   if (result.output.trim()) {

@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   deleteBase,
   ensureOperationalBaseDir,
-  findKbFile,
   formatDefaultCommandHelp,
   formatDeleteBaseResult,
   formatUseCommandHelp,
@@ -19,7 +18,6 @@ import {
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
   writeDefaultBase,
-  writeKbFile,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
@@ -317,72 +315,6 @@ describe('formatDeleteBaseResult', () => {
   })
 })
 
-describe('findKbFile', () => {
-  let tempDir: string
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(path.join(os.tmpdir(), 'kb-find-'))
-  })
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
-
-  it('[TC-47] returns the base name from a .kb file in the given directory', async () => {
-    await writeFile(path.join(tempDir, '.kb'), 'mybase\n', 'utf8')
-    expect(await findKbFile(tempDir)).toBe('mybase')
-  })
-
-  it('[TC-48] finds a .kb file in an ancestor directory', async () => {
-    await writeFile(path.join(tempDir, '.kb'), 'ancestorbase\n', 'utf8')
-    const nested = path.join(tempDir, 'a', 'b', 'c')
-    await mkdir(nested, { recursive: true })
-    expect(await findKbFile(nested)).toBe('ancestorbase')
-  })
-
-  it('[TC-49] returns null when no .kb file exists in any ancestor', async () => {
-    const nested = path.join(tempDir, 'x', 'y')
-    await mkdir(nested, { recursive: true })
-    // tempDir itself has no .kb file
-    expect(await findKbFile(nested)).toBeNull()
-  })
-
-  it('[TC-50] trims whitespace from the base name', async () => {
-    await writeFile(path.join(tempDir, '.kb'), '  spaced-base  \n', 'utf8')
-    expect(await findKbFile(tempDir)).toBe('spaced-base')
-  })
-
-  it('[TC-51] returns null when .kb file is empty', async () => {
-    await writeFile(path.join(tempDir, '.kb'), '   \n', 'utf8')
-    expect(await findKbFile(tempDir)).toBeNull()
-  })
-})
-
-describe('writeKbFile', () => {
-  let tempDir: string
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(path.join(os.tmpdir(), 'kb-write-'))
-  })
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
-
-  it('[TC-52] writes a .kb file containing the base name', async () => {
-    await writeKbFile(tempDir, 'mybase')
-    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('mybase')
-  })
-
-  it('[TC-53] overwrites an existing .kb file', async () => {
-    await writeKbFile(tempDir, 'first')
-    await writeKbFile(tempDir, 'second')
-    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('second')
-  })
-})
-
 describe('listAllBases', () => {
   let tempKbHome: string
 
@@ -443,7 +375,7 @@ describe('listAllBases', () => {
   })
 })
 
-describe('resolveEffectiveBaseDir with .kb file', () => {
+describe('resolveEffectiveBaseDir', () => {
   let tempKbHome: string
   let tempDir: string
 
@@ -459,66 +391,22 @@ describe('resolveEffectiveBaseDir with .kb file', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('[TC-58] uses .kb file when no activeBase or defaultBase is configured', async () => {
-    await writeKbFile(tempDir, 'project-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'project-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-
-    const result = await resolveEffectiveBaseDir(tempDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('project-base')
-  })
-
-  it('[TC-59] .kb file takes priority over config.activeBase', async () => {
-    await writeKbFile(tempDir, 'project-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'project-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-    // also set an activeBase in config — .kb should win
-    await writeSessionBase('session-base')
-
-    const result = await resolveEffectiveBaseDir(tempDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('project-base')
-  })
-
-  it('[TC-60] falls back to config.activeBase when no .kb file is found', async () => {
+  it('[TC-60] resolves the active base first', async () => {
     await writeSessionBase('session-base')
 
     const result = await resolveEffectiveBaseDir(tempDir)
 
     expect(result.source).toBe('activeBase')
     expect(result.baseName).toBe('session-base')
-    // resolveEffectiveBaseDir does NOT write .kb — only scan/init do
-    expect(await findKbFile(tempDir)).toBeNull()
   })
 
-  it('[TC-61] falls back to config.defaultBase when no .kb file and no activeBase', async () => {
+  it('[TC-61] falls back to the default base when no active base', async () => {
     await writeDefaultBase('default-base')
 
     const result = await resolveEffectiveBaseDir(tempDir)
 
     expect(result.source).toBe('defaultBase')
     expect(result.baseName).toBe('default-base')
-    expect(await findKbFile(tempDir)).toBeNull()
-  })
-
-  it('[TC-62] finds .kb file from a subdirectory via ancestor walk', async () => {
-    await writeKbFile(tempDir, 'ancestor-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'ancestor-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-
-    const nestedDir = path.join(tempDir, 'src', 'lib')
-    await mkdir(nestedDir, { recursive: true })
-
-    const result = await resolveEffectiveBaseDir(nestedDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('ancestor-base')
   })
 })
 
@@ -565,7 +453,6 @@ describe('CLI argv helpers (--base)', () => {
     await ensureOperationalBaseDir('only-one')
     await writeSessionBase('only-one')
 
-    // Pass tempKbHome as cwd so findKbFile does not walk into the real project tree
     const dir = await resolveKbStorageDirFromArgs(['graph', '--format', 'json'], tempKbHome)
     expect(dir).toBe(path.join(tempKbHome, 'sessions', 'only-one'))
   })
