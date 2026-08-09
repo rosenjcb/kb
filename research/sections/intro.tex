@@ -29,17 +29,19 @@ CodeSearchNet~\cite{husain2019codesearchnet} evaluate individual retrieval
 steps in isolation, ignoring the sequential cost of multi-step agent
 exploration.
 
-We present \textbf{KB}, a local-first, \emph{facts-first} codebase knowledge
+We present \textbf{KB}, a local-first codebase knowledge
 system that:
 \begin{enumerate}
-  \item[(1)] indexes a repository's code and documentation into a persistent
-    SQLite store of atomic, citable facts via deterministic AST analysis and
-    sentence-level fact extraction;
-  \item[(2)] exposes those facts to LLM agents through a multi-pond BFS
-    retrieval loop that merges lexical (BM25), semantic (embedding similarity
-    on stored vectors), and graph-walk evidence streams, then a judge-in-the-loop
-    \emph{fact curator} that hard-drops off-topic hits before one-shot
-    synthesis---without manual query engineering.
+  \item[(1)] indexes a repository's documentation and code into a persistent
+    SQLite store of three retrieval units---whole markdown documents, exported
+    code symbols (via deterministic AST analysis), and curated facts---each with
+    a full-text index and an optional embedding vector;
+  \item[(2)] exposes those units to LLM agents through a single-pass
+    \emph{hybrid retriever} that fuses six lexical (BM25) and neural (embedding
+    similarity) lanes with Reciprocal Rank Fusion and adds a depth-1
+    document$\leftrightarrow$symbol hop, then a judge-in-the-loop \emph{curator}
+    that drops off-topic hits before one-shot synthesis---without manual query
+    engineering.
 \end{enumerate}
 
 Critically, KB's value is only as compelling as the evidence that it actually
@@ -60,10 +62,11 @@ Figure~\ref{fig:system-overview} illustrates the end-to-end system.  Our
 contributions are:
 
 \begin{enumerate}
-  \item \textbf{KB}: a facts-first codebase knowledge system with deterministic
-    AST indexing, init-time fact embeddings for semantic scoring, a multi-pond
-    hybrid retrieval orchestrator, and a post-retrieval relevance curator that
-    filters the fact pool before synthesis.
+  \item \textbf{KB}: a codebase knowledge system with deterministic
+    document/symbol indexing, init-time per-unit embeddings for neural scoring, a
+    single-pass hybrid rank-fusion retriever with a depth-1
+    document$\leftrightarrow$symbol hop, and a post-retrieval relevance curator
+    that filters the unit pool before synthesis.
 
   \item \textbf{MOEL}: a multi-objective evaluation framework comprising three
     normalized loss functions ($L_\text{jury}$, $L_\text{trajectory}$,

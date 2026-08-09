@@ -9,7 +9,7 @@ timestamp: 2026-06-21T00:00:00Z
 
 # Research Paper
 
-**KB: A Facts-First Codebase Knowledge System with Multi-Objective Exploration Loss Evaluation**
+**KB: A Hybrid-Retrieval Codebase Knowledge System with Multi-Objective Exploration Loss Evaluation**
 
 The paper lives in this directory as a standard LaTeX two-column article.
 
@@ -154,7 +154,7 @@ just `\includegraphics[width=\columnwidth]{figures/your-figure.pdf}` the result.
 | Source | Label | Description |
 |--------|-------|-------------|
 | `figures/system-overview.mmd` | `fig:system-overview` | End-to-end KB + MOEL flow (intro.tex) |
-| `figures/kb-arch.mmd` | `fig:kb-arch` | KB indexing feeding the multi-pond retrieval loop (method.tex) |
+| `figures/kb-arch.mmd` | `fig:kb-arch` | KB indexing feeding the hybrid rank-fusion retriever (method.tex) |
 
 To add a figure: write `figures/name.mmd`, run `pnpm run research:figures` to
 check its rendered aspect ratio (`pdfinfo figures/name.pdf | grep -i "page size"`

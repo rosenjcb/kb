@@ -24,12 +24,15 @@ approaches can be composed.
 \subsection{Retrieval-Augmented Generation}
 
 RAG~\cite{lewis2020rag} grounds LLM answers in retrieved passages, but standard
-RAG pipelines are designed for static document collections.  They do not model
-the inter-entity relationships that characterize codebases (function calls,
-class hierarchies, module imports), and they treat retrieval as a one-shot
-lookup rather than an adaptive loop.  KB's multi-pond BFS loop merges five
-evidence streams per pass and exits on a scored sufficiency condition, making
-retrieval quality a function of graph density rather than fixed index size.
+RAG pipelines are designed for static document collections and typically retrieve
+a single unit type (text chunks) through a single lane.  KB instead indexes a
+codebase as three complementary unit types---whole documents, exported code
+symbols, and curated facts---and fuses lexical (BM25) and neural lanes over all
+three with Reciprocal Rank Fusion~\cite{cormack2009rrf}, then follows a depth-1
+document$\leftrightarrow$symbol link so an answer can join prose to the code it
+describes.  This captures the doc/code correspondence that flat chunk RAG misses
+while keeping retrieval a single bounded pass rather than an unbounded graph
+traversal.
 
 \subsection{LLM Evaluation Frameworks}
 

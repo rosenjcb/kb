@@ -38,7 +38,7 @@
 
 \twocolumn[
   \begin{center}
-    {\LARGE\bfseries KB: A Facts-First Codebase Knowledge System with\\
+    {\LARGE\bfseries KB: A Hybrid-Retrieval Codebase Knowledge System with\\
     Multi-Objective Exploration Loss Evaluation\par}
     \vspace{0.85em}
     \hrule height 0.4pt
@@ -64,16 +64,19 @@
   answer is correct, hiding the exploration cost that produced it.  We present
   two complementary contributions.
 
-  \textbf{KB} is a local-first, facts-first codebase knowledge system that
+  \textbf{KB} is a local-first codebase knowledge system that
   converts knowledge maintenance into a side-effect of normal development work.
-  KB indexes source code deterministically via AST analysis (tree-sitter) and
-  documentation via sentence-level fact extraction, storing atomic facts in a
-  SQLite graph with typed edges and optional embedding vectors computed at init.
-  At query time, a multi-pond BFS loop merges
-  lexical (BM25/FTS5), semantic (embedding), and graph-walk evidence streams into
-  a ranked fact pool, exiting on a scored sufficiency condition.  A
-  judge-in-the-loop fact curator then hard-drops off-topic facts and refills
-  reported gaps before one-shot synthesis returns plain prose.
+  KB indexes a repository deterministically into three retrieval units---whole
+  markdown \emph{documents}, exported \emph{code symbols} (via tree-sitter AST
+  analysis), and curated \emph{facts}---each stored in SQLite with a full-text
+  (FTS5) index and an optional embedding vector computed at init.  At query time,
+  a \emph{hybrid retriever} searches all three unit types through a lexical
+  (BM25/FTS5) and a neural (embedding cosine) lane, fuses the six ranked lists
+  with Reciprocal Rank Fusion, and pulls in related units through a single
+  depth-1 hop over a flat document$\leftrightarrow$symbol link table---no graph
+  walk, so retrieval cost is bounded by the candidate pool rather than by index
+  connectivity.  A judge-in-the-loop curator then drops off-topic units and
+  refills reported gaps before one-shot synthesis returns plain prose.
 
   \textbf{MOEL} (Multi-Objective Exploration Loss) is a quantitative evaluation
   framework that measures agent efficiency under three controlled conditions:

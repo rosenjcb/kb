@@ -1,147 +1,147 @@
 %% ─── System: KB ──────────────────────────────────────────────────────────────
-\section{KB: A Facts-First Codebase Knowledge System}
+\section{KB: A Hybrid-Retrieval Codebase Knowledge System}
 \label{sec:system}
 
 \subsection{Knowledge Representation}
 
-KB represents a codebase as a set of atomic, citable \emph{facts} stored in a
-SQLite database.  Each fact is a natural-language sentence paired with:
+KB represents a codebase as three kinds of independently retrievable
+\emph{units} stored in a SQLite database, rather than as a single graph of
+atomic facts:
 \begin{itemize}
-  \item a \texttt{source\_kind} (\texttt{import\_code} for AST-derived facts,
-    \texttt{import\_doc} for sentence-segmented markdown);
-  \item a \texttt{source\_ref} (e.g., \texttt{code:src/tools/indexer.ts@parseAST});
-  \item optional embedding vector for semantic search (computed at end of
-    \texttt{kb init} when an embedder is available; see below);
-  \item a soft-deletion tombstone for incremental invalidation.
+  \item \textbf{Documents} --- whole markdown files (README, docs) stored
+    verbatim in a \texttt{documents} table (\texttt{title}, \texttt{body},
+    \texttt{content\_hash}, origin \texttt{git\_repo}); the retrieval unit is the
+    entire document, not a sentence chunk.
+  \item \textbf{Code symbols} --- exported declarations (functions, classes,
+    interfaces, type aliases, constants) extracted by AST analysis and stored in
+    a \texttt{code\_symbols} table with their name, \texttt{kind}, and source
+    text.
+  \item \textbf{Facts} --- curated natural-language claims in a \texttt{facts}
+    table, retained for authoring provenance and as a third retrieval lane.
 \end{itemize}
 
-Facts are connected by typed edges in a \texttt{fact\_edges} table, forming a
-lightweight semantic graph.  This graph enables breadth-first neighborhood
-expansion during retrieval—a capability not available in flat vector indices.
+Each unit type has a paired FTS5 full-text index
+(\texttt{documents\_fts}, \texttt{code\_symbols\_fts}, \texttt{facts\_fts}) and
+an optional per-unit embedding vector (\texttt{doc\_embeddings},
+\texttt{code\_embeddings}, and fact embeddings).  Documents and symbols are
+associated through a flat \texttt{doc\_code\_links} table---a document is linked
+to the symbols it describes.  This is deliberately \emph{not} a traversable
+graph: there are no typed fact edges and no multi-hop neighborhoods.  An earlier
+version of KB stored sentence-level facts in a \texttt{fact\_edges} graph and
+walked it at query time; that graph was removed in favor of the flat,
+depth-1 link table because unbounded neighborhood expansion made retrieval cost
+scale with index connectivity rather than with the query.
 
 \subsection{Indexing Pipeline}
 
-\texttt{kb init} executes a fully deterministic, two-phase indexing pipeline.
+\texttt{kb init} executes a fully deterministic indexing pipeline.
 No LLM is invoked and no API cost is incurred.
 
 \medskip
-\noindent\textbf{Phase 1 --- AST Code Indexing.}  For each source file, KB
+\noindent\textbf{Code symbols.}  For each source file, KB
 invokes the \texttt{web-tree-sitter} WASM runtime with per-language export
-queries to extract named declarations (functions, classes, interfaces, type
-aliases, constants, module items).  Each symbol becomes a code fact with
-its qualified source reference.  Import edges between symbols are recorded in
-\texttt{fact\_edges}, forming the structural backbone of the graph.
+queries to extract named declarations.  Each exported symbol becomes a
+\texttt{code\_symbols} row keyed by \texttt{(git\_repo, rel\_path, name)}, storing
+its kind and source text for later display and neural scoring.
 
 \medskip
-\noindent\textbf{Phase 2 --- Document Fact Extraction.}  Human-readable
-sources (README files, markdown documentation) are segmented into sentences via
-deterministic NLP segmentation.  Each sentence becomes a document fact stored
-verbatim in the \texttt{facts} table.
+\noindent\textbf{Documents.}  Human-readable sources (README files, markdown
+documentation) are ingested \emph{whole}: each file becomes one
+\texttt{documents} row with a content hash for incremental re-indexing.  Open
+Knowledge Format frontmatter is stripped so metadata never pollutes the body.
+KB then records \texttt{doc\_code\_links} between a document and the symbols it
+references.
 
 \medskip
 \noindent\textbf{Embeddings.}  After indexing completes, \texttt{kb init} runs a
-best-effort \texttt{embedAllFacts} pass: by default a local on-device
-sentence-transformer (\texttt{all-MiniLM-L6-v2}); set \texttt{KB\_EMBEDDER=gemini}
-to opt into hosted Gemini embeddings.  When no embedder is available, rows keep a
-legacy deterministic hash vector and semantic scoring degrades gracefully---init
-never blocks on embedding failure.
+best-effort embedding pass over documents and symbols: by default a local
+on-device sentence-transformer (\texttt{all-MiniLM-L6-v2}); set
+\texttt{KB\_EMBEDDER=gemini} to opt into hosted Gemini embeddings.  When no
+embedder is available, rows keep a deterministic hash vector and neural scoring
+degrades gracefully---init never blocks on embedding failure, and the lexical
+lanes carry retrieval on their own.
 
 The raylib snapshot in Table~\ref{tab:harvest-results}
-(\RaylibKEntities{} entities, \RaylibKRels{} edges)
+(\RaylibKEntities{} entities, \RaylibKRels{} links)
 completes init+scan in minutes on a laptop with no LLM indexing cost.
 
 %% ─── Figure: KB Architecture (auto-rendered from figures/kb-arch.mmd) ─────────
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/kb-arch.pdf}
-\caption{KB indexing (top) feeds the multi-pond BFS retrieval loop, which hops the fact graph until the island is sufficient, then curates before answering (bottom).}
+\caption{KB indexing (top) feeds the hybrid retriever: six lexical/neural lanes over documents, symbols, and facts are fused by Reciprocal Rank Fusion, a depth-1 doc$\leftrightarrow$symbol hop enriches the pool, and a curator prunes before one-shot synthesis (bottom).}
 \label{fig:kb-arch}
 \end{figure}
 
-\subsection{Retrieval: Multi-Pond BFS}
+\subsection{Retrieval: Hybrid Rank Fusion}
 \label{subsec:retrieval}
 
-At query time, KB executes a \emph{deep} retrieval loop that maintains a set
-of \emph{exploration ponds}---independent BFS frontiers seeded from different
-sub-queries---so that one dominant code neighborhood cannot monopolize the
-evidence budget.
+At query time, KB runs a single-pass \emph{hybrid} retriever over the three unit
+types.  For a query $q$ it opens six ranked lanes---each of
+\{documents, code symbols, facts\} searched both lexically (BM25~\cite{robertson2009bm25}
+over FTS5) and neurally (embedding cosine).  To avoid a full-table embedding scan
+per query, the neural lanes re-rank the candidate pool that the lexical lanes
+surfaced rather than scoring every vector in the index.
 
-Each iteration of the loop merges five candidate streams:
-\begin{enumerate}
-  \item \textbf{Edge neighbors}: one BFS hop from the active pond's frontier
-    via \texttt{fact\_edges}.
-  \item \textbf{Primary lexical}: BM25~\cite{robertson2009bm25} FTS5 search for the original query.
-  \item \textbf{Pond lexical}: FTS5 search for the active pond's sub-query.
-  \item \textbf{Concept frontier}: facts sharing any concept token in the
-    active concept set.
-  \item \textbf{Concept rows}: broader concept-union expansion.
-\end{enumerate}
+\medskip
+\noindent\textbf{Reciprocal Rank Fusion.}  The six lists are combined with
+Reciprocal Rank Fusion (RRF)~\cite{cormack2009rrf}: a unit at rank $i$ in a lane
+contributes $1/(k + i)$ to its fused score, with damping $k = 60$.  RRF needs no
+per-lane score calibration---it consumes only ranks---so lexical BM25 scores and
+cosine similarities combine without a tuned weighting between them, and a unit
+surfaced by several lanes accrues their contributions.
 
-Facts from the first pass are promoted as \emph{anchors} and receive a $+0.10$
-score boost in later passes, ensuring stable grounding.  Document facts also
-receive a semantic similarity term (cosine against stored embedding vectors);
-code facts lean on graph proximity instead.  The loop exits when
-any of the following conditions is satisfied: (a) $\geq 20$ facts score
-$\geq 0.50$ and concept coverage is sufficient (\emph{answerable plateau}),
-(b) an in-loop LLM sufficiency judge confirms answerability, (c) all ponds are
-exhausted, or (d) the fact budget ($500$ facts) is reached.
-
-Graph-augmented query expansion may optionally rewrite or widen the query
-string before the loop begins, based on entity relationships in the stored
-graph.  The \emph{pre-expansion} user question is preserved for answer synthesis
-so graph symbol names do not pollute scaffold or prompt text.
+\medskip
+\noindent\textbf{Depth-1 enrichment hop.}  After fusion, KB takes the top few
+documents and symbols and follows \texttt{doc\_code\_links} exactly one hop: the
+code a top document describes, and the documentation that describes a top symbol.
+Hopped units enter \emph{below} every directly matched unit, so they enrich the
+pool without displacing direct hits.  Because the link table is flat and the hop
+is depth-1 by construction, retrieval cost is bounded by the candidate pool, not
+by how densely the index is connected---the property the removed graph walk
+lacked.  The top $\sim\!40$ fused units are handed to curation and synthesis.
 
 \subsection{Post-Retrieval Curation}
 \label{subsec:curation}
 
-The deep BFS loop is deliberately \emph{broad}: graph-augmented expansion and
-multi-pond frontiers grow \emph{reachable} evidence islands that include facts
-adjacent to, but not directly about, the user's question.  A separate
-\emph{in-loop} sufficiency judge (called every few iterations once $\geq 5$
-facts score $\geq 0.50$) decides when to \emph{stop collecting}; it does not
-remove off-topic facts from the pool.
-
-When the scored pool exceeds $12$ facts, a \textbf{fact curator} runs
-\emph{before} synthesis.  It is judge-in-the-loop, not a static score floor:
+Rank fusion and the enrichment hop are deliberately \emph{broad}: they surface
+units adjacent to, but not always directly about, the user's question.  When the
+ranked pool is large enough, a \textbf{curator} runs \emph{before} synthesis.
+It is judge-in-the-loop, not a static score floor:
 \begin{enumerate}
-  \item \textbf{Deterministic auto-keep}: facts whose token overlap with the
+  \item \textbf{Deterministic auto-keep}: units whose token overlap with the
     \emph{raw user question} exceeds a fixed threshold bypass the LLM (no cost,
     stable anchors).
-  \item \textbf{Candidate cap}: only the top $100$ facts by orchestrator rank
-    enter the LLM verdict; the tail is hard-dropped deterministically so large
-    pools cannot overflow the structured keep/drop JSON.
+  \item \textbf{Candidate cap}: only the top-ranked units enter the LLM verdict;
+    the tail is dropped deterministically so large pools cannot overflow the
+    structured keep/drop JSON.
   \item \textbf{Structured relevance verdict}: remaining candidates are sent to a
     single LLM call returning a structured verdict with \emph{keep} ids,
     \emph{gap} descriptions, and a \emph{sufficient} flag.
-    The judge is keyed on the pre-expansion question---not the graph-widened
-    retrieval string---because expansion is meant to grow islands, not to define
-    relevance.
-  \item \textbf{Hard-drop}: every fact not in the keep set (except auto-kept
-    rows) is removed from the synthesis context; there is no minimum keep
-    fraction.
-  \item \textbf{Gap re-discovery}: when the judge reports gaps and the set is
-    not yet sufficient, the curator issues bounded shallow lexical
-    searches per gap (excluding already-seen ids), merges new hits, and
-    re-judges for up to a small round cap.
+  \item \textbf{Drop}: every unit not in the keep set (except auto-kept rows) is
+    removed from the synthesis context; there is no minimum keep fraction.
+  \item \textbf{Gap re-discovery}: when the judge reports gaps and the set is not
+    yet sufficient, the curator issues bounded hybrid searches per gap (excluding
+    already-seen ids), merges new hits, and re-judges for up to a small round cap.
 \end{enumerate}
 
 On LLM or parse failure the curator \emph{fails safe} to the incoming pool for
-small sets ($\leq 100$ facts); for larger pools it caps at the same top-$100$
-ranked subset rather than passing the full unfiltered pool into synthesis.
-Curator audit counts (kept, dropped, re-queried) are recorded separately from
-the synthesis context for later analysis---never injected back into the prompt.
+small sets, and caps at the top-ranked subset for larger pools rather than
+passing an unfiltered pool into synthesis.  Curator audit counts (kept, dropped,
+re-queried) are recorded separately from the synthesis context for later
+analysis---never injected back into the prompt as evidence.
 
 \subsection{Answer synthesis}
 \label{subsec:synthesis}
 
-After retrieval (and optional curation), \texttt{kb query} performs
-\emph{one-shot} synthesis: a single LLM call over the curator-kept fact subset
-(up to 2000 characters per fact).  The synthesis prompt instructs \emph{plain prose}:
-no inline ``(fact~$n$)'' citations and no trailing Sources/Citations block;
-provenance is surfaced in a separate structured evidence summary.  This is the
-path evaluated against the control agent in \S\ref{subsec:results}---no
-multi-turn retrieval loop, matching how an external agent would call KB for a
-standalone question.
+After retrieval and optional curation, \texttt{kb query} performs \emph{one-shot}
+synthesis: a single LLM call over the curator-kept units (document bodies are
+truncated to a per-unit character cap).  The synthesis prompt instructs
+\emph{plain prose}: no inline ``(fact~$n$)'' citations and no trailing
+Sources/Citations block; provenance is surfaced in a separate structured
+evidence summary.  This is the path evaluated against the control agent in
+\S\ref{subsec:results}---no multi-turn retrieval loop, matching how an external
+agent would call KB for a standalone question.
 
 %% ─── MOEL ─────────────────────────────────────────────────────────────────────
 \section{MOEL: Multi-Objective Exploration Loss}

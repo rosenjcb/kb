@@ -1,14 +1,14 @@
 flowchart TB
     subgraph P1["Index"]
         direction LR
-        A["Codebase<br/>(source + docs + history)"] --> B["kb init:<br/>extract atomic facts"]
-        B --> C[("Fact graph")]
+        A["Codebase<br/>(source + docs + history)"] --> B["kb init:<br/>documents · symbols · facts"]
+        B --> C[("SQLite: FTS5 + embeddings<br/>+ doc↔symbol links")]
     end
 
-    subgraph P2["Locate"]
+    subgraph P2["Retrieve"]
         direction LR
-        D["Question<br/>arrives"] --> E["Find a seed<br/>island of facts"]
-        E --> F["Hop across the graph<br/>to grow the island"]
+        D["Question<br/>arrives"] --> E["6 lexical/neural lanes<br/>fused by RRF"]
+        E --> F["Depth-1 doc↔symbol hop"]
     end
 
     subgraph P3["Answer"]
