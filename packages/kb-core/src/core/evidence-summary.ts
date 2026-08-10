@@ -31,8 +31,7 @@ export interface EvidenceSummaryParts {
   sourceMix: string
   themes: string[]
   leads: string[]
-  walk: string
-  stop?: string
+  retrieval: string
   evidence?: EvidenceLabel
 }
 
@@ -51,11 +50,8 @@ export function formatEvidenceSummaryHeader(input: EvidenceSummaryInput): string
   if (parts.leads.length > 0) {
     segments.push(`leads: ${parts.leads.join(', ')}`)
   }
-  if (parts.walk) {
-    segments.push(`walk: ${parts.walk}`)
-  }
-  if (parts.stop) {
-    segments.push(`stop: ${parts.stop}`)
+  if (parts.retrieval) {
+    segments.push(`retrieval: ${parts.retrieval}`)
   }
   if (parts.evidence) {
     segments.push(`evidence: ${parts.evidence}`)
@@ -99,8 +95,7 @@ export function buildEvidenceSummaryParts(
     sourceMix: formatSourceMix(sourceCounts, results.length),
     themes: topThemes(themeCounts, 4),
     leads: leads.slice(0, 3),
-    walk: formatRetrievalWalk(input.retrieval?.detail),
-    stop: parseRetrievalStop(input.retrieval?.detail),
+    retrieval: formatRetrievalUnits(input.retrieval?.detail),
     evidence: lastCheckpointEvidence(input.retrieval?.checkpoints),
   }
 }
@@ -137,22 +132,20 @@ function formatLeadTitle(title: string | undefined): string | undefined {
   return normalized.length <= 56 ? normalized : `${normalized.slice(0, 53)}…`
 }
 
-function parseRetrievalStop(detail?: string): string | undefined {
-  if (!detail) return undefined
-  const match = detail.match(/(?:^|;)stop:([^;]+)/)
-  return match?.[1]?.trim() || undefined
-}
-
-function formatRetrievalWalk(detail?: string): string {
+function formatRetrievalUnits(detail?: string): string {
   if (!detail) return ''
-  const passes = detail.match(/(?:^|;)passes:(\d+)/)?.[1]
-  const hops = detail.match(/(?:^|;)graph_hops:(\d+)/)?.[1]
-  const ponds = detail.match(/(?:^|;)ponds:(\d+)/)?.[1]
+  const docs = detail.match(/(?:^|[;:])docs=(\d+)/)?.[1]
+  const symbols = detail.match(/(?:^|,)symbols=(\d+)/)?.[1]
+  const facts = detail.match(/(?:^|,)facts=(\d+)/)?.[1]
+  const hops = detail.match(/(?:^|,)hops=(\d+)/)?.[1]
+  const expanded = detail.match(/(?:^|;)expanded:(\d+)/)?.[1]
   const chunks: string[] = []
-  if (passes) chunks.push(`${passes}p`)
-  if (hops) chunks.push(`${hops}h`)
-  if (ponds) chunks.push(`${ponds} ponds`)
-  return chunks.join('/')
+  if (docs && docs !== '0') chunks.push(`${docs} docs`)
+  if (symbols && symbols !== '0') chunks.push(`${symbols} sym`)
+  if (facts && facts !== '0') chunks.push(`${facts} facts`)
+  if (hops && hops !== '0') chunks.push(`${hops} hops`)
+  const base = chunks.join(' · ')
+  return expanded && expanded !== '0' ? `${base} (+${expanded} expanded)` : base
 }
 
 function lastCheckpointEvidence(

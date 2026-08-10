@@ -256,9 +256,8 @@ See companion doc for full vocabulary where applicable.
 | TC-165 | FR-26 | Given compiled trajectory, JSON round-trip produces identical result | pass |
 | TC-166 | FR-26 | Given writeTrajectory, file is written at expected path and parses back correctly | pass |
 | TC-167 | FR-26 | Given setRetrievalTrace, the finished report carries the trace; else it is absent | pass |
-| TC-168 | FR-26 | Given a facts-loop detail string, summarizeQueryRetrievalTrace lifts passes/hops/ponds/stop/facts | pass |
+| TC-168 | FR-26 | Given a hybrid detail string, summarizeQueryRetrievalTrace lifts docs/symbols/facts/hops/expanded | pass |
 | TC-169 | FR-26 | Given a curated detail + raw curation record, it lifts counts and dropped fact ids | pass |
-| TC-170 | FR-26 | Given a traceDetail string, it splits per-pass hop lines in order | pass |
 | TC-171 | FR-26 | Given an unknown shape, it degrades to empty fields without throwing | pass |
 | TC-172 | FR-27 | tombstones only the removed file, scoped to its repo, leaving siblings and other repos intact | pass |
 | TC-173 | FR-27 | is a no-op when nothing was removed | pass |

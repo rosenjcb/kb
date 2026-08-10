@@ -119,11 +119,11 @@ describe('RunCollector', () => {
     expect(without.retrieval).toBeUndefined()
 
     const c = new RunCollector('query')
-    c.setRetrievalTrace({ passes: 3, graphHops: 5, hops: ['i1:...', 'i2:...'] })
+    c.setRetrievalTrace({ documents: 3, symbols: 5, hops: 2 })
     const report = c.finish('success')
-    expect(report.retrieval?.passes).toBe(3)
-    expect(report.retrieval?.graphHops).toBe(5)
-    expect(report.retrieval?.hops).toHaveLength(2)
+    expect(report.retrieval?.documents).toBe(3)
+    expect(report.retrieval?.symbols).toBe(5)
+    expect(report.retrieval?.hops).toBe(2)
   })
 
   it('[TC-148] Given addStage, then does not write to stderr', () => {
@@ -413,24 +413,23 @@ describe('TrajectoryCollector', () => {
 // ─── summarizeQueryRetrievalTrace ─────────────────────────────────
 
 describe('summarizeQueryRetrievalTrace', () => {
-  it('[TC-168] Given a facts-loop detail string, then lifts passes/hops/ponds/stop/facts', () => {
+  it('[TC-168] Given a hybrid detail string, then lifts docs/symbols/facts/hops/expanded', () => {
     const trace = summarizeQueryRetrievalTrace({
       method: 'hybrid',
-      detail:
-        'facts-loop;passes:4;graph_hops:6;ponds:3;stop:llm_judge_answerable;facts:22;semantic:on',
+      detail: 'hybrid:docs=12,symbols=8,facts=0,hops=4;expanded:3',
     })
     expect(trace.method).toBe('hybrid')
-    expect(trace.passes).toBe(4)
-    expect(trace.graphHops).toBe(6)
-    expect(trace.ponds).toBe(3)
-    expect(trace.stopReason).toBe('llm_judge_answerable')
-    expect(trace.factsReturned).toBe(22)
+    expect(trace.documents).toBe(12)
+    expect(trace.symbols).toBe(8)
+    expect(trace.facts).toBe(0)
+    expect(trace.hops).toBe(4)
+    expect(trace.expanded).toBe(3)
   })
 
   it('[TC-169] Given a curated detail string and a raw curation record, then lifts counts and dropped ids', () => {
     const trace = summarizeQueryRetrievalTrace({
       detail:
-        'facts-loop;passes:2;facts:18;curated:kept=18,dropped=6,requeried=1,rounds=2',
+        'hybrid:docs=10,symbols=8,facts=18,hops=2;curated:kept=18,dropped=6,requeried=1,rounds=2',
       curation: {
         evaluated: 24,
         dropped: [
@@ -450,18 +449,10 @@ describe('summarizeQueryRetrievalTrace', () => {
     expect(trace.curation?.droppedFactIds).toEqual(['fact://x', 'fact://y'])
   })
 
-  it('[TC-170] Given a traceDetail string, then splits per-pass hop lines in order', () => {
-    const trace = summarizeQueryRetrievalTrace({
-      detail: 'facts-loop;passes:2',
-      traceDetail: 'repo:core;trace:i1:merged=5,hops=1|i2:merged=3,hops=2',
-    })
-    expect(trace.hops).toEqual(['i1:merged=5,hops=1', 'i2:merged=3,hops=2'])
-  })
-
   it('[TC-171] Given an unknown shape, then degrades to empty fields without throwing', () => {
     const trace = summarizeQueryRetrievalTrace({})
-    expect(trace.hops).toEqual([])
-    expect(trace.passes).toBeUndefined()
+    expect(trace.documents).toBeUndefined()
+    expect(trace.hops).toBeUndefined()
     expect(trace.curation).toBeUndefined()
   })
 })

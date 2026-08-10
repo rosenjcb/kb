@@ -622,29 +622,27 @@ export function summarizeCuration(retrievalDetails) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse the deep-loop counters from a `retrieval>` detail string
- * (`facts-loop;passes:3;graph_hops:5;ponds:2;stop:llm_judge_answerable;facts:24;...`).
- * Used as a fallback for older logs that predate the structured `report.retrieval` field.
- * Returns null when the string carries no `facts-loop` counters.
+ * Parse the hybrid retrieval counts from a `retrieval>` detail string
+ * (`hybrid:docs=12,symbols=8,facts=0,hops=4;expanded:3;curated:kept=18,dropped=6,...`).
+ * Used as a fallback for logs that lack the structured `report.retrieval` field.
+ * Returns null when the string carries no hybrid counters.
  */
 export function parseRetrievalDetailTrace(detail) {
-  if (typeof detail !== 'string' || !detail.includes('facts-loop')) return null
+  if (typeof detail !== 'string' || !detail.includes('hybrid')) return null
   const num = re => {
     const m = re.exec(detail)
     return m ? Number(m[1]) : null
   }
-  const stop = /(?:^|[;\s(])stop:([^;)\s]+)/.exec(detail)
   const curation = parseCurationDetail(detail)
   return {
-    passes: num(/(?:^|[;\s(])passes:(\d+)/),
-    graph_hops: num(/(?:^|[;\s(])graph_hops:(\d+)/),
-    ponds: num(/(?:^|[;\s(])ponds:(\d+)/),
-    stop_reason: stop ? stop[1] : null,
-    facts_returned: num(/(?:^|[;\s(])facts:(\d+)/),
+    documents: num(/(?:^|[;\s(:])docs=(\d+)/),
+    symbols: num(/(?:^|,)symbols=(\d+)/),
+    facts: num(/(?:^|,)facts=(\d+)/),
+    hops: num(/(?:^|,)hops=(\d+)/),
+    expanded: num(/(?:^|;)expanded:(\d+)/),
     curation: curation
       ? { ...curation, dropped_fact_ids: [] }
       : null,
-    hops: [],
     checkpoints: [],
   }
 }
@@ -699,12 +697,11 @@ function normalizeRetrievalTrace(report, fallbackDetail) {
   if (r && typeof r === 'object') {
     return {
       method: r.method ?? null,
-      passes: r.passes ?? null,
-      graph_hops: r.graphHops ?? null,
-      ponds: r.ponds ?? null,
-      stop_reason: r.stopReason ?? null,
-      facts_returned: r.factsReturned ?? null,
-      hops: Array.isArray(r.hops) ? r.hops : [],
+      documents: r.documents ?? null,
+      symbols: r.symbols ?? null,
+      facts: r.facts ?? null,
+      hops: r.hops ?? null,
+      expanded: r.expanded ?? null,
       checkpoints: Array.isArray(r.checkpoints) ? r.checkpoints : [],
       curation: r.curation
         ? {
@@ -805,45 +802,31 @@ export function buildTimelineSummary(timeline) {
   const synthesisShare = totalQueryTokens > 0 ? totalSynthesis / totalQueryTokens : null
   const retrievalTimeShare = totalMs > 0 ? totalRetrievalMs / totalMs : null
 
-  // Loops that never satisfy the sufficiency judge run to exhaustion — the dominant slowness /
-  // token-bloat driver, since they accumulate the largest fact pools and (when the curator
-  // can't prune them) dump those pools into synthesis.
-  const EXHAUSTION_STOPS = new Set(['weak_evidence_after_exhaustion', 'frontier_exhausted'])
-  const exhausted = rows.filter(r => EXHAUSTION_STOPS.has(r.retrieval?.stop_reason))
-  const exhaustionRate = rows.length > 0 ? exhausted.length / rows.length : null
-  // What actually reaches synthesis is the *post-curation* count (curator `kept`), not the
-  // orchestrator's raw pool. When curation didn't run/record, the raw pool is what flowed
-  // through — which is exactly the fallback pathology, so `facts_returned` is the right value
-  // there. This makes the metric move when the curator starts pruning (or stops falling back).
+  // Total units the hybrid pass returned before curation (documents + symbols + facts).
+  const totalUnits = r =>
+    (r.retrieval?.documents ?? 0) + (r.retrieval?.symbols ?? 0) + (r.retrieval?.facts ?? 0)
+  // What actually reaches synthesis is the *post-curation* count (curator `kept`), not the raw
+  // fused pool. When curation didn't run/record, the raw pool is what flowed through — which is
+  // exactly the fallback pathology, so the total-unit count is the right value there. This makes
+  // the metric move when the curator starts pruning (or stops falling back).
   const factsToSynthesis = r =>
-    r.retrieval?.curation?.kept != null ? r.retrieval.curation.kept : r.retrieval?.facts_returned
+    r.retrieval?.curation?.kept != null ? r.retrieval.curation.kept : totalUnits(r)
   const meanFactsToSynthesis = meanOf(factsToSynthesis)
   // Curator "fell back": pool was large enough to curate (>12) but no curation record survived,
   // meaning the judge failed/parsed-empty and the full pool reached synthesis unpruned.
   const curatorFallbacks = rows.filter(
-    r => (r.retrieval?.facts_returned ?? 0) > 12 && r.retrieval?.curation == null
+    r => totalUnits(r) > 12 && r.retrieval?.curation == null
   )
 
   const diagnosis = []
   if (thinkingShare != null && thinkingShare >= 0.5) {
     diagnosis.push(
-      `Thinking (retrieval/judge loop) is ${(thinkingShare * 100).toFixed(0)}% of query tokens vs ${((synthesisShare ?? 0) * 100).toFixed(0)}% synthesis — the loop dominates token cost.`
+      `Thinking (retrieval) is ${(thinkingShare * 100).toFixed(0)}% of query tokens vs ${((synthesisShare ?? 0) * 100).toFixed(0)}% synthesis — retrieval dominates token cost.`
     )
   }
   if (retrievalTimeShare != null && retrievalTimeShare >= 0.5) {
     diagnosis.push(
-      `Retrieval loop wall-time is ${(retrievalTimeShare * 100).toFixed(0)}% of total — the hops, not synthesis, are the slowness.`
-    )
-  }
-  if (exhaustionRate != null && exhaustionRate >= 0.34) {
-    diagnosis.push(
-      `${exhausted.length}/${rows.length} questions ran the loop to exhaustion (sufficiency judge never confirmed) — the early-exit is the lever for both speed and tokens.`
-    )
-  }
-  const meanPasses = meanOf(r => r.retrieval?.passes)
-  if (meanPasses != null && meanPasses >= 8) {
-    diagnosis.push(
-      `Mean ${meanPasses.toFixed(1)} loop passes/question — the sufficiency judge is exiting late; consider tighter early-exit.`
+      `Retrieval wall-time is ${(retrievalTimeShare * 100).toFixed(0)}% of total — retrieval, not synthesis, is the slowness.`
     )
   }
   if (curatorFallbacks.length > 0) {
@@ -877,9 +860,11 @@ export function buildTimelineSummary(timeline) {
     mean_retrieval_ms: round(meanOf(r => r.timing?.retrieval_ms), 0),
     mean_synthesis_ms: round(meanOf(r => r.timing?.synthesis_ms), 0),
     retrieval_time_share: round(retrievalTimeShare),
-    mean_passes: round(meanPasses, 1),
-    mean_graph_hops: round(meanOf(r => r.retrieval?.graph_hops), 1),
-    exhaustion_rate: round(exhaustionRate),
+    mean_documents: round(meanOf(r => r.retrieval?.documents), 1),
+    mean_symbols: round(meanOf(r => r.retrieval?.symbols), 1),
+    mean_facts: round(meanOf(r => r.retrieval?.facts), 1),
+    mean_hops: round(meanOf(r => r.retrieval?.hops), 1),
+    mean_expanded: round(meanOf(r => r.retrieval?.expanded), 1),
     mean_facts_to_synthesis: round(meanFactsToSynthesis, 0),
     curator_fallback_questions: curatorFallbacks.map(r => r.question_index),
     total_curator_kept: totalKept,
@@ -913,7 +898,7 @@ export function printTimelineDiagnosis(summary, timeline) {
     `  time     retrieval ${formatDurationMs(summary.mean_retrieval_ms)} (${pct(summary.retrieval_time_share)})   synthesis ${formatDurationMs(summary.mean_synthesis_ms)}   total ${formatDurationMs(summary.mean_total_duration_ms)}`
   )
   console.log(
-    `  loop     passes ${summary.mean_passes ?? '-'}   graph_hops ${summary.mean_graph_hops ?? '-'}   exhausted ${pct(summary.exhaustion_rate)}   facts→synth ${summary.mean_facts_to_synthesis ?? '-'}`
+    `  units    docs ${summary.mean_documents ?? '-'}   sym ${summary.mean_symbols ?? '-'}   facts ${summary.mean_facts ?? '-'}   hops ${summary.mean_hops ?? '-'}   expanded ${summary.mean_expanded ?? '-'}   facts→synth ${summary.mean_facts_to_synthesis ?? '-'}`
   )
   console.log(
     `  curator  dropped ${summary.total_curator_dropped}/${summary.total_curator_kept + summary.total_curator_dropped} (${pct(summary.curator_drop_rate)})${summary.curator_fallback_questions?.length ? `   fell back on Q${summary.curator_fallback_questions.join(', Q')}` : ''}`

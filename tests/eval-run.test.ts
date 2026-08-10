@@ -202,7 +202,7 @@ describe('parseQueryText', () => {
     'Full comprehensive answer here.',
     '---',
     'evidence> 10 facts',
-    'retrieval> hybrid (passes:1)',
+    'retrieval> hybrid (docs=5,symbols=3,facts=2,hops=1)',
     'matches> 42 ranked facts',
     'sources> top 10 of 42 ranked: fact://abc; fact://def',
   ].join('\n')
@@ -236,7 +236,7 @@ describe('parseQueryText', () => {
       '- Prerequisites: cmake',
       '---',
       'evidence> 150 facts',
-      'retrieval> hybrid (passes:1)',
+      'retrieval> hybrid (docs=5,symbols=3,facts=2,hops=1)',
       'matches> 10 ranked facts',
       'sources> top 10 of 10 ranked: fact://abc',
     ].join('\n')
@@ -256,7 +256,7 @@ describe('parseQueryText', () => {
       'sources> 3',
       'source> Environment knobs (facts deep loop)',
       'source> KB_FACTS_QUERY_MAX_ITERS',
-      'retrieval> hybrid (facts-loop;passes:1)',
+      'retrieval> hybrid (docs=5,symbols=3,facts=2,hops=1)',
     ].join('\n')
     const r = parseQueryText(output)
     expect(r.answer).toContain('Default max passes is 24')
@@ -296,12 +296,11 @@ describe('run timeline', () => {
       },
     ],
     retrieval: {
-      passes: 5,
-      graphHops: 7,
-      ponds: 2,
-      stopReason: 'llm_judge_answerable',
-      factsReturned: 20,
-      hops: ['i1:merged=5', 'i2:merged=3'],
+      documents: 12,
+      symbols: 8,
+      facts: 0,
+      hops: 4,
+      expanded: 3,
       curation: { kept: 20, dropped: 8, requeried: 1, rounds: 2, droppedFactIds: ['fact://z'] },
     },
   }
@@ -317,15 +316,15 @@ describe('run timeline', () => {
     expect(s.retrieval_tokens).toBe(0)
   })
 
-  it('[TC-234] parseRetrievalDetailTrace lifts loop counters from a retrieval detail line', () => {
+  it('[TC-234] parseRetrievalDetailTrace lifts hybrid counts from a retrieval detail line', () => {
     const t = parseRetrievalDetailTrace(
-      'hybrid (facts-loop;passes:3;graph_hops:4;ponds:2;stop:frontier_exhausted;facts:15;curated:kept=15,dropped=3,requeried=0,rounds=1)'
+      'hybrid:docs=12,symbols=8,facts=0,hops=4;expanded:3;curated:kept=15,dropped=3,requeried=0,rounds=1'
     )
-    expect(t?.passes).toBe(3)
-    expect(t?.graph_hops).toBe(4)
-    expect(t?.stop_reason).toBe('frontier_exhausted')
+    expect(t?.documents).toBe(12)
+    expect(t?.symbols).toBe(8)
+    expect(t?.hops).toBe(4)
     expect(t?.curation?.dropped).toBe(3)
-    expect(parseRetrievalDetailTrace('no loop here')).toBeNull()
+    expect(parseRetrievalDetailTrace('no counters here')).toBeNull()
   })
 
   it('[TC-235] buildQuestionTimeline joins stages with the trace and derives retrieval_ms', () => {
@@ -336,7 +335,8 @@ describe('run timeline', () => {
     // retrieval_ms comes from the :iter1 stage (20000ms), not total−synthesis.
     expect(tl.timing.retrieval_ms).toBe(20000)
     expect(tl.token_share.thinking).toBeGreaterThan(0.7)
-    expect(tl.retrieval?.stop_reason).toBe('llm_judge_answerable')
+    expect(tl.retrieval?.documents).toBe(12)
+    expect(tl.retrieval?.hops).toBe(4)
     expect(tl.retrieval?.curation?.dropped_fact_ids).toEqual(['fact://z'])
   })
 
@@ -346,9 +346,9 @@ describe('run timeline', () => {
       legacy,
       2,
       'q2',
-      'hybrid (facts-loop;passes:9;facts:12;curated:kept=12,dropped=1,requeried=0,rounds=1)'
+      'hybrid:docs=9,symbols=3,facts=12,hops=2;curated:kept=12,dropped=1,requeried=0,rounds=1'
     )
-    expect(tl.retrieval?.passes).toBe(9)
+    expect(tl.retrieval?.documents).toBe(9)
     expect(tl.retrieval?.curation?.dropped).toBe(1)
   })
 

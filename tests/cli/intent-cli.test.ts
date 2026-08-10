@@ -77,7 +77,7 @@ describe('intent-cli formatting', () => {
         answer: 'The KB uses session base first, then default base.',
         retrieval: {
           method: 'hybrid',
-          detail: 'facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on',
+          detail: 'hybrid:docs=1,symbols=0,facts=1,hops=0',
           checkpoints: [
             { stage: 'pass_3', status: 'stop', nextAction: 'return', evidence: 'strong' },
           ],
@@ -100,10 +100,8 @@ describe('intent-cli formatting', () => {
     expect(output).toContain('The KB uses session base first, then default base.')
     expect(output).toContain('evidence> 1 facts → LLM (full text)')
     expect(output).toContain('themes: cli')
-    expect(output).toContain('stop: answerable_plateau')
-    expect(output).toContain(
-      'retrieval> hybrid (facts-loop;passes:3;graph_hops:2;ponds:2;stop:answerable_plateau;semantic:on)'
-    )
+    expect(output).toContain('retrieval: 1 docs · 1 facts')
+    expect(output).toContain('retrieval> hybrid (hybrid:docs=1,symbols=0,facts=1,hops=0)')
     expect(output).toContain('matches> 1 ranked facts')
     expect(output).toContain('sources> all 1 file(s): /tmp/cli-facts.md')
   })
