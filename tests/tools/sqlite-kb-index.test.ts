@@ -375,4 +375,35 @@ describe('SQLite KB index integration', () => {
 
     indexer.close()
   })
+
+  it('[TC-73] re-embeds a document only when its content changes (stale vector invalidated)', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const embedder = {
+      modelId: 'fake-embed-1',
+      dimensions: 3,
+      embed: async (texts: string[]) => texts.map(() => [1, 0, 0]),
+    }
+    const indexer = new SqliteKbIndexer({ dbPath, embedder })
+
+    indexer.upsertDocument({ gitRepo: 'demo', relPath: 'a.md', title: 'A', body: 'original body' })
+    // First backfill embeds the new document.
+    expect(await indexer.embedAllDocuments()).toBe(1)
+    // Nothing changed → nothing to re-embed.
+    expect(await indexer.embedAllDocuments()).toBe(0)
+
+    // Body change drops the stale embedding so the backfill regenerates it.
+    indexer.upsertDocument({ gitRepo: 'demo', relPath: 'a.md', title: 'A', body: 'rewritten body' })
+    expect(await indexer.embedAllDocuments()).toBe(1)
+
+    // Title-only change also invalidates (the embedding text is title + body head).
+    indexer.upsertDocument({ gitRepo: 'demo', relPath: 'a.md', title: 'A2', body: 'rewritten body' })
+    expect(await indexer.embedAllDocuments()).toBe(1)
+
+    // A no-op upsert of identical content leaves the vector in place.
+    indexer.upsertDocument({ gitRepo: 'demo', relPath: 'a.md', title: 'A2', body: 'rewritten body' })
+    expect(await indexer.embedAllDocuments()).toBe(0)
+
+    indexer.close()
+  })
 })

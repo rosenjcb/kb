@@ -167,6 +167,25 @@ export async function indexSourceMarkdownFilesAsDocuments(
 
         const parsed = parseOkfDocument(raw)
         const title = parsed.frontmatter?.title?.trim() || documentTitle(relPath, parsed.body)
+
+        // Content-hash short-circuit: an unchanged markdown file keeps its indexed row, FTS
+        // entry, embedding, and doc↔symbol links, so skip all of that on a re-scan. Mirrors
+        // the code indexer's per-file skip and keeps a no-op scan O(1) work per file.
+        if (indexer.documentUnchanged(gitRepo, relPath, raw, title)) {
+          input.onProgress?.({
+            filesConsidered: paths.length,
+            filesCompleted: filesScanned,
+            filesRemaining: Math.max(paths.length - filesScanned, 0),
+            filesScanned,
+            documentsUpserted,
+            linksWritten,
+            currentFile: relPath,
+          })
+          await yieldEvery(filesScanned, yieldStride)
+          await maybeYieldByTime()
+          continue
+        }
+
         const { id: docId } = indexer.upsertDocument({
           gitRepo,
           relPath,

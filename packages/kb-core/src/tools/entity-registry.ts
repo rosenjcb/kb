@@ -439,18 +439,21 @@ export class EntityRegistry {
    */
   detectCollisions(): number {
     const entities = this.listEntities()
+    // Normalize each name once (O(n)) instead of re-normalizing inside the O(n²) pair scan,
+    // where every name would otherwise be re-tokenized ~n times.
+    const normalized = entities.map(e => normalizeEntityName(e.canonicalName))
     let written = 0
     for (let i = 0; i < entities.length; i++) {
+      const a = entities[i]
+      const na = normalized[i]
+      if (!a) continue
       for (let j = i + 1; j < entities.length; j++) {
-        const a = entities[i]
         const b = entities[j]
-        if (!a || !b) continue
-        const na = normalizeEntityName(a.canonicalName)
-        const nb = normalizeEntityName(b.canonicalName)
+        const nb = normalized[j]
+        if (!b) continue
         if (na === nb) continue // same name, different kind — upsert key already separates them
         if (!isTokenBoundarySubstring(na, nb) && !isTokenBoundarySubstring(nb, na)) continue
-        const gloss = contrastiveGloss(a, b)
-        this.addEdge(a.id, b.id, 'distinct_from', gloss)
+        this.addEdge(a.id, b.id, 'distinct_from', contrastiveGloss(a, b))
         written++
       }
     }

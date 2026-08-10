@@ -822,9 +822,13 @@ export class SqliteKbIndexer {
     const relPath = input.relPath.replace(/\\/g, '/')
     const id = documentId(gitRepo, relPath)
     const contentHash = input.contentHash ?? sha256(input.body)
-    const existing = this.db.prepare('SELECT id FROM documents WHERE id = ?').get(id) as
-      | { id: string }
-      | undefined
+    const existing = this.db
+      .prepare('SELECT content_hash, title FROM documents WHERE id = ?')
+      .get(id) as { content_hash: string; title: string } | undefined
+    // Same repo+path id, so an existing row means an update. The embedding text is
+    // title + body head, so a change to either must invalidate the stored vector.
+    const changed =
+      !existing || existing.content_hash !== contentHash || existing.title !== input.title
 
     this.db
       .prepare(
@@ -838,12 +842,29 @@ export class SqliteKbIndexer {
       )
       .run(id, gitRepo, relPath, input.title, input.body, contentHash, now)
 
-    this.db.prepare('DELETE FROM documents_fts WHERE doc_id = ?').run(id)
-    this.db
-      .prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
-      .run(id, `${input.title}\n${input.body}`)
+    if (changed) {
+      // Re-tokenize FTS and drop the now-stale neural vector so the embed backfill
+      // regenerates it — `embedTable` only re-embeds missing/other-model rows, never a
+      // same-model row whose content changed, so without this the vector would go stale.
+      this.db.prepare('DELETE FROM documents_fts WHERE doc_id = ?').run(id)
+      this.db
+        .prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
+        .run(id, `${input.title}\n${input.body}`)
+      if (existing) this.db.prepare('DELETE FROM doc_embeddings WHERE doc_id = ?').run(id)
+    }
 
     return { id, operation: existing ? 'updated' : 'inserted' }
+  }
+
+  /**
+   * True when an indexed document already matches this exact content (same body hash and
+   * title), so a re-scan can skip the row rewrite, FTS re-tokenize, embedding, and link
+   * recompute — the document counterpart of the code indexer's content-hash short-circuit.
+   */
+  documentUnchanged(gitRepo: string, relPath: string, body: string, title: string): boolean {
+    const repo = gitRepo || this.activeGitRepo || ''
+    const existing = this.getDocumentByPath(repo, relPath)
+    return Boolean(existing && existing.content_hash === sha256(body) && existing.title === title)
   }
 
   deleteDocument(id: string): boolean {

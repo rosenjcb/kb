@@ -231,6 +231,7 @@ See companion doc for full vocabulary where applicable.
 | TC-184 | FR-29 | Gemini usageMetadata with candidatesTokenCount + thoughtsTokenCount (generateContent) | usage.outputTokens equals sum (thinking folded into output) |
 | TC-185 | FR-29 | Gemini stream usageMetadata with thoughtsTokenCount (and totalTokenCount fallback) | stream usage.outputTokens includes thinking; total−prompt used when thoughts field absent |
 | TC-186 | FR-22 | indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS | pass |
+| TC-187 | FR-22 | re-scan skips unchanged documents by content hash and re-indexes changed ones | pass |
 
 ### Related docs
 

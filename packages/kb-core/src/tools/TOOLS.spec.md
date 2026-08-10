@@ -127,6 +127,7 @@ See companion doc for full vocabulary where applicable.
 | TC-70 | FR-3 | hybrid retrieval returns ranked documents and code symbols for a natural-language query | pass |
 | TC-71 | FR-3 | hybrid retrieval detail reports docs/symbols/facts/hops counts | pass |
 | TC-72 | FR-3 | one-hop join surfaces symbols linked from a top document | pass |
+| TC-73 | FR-1 | upsertDocument invalidates the stale embedding on content change so only changed docs are re-embedded | pass |
 
 ### Related docs
 

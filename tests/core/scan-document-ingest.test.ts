@@ -57,4 +57,33 @@ describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
     expect(titles.toLowerCase()).toMatch(/auth/)
     reader.close()
   })
+
+  it('[TC-187] re-scan skips unchanged documents and re-indexes changed ones', async () => {
+    const dbPath = join(tmpDir, '.kb-index.sqlite')
+    const files = { 'docs/guide.md': '# Guide\n\nOriginal body about widgets.\n' }
+
+    const first = await indexSourceMarkdownFilesAsDocuments({ baseDir: tmpDir, gitRepo: 'demo', files })
+    expect(first.documentsUpserted).toBe(1)
+
+    // Identical content on the next scan → skipped, no row/FTS/link rewrite.
+    const second = await indexSourceMarkdownFilesAsDocuments({ baseDir: tmpDir, gitRepo: 'demo', files })
+    expect(second.filesScanned).toBe(1)
+    expect(second.documentsUpserted).toBe(0)
+
+    // Changed content → re-indexed, and the stored body reflects the new text.
+    const changed = { 'docs/guide.md': '# Guide\n\nRewritten body about gadgets.\n' }
+    const third = await indexSourceMarkdownFilesAsDocuments({
+      baseDir: tmpDir,
+      gitRepo: 'demo',
+      files: changed,
+    })
+    expect(third.documentsUpserted).toBe(1)
+
+    const reader = new SqliteKbIndexer({ dbPath })
+    const docs = reader.listDocumentsByRepo('demo')
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.body).toContain('gadgets')
+    expect(docs[0]?.body).not.toContain('widgets')
+    reader.close()
+  })
 })
