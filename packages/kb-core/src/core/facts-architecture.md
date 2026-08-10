@@ -16,7 +16,7 @@ unit types** — whole markdown **documents**, exported **code symbols**, and cu
 `doc_code_links`. A post-retrieval curator drops off-topic units before one-shot
 synthesis writes a grounded prose answer.
 
-This is the platform mental model for `kb query`, `kb docs generate`, and ingest
+This is the platform mental model for `kb query` and ingest
 (`kb init` / `kb scan`).
 
 > **History.** Earlier revisions were *facts-first*: sentence-level facts were the
@@ -75,30 +75,19 @@ bounded shallow/deep re-discovery fan-out that is itself re-fused with RRF.
 
 ---
 
-## 3. `kb docs generate` in this model
-
-- **Inputs:** user prompt, questionnaire, optional chat transcript, and **retrieved
-  units** for the session (query built from prompt + answers) via the same hybrid
-  retriever.
-- **Output:** a **generated** document; footer references the supporting unit ids.
-- **Refusal:** zero supporting units → **error**, no finalize. `## References` is
-  appended from the same grounded set. See `src/core/doc-generate-orchestrator.ts`.
-
----
-
-## 4. Documents: first-class retrieval units
+## 3. Documents: first-class retrieval units
 
 | Kind | Meaning |
 |------|---------|
 | **Original** | Authored/imported markdown from source material; indexed as a `documents` unit and mined for `facts`. |
-| **Generated** | Produced by `kb docs generate` (or init synthesis), grounded in retrieved units. |
+| **Generated** | Produced by init synthesis, grounded in retrieved units. |
 
-Both kinds are indexed for retrieval and browsable via `kb docs`. Unlike the old
-facts-first model, a document body is legitimate evidence a query can retrieve directly.
+Both kinds are indexed for retrieval. Unlike the old facts-first model, a document
+body is legitimate evidence a query can retrieve directly.
 
 ---
 
-## 5. Ingest: init / `kb scan` → documents + symbols + facts
+## 4. Ingest: init / `kb scan` → documents + symbols + facts
 
 `kb init` clones each `--git` repo, then per repo runs the deterministic indexers, then
 a cross-repo reconciliation pass:
@@ -123,7 +112,7 @@ when persisted; **original/source docs are skipped** (their facts come from
 
 ---
 
-## 6. End-to-end data flow
+## 5. End-to-end data flow
 
 ```mermaid
 flowchart TB
@@ -171,12 +160,11 @@ flowchart TB
 
 ---
 
-## 7. Alignment with **this repository** (today)
+## 6. Alignment with **this repository** (today)
 
 | Area | Status |
 |------|--------|
 | **`kb query` / chat** | `read_facts` → `FactsDocumentReader` → `retrieveHybrid`: six lexical/neural lanes over documents, symbols, and facts, fused by RRF, plus a depth-1 `doc_code_links` hop. Single bounded pass on the shared retrieval path (`runQueryTruthRetrieval`). |
-| **`kb docs generate`** | Draft/revise prompts include the retrieved-unit block; empty retrieval → orchestrator throws; `## References` from the same grounded set. |
 | **`kb facts`** | CLI + TUI `/facts` for list / search / show (`src/cli/facts-cli.ts`). |
 | **Multi-repo bases** | A base tracks one or more git repos. Each unit carries a `git_repo` origin; retrieval fuses across repos in one pool (no repo-scoped walk, no `fact_edges`). |
 | **`kb init`** | Per repo: `code-index` (AST → `code_symbols` + `import_code` facts), document indexing (`documents`), `document-facts` (segmentation → facts), and `doc_code_links`; followed by cross-repo reconciliation. |

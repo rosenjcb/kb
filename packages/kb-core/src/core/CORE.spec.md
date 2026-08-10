@@ -11,9 +11,6 @@ tests:
   - ../../../../tests/core/agent-registry.test.ts
   - ../../../../tests/core/code-fact-writer.test.ts
   - ../../../../tests/core/db-migrations-doctype.test.ts
-  - ../../../../tests/core/doc-questionnaire.test.ts
-  - ../../../../tests/core/doc-references-footer.test.ts
-  - ../../../../tests/core/doc-supporting-facts.test.ts
   - ../../../../tests/core/doc-taxonomy.test.ts
   - ../../../../tests/core/entity-index-cycle.test.ts
   - ../../../../tests/core/env-boolean.test.ts
@@ -62,9 +59,6 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Behaviors in agent-loop.test.ts |
 | FR-2 | Behaviors in agent-registry.test.ts |
 | FR-3 | Behaviors in db-migrations-doctype.test.ts |
-| FR-7 | Behaviors in doc-questionnaire.test.ts |
-| FR-8 | Behaviors in doc-references-footer.test.ts |
-| FR-9 | Behaviors in doc-supporting-facts.test.ts |
 | FR-10 | Behaviors in doc-taxonomy.test.ts |
 | FR-11 | Behaviors in evidence-summary.test.ts |
 | FR-12 | Behaviors in fact-taxonomy.test.ts |
@@ -99,18 +93,6 @@ See companion doc for full vocabulary where applicable.
 | TC-9 | FR-2 | Given getAgentProfile, then returns undefined for unknown id | pass |
 | TC-10 | FR-3 | Given documents/derived_docs/original_docs rows with architecture or checklist, then remaps to reference and runbook | pass |
 | TC-11 | FR-3 | Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied | pass |
-| TC-30 | FR-8 | Given facts, then renders a References section with fact:// URIs | pass |
-| TC-31 | FR-8 | Given empty facts array, then returns empty string (no orphan heading) | pass |
-| TC-32 | FR-8 | Given a fact id that is not prefixed, then formatFactUri returns the id unchanged | pass |
-| TC-33 | FR-8 | Given a body and facts, then appends footer with blank line separation | pass |
-| TC-34 | FR-8 | Given body without trailing newline and facts, then still separates cleanly | pass |
-| TC-35 | FR-8 | Given no facts, then returns body with trailing newline ensured | pass |
-| TC-36 | FR-9 | Given a query, then forwards to indexer.searchFacts and projects id/factText | pass |
-| TC-37 | FR-9 | Given an empty query, then returns no results without calling the indexer | pass |
-| TC-38 | FR-9 | Given no rows, then returns empty array | pass |
-| TC-39 | FR-9 | Given no explicit limit, then defaults to 20 | pass |
-| TC-40 | FR-9 | Given facts, then formats numbered id lines | pass |
-| TC-41 | FR-9 | Given empty facts, then returns refusal hint block | pass |
 | TC-42 | FR-10 | Given the canonical list, then contains exactly five members | pass |
 | TC-43 | FR-10 | Given a known DocType, then isDocType returns true | pass |
 | TC-44 | FR-10 | Given a legacy or unknown value, then isDocType returns false | pass |
@@ -244,7 +226,6 @@ See companion doc for full vocabulary where applicable.
 | TC-178 | FR-28 | AbortError and fetch TypeError | classified timeout and network |
 | TC-179 | FR-28 | an already-structured error | returned unchanged, not re-wrapped |
 | TC-180 | FR-28 | a thrown provider error converted to a failure record | stage, kind, provider preserved; description names the operator action |
-| TC-181 | FR-7 | every DocType in the taxonomy | questionnaire loads with non-empty keys and questions |
 | TC-182 | FR-29 | resolveGeminiThinkingBudget with call arg / GEMINI_THINKING_BUDGET / unset | prefers call arg, then env, then mode default (1024 when includeThoughts, else 0) |
 | TC-183 | FR-29 | plain Gemini call with no thinkingBudget and unset GEMINI_THINKING_BUDGET | generationConfig.thinkingConfig.thinkingBudget is 0 (config never omitted) |
 | TC-184 | FR-29 | Gemini usageMetadata with candidatesTokenCount + thoughtsTokenCount (generateContent) | usage.outputTokens equals sum (thinking folded into output) |
