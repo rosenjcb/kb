@@ -127,5 +127,8 @@ describe('slash command helpers', () => {
     // Within a section, the declared order holds (query before session before clear).
     expect(order.indexOf('/query')).toBeLessThan(order.indexOf('/session'))
     expect(order.indexOf('/session')).toBeLessThan(order.indexOf('/clear'))
+    // /exit is last so people always see how to leave.
+    expect(order.indexOf('/help')).toBeLessThan(order.indexOf('/exit'))
+    expect(order.indexOf('/exit')).toBe(order.length - 1)
   })
 })

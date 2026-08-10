@@ -249,10 +249,11 @@ export interface SlashCommandGroup {
 }
 
 export const SLASH_COMMAND_GROUPS: SlashCommandGroup[] = [
-  { label: 'Ask & sessions', commands: ['base', 'query', 'session', 'clear', 'exit'] },
+  { label: 'Ask & sessions', commands: ['base', 'query', 'session', 'clear'] },
   { label: 'Knowledge', commands: ['graph', 'facts', 'entities'] },
   { label: 'System', commands: ['skills', 'sync', 'uninstall', 'logs'] },
-  { label: 'More', commands: ['help'] },
+  // `/exit` sits last, next to `/help`, so how to leave is always the final thing shown.
+  { label: 'More', commands: ['help', 'exit'] },
 ]
 
 const SLASH_GROUP_INDEX: Map<string, { order: number; label: string }> = (() => {
