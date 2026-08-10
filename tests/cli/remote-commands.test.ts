@@ -28,7 +28,8 @@ describe('isClientLocalCommand', () => {
   it('[TC-29] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
-    expect(isClientLocalCommand(['docs', 'list'])).toBe(false)
+    expect(isClientLocalCommand(['facts', 'list'])).toBe(false)
+    expect(isClientLocalCommand(['session'])).toBe(false)
   })
 })
 

@@ -157,15 +157,19 @@ export const COMMAND_CATALOG: CommandDescriptor[] = [
   },
   {
     name: 'help',
+    // Rendered through the shared command runner (`runMainWithOutput` prints the CLI help
+    // in-process, no server round-trip), so the TUI shows it inline instead of sending
+    // `/help` to the chat model. Do NOT mark this `local`: there is no bespoke TUI handler
+    // for it, and `local` without one silently falls through to chat.
     summary: 'show available commands',
     availability: 'client-local',
     tuiContexts: ['idle'],
-    tuiKind: 'local',
+    tuiKind: 'output',
     cliHelp: false,
   },
   {
     name: 'clear',
-    summary: 'clear the visible session history',
+    summary: 'end this chat session (saved to the logs) and clear the screen',
     availability: 'client-local',
     tuiContexts: ['idle'],
     tuiKind: 'local',

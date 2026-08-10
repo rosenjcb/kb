@@ -53,14 +53,12 @@ In chat mode the InputBar border turns orange and the prompt becomes `you>`.
 | Shell input | Behaviour |
 |---|---|
 | `query "…"` | Runs intent, shows result inline with spinner |
-| `chat` | Switches to chat mode |
-| `use <base>` | Switches base, StatusBar updates |
-| `docs list` | Lists documents |
-| `docs view <id>` | Shows document content |
-| `/help` | Shows help text |
-| `/clear` | Clears history |
+| `base use <base>` | Switches base, StatusBar updates |
+| `facts list` | Lists curated facts inline |
+| `graph` / `entities` / `logs` / `session` | Output-only commands rendered inline |
+| `/help` | Shows help text (rendered inline, not sent to chat) |
+| `/clear` | Ends the chat session (saved to logs), clears the screen |
 | `/exit` | Quits (also Ctrl-C) |
-| (in chat) `/exit` | Returns to shell mode |
 
 ## Source Structure
 

@@ -64,7 +64,7 @@ describe('runCommandForTui', () => {
       out.log('line two')
     })
 
-    const result = await runCommandForTui(['docs', 'list'], {} as never)
+    const result = await runCommandForTui(['facts', 'list'], {} as never)
     expect(result).toBe('line one\nline two')
   })
 
@@ -73,7 +73,7 @@ describe('runCommandForTui', () => {
       out.error('something went wrong')
     })
 
-    const result = await runCommandForTui(['docs', 'list'], {} as never)
+    const result = await runCommandForTui(['facts', 'list'], {} as never)
     expect(result).toBe('something went wrong')
   })
 
@@ -83,7 +83,7 @@ describe('runCommandForTui', () => {
       out.write('chunk two\n')
     })
 
-    const result = await runCommandForTui(['docs', 'view', 'some-doc'], {} as never)
+    const result = await runCommandForTui(['facts', 'show', 'some-fact'], {} as never)
     expect(result).toBe('chunk one\nchunk two')
   })
 
@@ -119,9 +119,9 @@ describe('runCommandForTui', () => {
 
   it('[TC-67] passes args through to runMainWithOutput', async () => {
     vi.mocked(runMainWithOutput).mockResolvedValue(undefined)
-    await runCommandForTui(['docs', 'list', '--limit', '5'], {} as never)
+    await runCommandForTui(['facts', 'list', '--limit', '5'], {} as never)
     expect(runMainWithOutput).toHaveBeenCalledWith(
-      ['docs', 'list', '--limit', '5'],
+      ['facts', 'list', '--limit', '5'],
       expect.any(Object),
       expect.any(Object),
       'tui',

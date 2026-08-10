@@ -57,6 +57,9 @@ describe('command catalog ↔ TUI slash registry parity', () => {
     // entities and session must both be output commands, or the TUI silently drops them.
     expect(isOutputCommandName('entities')).toBe(true)
     expect(isOutputCommandName('session')).toBe(true)
+    // help has no bespoke TUI handler, so it must route through the output runner (which
+    // renders the CLI help in-process) rather than being marked `local` and hitting chat.
+    expect(isOutputCommandName('help')).toBe(true)
   })
 
   it('exposes each cliHelp command exactly once', () => {

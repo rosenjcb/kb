@@ -100,7 +100,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-26 | FR-12 | Given no MCP files | status shows unset / missing entries |
 | TC-27 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
 | TC-28 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
-| TC-29 | FR-13 | Given `query` / `docs list` | `isClientLocalCommand` is false (forwarded remotely) |
+| TC-29 | FR-13 | Given `query` / `facts list` / `session` | `isClientLocalCommand` is false (forwarded remotely) |
 | TC-30 | FR-2 | Given only `config.server.host` (bare, non-loopback) + apiKey | Infers `https` with no port (implicit 443); sync installs with Bearer |
 | TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
 | TC-32 | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |

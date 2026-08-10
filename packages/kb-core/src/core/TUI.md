@@ -65,7 +65,7 @@ The final result of an operation — the answer text, a document body, a diff, c
 
 - Committed to history as a non-loading entry *exactly once*, after the job finishes.
 - Goes through `<Static>` — permanent in terminal scrollback.
-- For **output-only commands** (docs view/list, query, facts, etc.): the full output is held in `resultId` with `loading: true` during the run, then `loading: false` flipped when done. `LoadingSpinner` shows only the grey tail while running.
+- For **output-only commands** (query, facts, graph, entities, logs, session, etc.): the full output is held in `resultId` with `loading: true` during the run, then `loading: false` flipped when done. `LoadingSpinner` shows only the grey tail while running.
 - For **chat responses**: assistant lines accumulate in `chatResponseIdRef` (a single `loading: true` entry). `finalizeChatResponse()` flips it to `loading: false` when `chatIO.read()` is called (the turn boundary). This means the full response — whether two words or a 200-line document — is committed to scrollback exactly once.
 
 ### Applying the model to new features

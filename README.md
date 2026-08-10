@@ -124,8 +124,9 @@ No arguments. KB opens an interactive session (status bar shows **host** and **b
 - **Follow up**: context carries across turns; ask "show me the file" or "what about error handling?"
 - **Slash commands**: `/help` lists everything. Useful ones early on:
   - `/query <question>`: run a structured lookup inline
-  - `/docs list`: browse generated docs for the base
+  - `/facts list`: browse the curated facts for the base
   - `/graph summary`: see how modules connect
+  - `/session`: review the most recent chat session and its runs
   - `/exit`: leave
 
 The first time you run `kb`, you'll see a short welcome. If the server hasn't finished indexing yet, wait for kb-server logs to settle, then try again.
@@ -210,19 +211,16 @@ kb --host <host:port|url>   …   # overrides KB_HOST / KB_PORT / KB_SSLMODE for
 kb query "<topic>" [--base <name>] [--discovery shallow|deep] [--verbose]
 ```
 
-### Documents
-
-```
-kb docs list|view|generate|rename|delete ...
-```
-
 ### Other commands
 
 ```
 kb base use <base>             — switch active base (omit to use the server default)
 kb facts list|search|show ...
 kb graph ...
-kb skills install|uninstall
+kb entities ...                — inspect harvested entities and name collisions
+kb logs list|show|compare ...  — browse run reports
+kb session                     — most recent chat session and its runs (snoop past /clear)
+kb skills [install|uninstall]  — bare `kb skills` shows install status
 kb mcp install|status|uninstall   — point Claude/Cursor MCP at a local or team host
 kb-server start [--with-mcp]
 kb sync

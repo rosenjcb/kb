@@ -23,11 +23,16 @@ export interface SlashCommand {
  * (`tests/commands/command-parity.test.ts`) fails if the two disagree.
  *
  * Only genuinely flow-local commands — ones with no top-level catalog entry — are
- * appended by hand. Today that is just `/cancel`, offered in every input context.
+ * appended by hand. Today that is just `/cancel`, which `kb init` honors at its
+ * free-text prompts, so it is offered only in those input contexts (never at idle).
  */
 export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
   ...catalogSlashSpecs(),
-  { path: ['cancel'], description: 'cancel the current flow', contexts: 'always' },
+  {
+    path: ['cancel'],
+    description: 'cancel the current flow',
+    contexts: ['init-free-text', 'scan-base-picker'],
+  },
 ]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {
