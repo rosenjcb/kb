@@ -117,4 +117,15 @@ describe('slash command helpers', () => {
     expect(parseSlashInput('/facts search "foo"').hasTrailingArgs).toBe(true)
     expect(resolveSlashSuggestions('/facts search "foo"', 'idle')).toEqual([])
   })
+
+  it('[TC-89] orders the command menu by catalog section, not alphabetically', () => {
+    const order = getSlashCommands('chat').map(c => c.command)
+    // Section order: Ask & sessions → Knowledge → System → More.
+    expect(order.indexOf('/base')).toBeLessThan(order.indexOf('/graph'))
+    expect(order.indexOf('/graph')).toBeLessThan(order.indexOf('/skills'))
+    expect(order.indexOf('/skills')).toBeLessThan(order.indexOf('/help'))
+    // Within a section, the declared order holds (query before session before clear).
+    expect(order.indexOf('/query')).toBeLessThan(order.indexOf('/session'))
+    expect(order.indexOf('/session')).toBeLessThan(order.indexOf('/clear'))
+  })
 })

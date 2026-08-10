@@ -1,5 +1,5 @@
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
-import { catalogSlashSpecs } from '@kb/core/commands/command-catalog.js'
+import { catalogSlashSpecs, slashCommandOrder } from '@kb/core/commands/command-catalog.js'
 
 export type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 
@@ -79,11 +79,6 @@ function pathPrefixMatches(specPath: string[], typedSegments: string[]): boolean
   return true
 }
 
-function compareSpecs(a: SlashCommandSpec, b: SlashCommandSpec): number {
-  if (a.path.length !== b.path.length) return a.path.length - b.path.length
-  return a.path.join(' ').localeCompare(b.path.join(' '))
-}
-
 export function resolveSlashSuggestions(
   input: string,
   context: SlashInputContext = 'idle'
@@ -100,14 +95,15 @@ export function resolveSlashSuggestions(
     return matching
       .filter(spec => spec.path.length === 1)
       .map(specToSlashCommand)
-      .sort((a, b) => a.command.localeCompare(b.command))
+      .sort(byMenuOrder)
   }
 
+  // Top-level matches first (by menu group order), then subcommands under them.
   return matching.map(specToSlashCommand).sort((a, b) => {
-    const specA = eligible.find(spec => `/${spec.path.join(' ')}` === a.command)
-    const specB = eligible.find(spec => `/${spec.path.join(' ')}` === b.command)
-    if (!specA || !specB) return a.command.localeCompare(b.command)
-    return compareSpecs(specA, specB)
+    const depthA = a.command.split(' ').length
+    const depthB = b.command.split(' ').length
+    if (depthA !== depthB) return depthA - depthB
+    return byMenuOrder(a, b)
   })
 }
 
@@ -116,5 +112,18 @@ export function getSlashCommandsForContext(context: SlashInputContext = 'idle'):
     spec => spec.path.length === 1 && isEligible(spec, context)
   )
     .map(specToSlashCommand)
-    .sort((a, b) => a.command.localeCompare(b.command))
+    .sort(byMenuOrder)
+}
+
+/** Top-level command name a suggestion belongs to (`/facts list` → `facts`). */
+function topLevelName(command: string): string {
+  return command.replace(/^\//, '').split(' ')[0] ?? ''
+}
+
+/** Menu ordering: by the catalog's section/group order, then alphabetically as a tiebreak. */
+function byMenuOrder(a: SlashCommand, b: SlashCommand): number {
+  const orderA = slashCommandOrder(topLevelName(a.command))
+  const orderB = slashCommandOrder(topLevelName(b.command))
+  if (orderA !== orderB) return orderA - orderB
+  return a.command.localeCompare(b.command)
 }

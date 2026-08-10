@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   COMMAND_CATALOG,
+  SLASH_COMMAND_GROUPS,
   cliHelpCommands,
   isOutputCommandName,
+  slashCommandGroupLabel,
 } from '@kb/core/commands/command-catalog.js'
 import { SLASH_COMMAND_REGISTRY } from '@kb/client/tui/slash-command-registry.js'
 
@@ -67,6 +69,30 @@ describe('command catalog ↔ TUI slash registry parity', () => {
     expect(new Set(names).size).toBe(names.length)
     expect(names).toContain('query')
     expect(names).toContain('session')
+  })
+
+  it('assigns every TUI-visible command to exactly one menu group', () => {
+    const counts = new Map<string, number>()
+    for (const group of SLASH_COMMAND_GROUPS) {
+      for (const name of group.commands) counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    // No command listed in two sections.
+    for (const [name, count] of counts) {
+      expect(count, `"${name}" appears in more than one menu group`).toBe(1)
+    }
+    // Every TUI-visible top-level command is grouped, so a new command can't slip into the
+    // menu ungrouped (it would render under no section header).
+    for (const c of COMMAND_CATALOG) {
+      if (c.tuiKind === 'none') continue
+      expect(slashCommandGroupLabel(c.name), `"${c.name}" is not in any menu group`).toBeDefined()
+    }
+    // Every grouped name is a real TUI-visible catalog command (no phantom entries).
+    for (const name of counts.keys()) {
+      const c = COMMAND_CATALOG.find(x => x.name === name)
+      expect(Boolean(c && c.tuiKind !== 'none'), `menu group lists unknown command "${name}"`).toBe(
+        true
+      )
+    }
   })
 
   it('does not resurrect the removed docs command', () => {

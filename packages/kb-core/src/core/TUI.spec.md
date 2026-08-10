@@ -129,6 +129,7 @@ See companion doc for full vocabulary where applicable.
 | TC-86 | FR-11 | shows /cancel only in init-flow contexts, not at idle | pass |
 | TC-87 | FR-11 | completes multi-segment commands | pass |
 | TC-88 | FR-11 | suppresses suggestions after complete path with trailing args | pass |
+| TC-89 | FR-11 | orders the command menu by catalog section, not alphabetically | pass |
 
 ### Related docs
 

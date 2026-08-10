@@ -235,3 +235,41 @@ export function cliHelpCommands(): CliHelpCommand[] {
     intent: c.tuiKind === 'chat',
   }))
 }
+
+/**
+ * Display grouping for the TUI slash-command menu: sections shown in this order, and
+ * commands shown in this order within each section. The registry sorts the menu by this
+ * order and the SuggestionsBar renders a grey section header before each group. Keep every
+ * TUI-visible top-level command listed in exactly one group — the parity test enforces it.
+ */
+export interface SlashCommandGroup {
+  label: string
+  /** Top-level command names, in display order within the section. */
+  commands: string[]
+}
+
+export const SLASH_COMMAND_GROUPS: SlashCommandGroup[] = [
+  { label: 'Ask & sessions', commands: ['base', 'query', 'session', 'clear', 'exit'] },
+  { label: 'Knowledge', commands: ['graph', 'facts', 'entities'] },
+  { label: 'System', commands: ['skills', 'sync', 'uninstall', 'logs'] },
+  { label: 'More', commands: ['help'] },
+]
+
+const SLASH_GROUP_INDEX: Map<string, { order: number; label: string }> = (() => {
+  const index = new Map<string, { order: number; label: string }>()
+  let order = 0
+  for (const group of SLASH_COMMAND_GROUPS) {
+    for (const name of group.commands) index.set(name, { order: order++, label: group.label })
+  }
+  return index
+})()
+
+/** Menu display order for a top-level slash command; ungrouped names sort after all groups. */
+export function slashCommandOrder(name: string): number {
+  return SLASH_GROUP_INDEX.get(name)?.order ?? Number.MAX_SAFE_INTEGER
+}
+
+/** Section label for a top-level slash command, or undefined when it belongs to no group. */
+export function slashCommandGroupLabel(name: string): string | undefined {
+  return SLASH_GROUP_INDEX.get(name)?.label
+}
