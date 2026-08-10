@@ -1,9 +1,10 @@
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
+import { catalogSlashSpecs } from '@kb/core/commands/command-catalog.js'
 
 export type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 
 export interface SlashCommandSpec {
-  /** ['docs','generate'] → '/docs generate' */
+  /** ['facts','list'] → '/facts list' */
   path: string[]
   description: string
   /** Where eligible. 'always' = available in every context (e.g. /exit, /cancel). */
@@ -15,53 +16,18 @@ export interface SlashCommand {
   description: string
 }
 
+/**
+ * The slash registry is generated from the shared command catalog
+ * (`@kb/core/commands/command-catalog`) so the TUI can never drift from the CLI:
+ * a command added to the catalog appears here automatically, and the parity test
+ * (`tests/commands/command-parity.test.ts`) fails if the two disagree.
+ *
+ * Only genuinely flow-local commands — ones with no top-level catalog entry — are
+ * appended by hand. Today that is just `/cancel`, offered in every input context.
+ */
 export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
-  // Top-level
-  { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
-  { path: ['base'], description: 'manage KB bases and their git repos', contexts: ['idle'] },
-  { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
-  { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
-  { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
-  { path: ['entities'], description: 'inspect harvested entities and name collisions', contexts: ['idle'] },
-  { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
-  { path: ['uninstall'], description: 'remove the kb client binary and client runtime', contexts: ['idle'] },
-  { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
-  { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },
-  { path: ['session'], description: 'show session stats (turns, tokens, facts, timing)', contexts: ['idle'] },
-  { path: ['help'], description: 'show available commands', contexts: ['idle'] },
-  { path: ['clear'], description: 'clear the visible session history', contexts: ['idle'] },
-  { path: ['exit'], description: 'quit kb', contexts: 'always' },
-
-  // docs subcommands
-  { path: ['docs', 'list'], description: 'list KB documents', contexts: ['idle'] },
-  { path: ['docs', 'view'], description: 'view a KB document by id', contexts: ['idle'] },
-  { path: ['docs', 'generate'], description: 'guided document draft (questionnaire + review)', contexts: ['idle'] },
-  { path: ['docs', 'rename'], description: 'rename a KB document', contexts: ['idle'] },
-  { path: ['docs', 'delete'], description: 'delete a KB document', contexts: ['idle'] },
-
-  // facts subcommands
-  { path: ['facts', 'list'], description: 'list KB facts', contexts: ['idle'] },
-  { path: ['facts', 'search'], description: 'search KB facts', contexts: ['idle'] },
-  { path: ['facts', 'show'], description: 'show a KB fact by id or text', contexts: ['idle'] },
-
-  // base subcommands
-  { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
-
-  // logs subcommands
-  { path: ['logs', 'list'], description: 'list run reports', contexts: ['idle'] },
-  { path: ['logs', 'show'], description: 'show a run report by id', contexts: ['idle'] },
-  { path: ['logs', 'compare'], description: 'compare run reports', contexts: ['idle'] },
-
-  // skills subcommands
-  { path: ['skills', 'install'], description: 'install an agent skill', contexts: ['idle'] },
-  { path: ['skills', 'uninstall'], description: 'uninstall an agent skill', contexts: ['idle'] },
-
-  // Flow-local commands
-  { path: ['skip'], description: 'skip the current question', contexts: ['docs-generate-question', 'init-question'] },
-  { path: ['complete'], description: 'finish adding items', contexts: ['docs-generate-question', 'init-question'] },
+  ...catalogSlashSpecs(),
   { path: ['cancel'], description: 'cancel the current flow', contexts: 'always' },
-  { path: ['accept'], description: 'accept list or draft', contexts: ['docs-generate-review', 'named-list-confirm'] },
-  { path: ['reject'], description: 'reject and start over', contexts: ['docs-generate-review', 'named-list-confirm'] },
 ]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {

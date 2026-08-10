@@ -105,7 +105,7 @@ Shared formatter: `formatConnectionContext(config, baseName?)` in `server-connec
 
 Display: `host: hostname:port │ base: …`.
 
-**Invariant:** Do not start retrieval or chat without showing connection context first (except machine JSON stdout paths like `docs generate --output json`).
+**Invariant:** Do not start retrieval or chat without showing connection context first.
 
 ## HTTP surface
 

@@ -136,11 +136,7 @@ export async function runRemoteCliCommand(
   const result = await client.adminCli(args)
   if (result.output.trim()) {
     if (result.exitCode === 0) {
-      if (args[0] === 'docs' && (args[1] === 'view' || args[1] === 'list')) {
-        out.write(result.output)
-      } else {
-        out.log(result.output)
-      }
+      out.log(result.output)
     } else {
       out.error(result.output.startsWith('❌') ? result.output : `❌ ${result.output}`)
     }

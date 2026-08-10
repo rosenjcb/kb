@@ -10,7 +10,7 @@ describe('FIRST_RUN_WELCOME_NOTICE', () => {
   it('[TC-387] lists the core commands', () => {
     expect(FIRST_RUN_WELCOME_NOTICE).toContain('kb query')
     expect(FIRST_RUN_WELCOME_NOTICE).toContain('kb graph')
-    expect(FIRST_RUN_WELCOME_NOTICE).toContain('kb docs')
+    expect(FIRST_RUN_WELCOME_NOTICE).toContain('kb facts')
   })
 
   it('[TC-388] tells the user how to get help', () => {

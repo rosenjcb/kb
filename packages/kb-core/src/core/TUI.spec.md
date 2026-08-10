@@ -126,9 +126,6 @@ See companion doc for full vocabulary where applicable.
 | TC-80 | FR-11 | suggests /skills when typing /sk | pass |
 | TC-81 | FR-11 | suggests docs subcommands when typing /docs g | pass |
 | TC-82 | FR-11 | suggests /facts list when typing /facts li | pass |
-| TC-83 | FR-11 | shows /accept in docs-generate-review and named-list-confirm contexts | pass |
-| TC-84 | FR-11 | shows /complete in init-question and docs-generate-question contexts | pass |
-| TC-85 | FR-11 | shows /skip in docs-generate-question context | pass |
 | TC-86 | FR-11 | shows /cancel in every context | pass |
 | TC-87 | FR-11 | completes multi-segment commands | pass |
 | TC-88 | FR-11 | suppresses suggestions after complete path with trailing args | pass |

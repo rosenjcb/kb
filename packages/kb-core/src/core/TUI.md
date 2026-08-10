@@ -18,7 +18,7 @@ Every meaningful CLI feature must be usable in the right mode surfaces:
 - Interactive chat TUI when the user starts with bare `kb` (chat is the primary experience)
 - One-shot non-interactive CLI entry when the user runs `kb <command> ...`
 - Help entry via `--help`
-- TUI slash entry when the feature is available from chat (e.g. `/docs generate`)
+- TUI slash entry when the feature is available from chat (e.g. `/facts search`)
 
 Do not treat the TUI path as extra polish. It is part of the product surface.
 
@@ -28,11 +28,10 @@ Do not treat the TUI path as extra polish. It is part of the product surface.
 - `kb --help` should print top-level help and exit.
 - `kb <command> ...` should be non-interactive by default unless that command intentionally runs a session flow.
 - `kb <command> --help` should print help and exit without starting real work.
-- All commands are available as slash commands inside the chat interface. Output-only commands (query, facts, graph, docs list/view, base, config, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (`/docs generate`) use the chat session input surface for questionnaires.
+- All commands are available as slash commands inside the chat interface. Output-only commands (query, facts, graph, entities, logs, session, base, etc.) are intercepted at the TUI layer and display inline without involving the LLM loop. Interactive slash commands (e.g. `/uninstall`) use a confirmation prompt before running.
 - **Connection context** (`host: … │ base: …`) must appear on the TUI status bar, CLI banner, and chat open — see [`../../kb-client/src/api/CONNECTION.md`](../../kb-client/src/api/CONNECTION.md).
 - `/init` and `/scan` are **not** client slash commands; indexing is kb-server-managed.
 - Success or follow-up copy in the TUI transcript should use **slash form** (`/base use …`), not `kb …`, so users are not told to leave the chat interface. Shared formatters take `CmdMode` and build hints via `cmd()` in `src/cli/cmd-ref.ts`.
-- `/docs generate` review uses slash commands only: `/accept`, `/reject <feedback>`, `/cancel`.
 
 ## Output Model — Three Tiers
 
@@ -86,7 +85,7 @@ When adding a new tool, agent, or orchestrator output path: ask "is this metadat
 - Completed transcript rows should go through Ink `<Static>` where they must not be redrawn every frame, so the host TTY keeps them in normal scrollback (see `src/tui/components/HistoryPane.tsx`).
 - **Connection context** (`host: … │ base: …`) lives in the pinned TUI status bar — not in scrollback history.
 - **Cursor’s integrated terminal** can behave differently from iTerm, Terminal.app, or VS Code’s terminal panel (e.g. scrollback feels “stuck”). If the issue appears only there, try an external terminal to confirm; the `<Static>` split is still the right default for real TTYs.
-- `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire / review steps (docs generate) read as a normal back-and-forth.
+- `read()` in `ChatIO` echoes any **non-idle** prompt into the transcript and reuses a short form as the input placeholder so questionnaire steps (e.g. `kb init`) read as a normal back-and-forth.
 
 Examples:
 
@@ -105,7 +104,7 @@ Examples:
 - Prefer entrypoint-driven behavior:
   - bare `kb` => interactive shell
   - `kb <command>` => one-shot non-interactive command
-- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb docs generate`).
+- Reserve `--non-interactive` for commands that otherwise prompt the user during their own command flow (e.g. `kb init`).
 - Before renaming or removing any existing flag, verify current semantics, help output, scripts, tests, and TUI dispatch paths.
 
 Current repo guidance:
@@ -136,7 +135,7 @@ For any new or changed user-facing command, verify the relevant subset of:
 - `kb --help`
 - `kb <command> --help`
 - `kb <command> ...`
-- TUI slash invocation such as `/docs generate`
+- TUI slash invocation such as `/facts search`
 - Real-TTY behavior, not only unit tests
 
 For high-risk CLI changes, validate against a live kb-server with a disposable base before declaring completion.

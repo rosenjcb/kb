@@ -314,7 +314,7 @@ function formatCompareRow(
 
 // ─── Report loading ───────────────────────────────────────────────
 
-async function loadReports(
+export async function loadReports(
   logsDir: string,
   filters: { command?: string; since?: string; base?: string }
 ): Promise<RunReport[]> {

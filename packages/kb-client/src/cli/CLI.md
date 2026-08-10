@@ -19,7 +19,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 |---|---|
 | Git clone + index + reindex | **kb-server** (`KB_GIT_REPOS`, `KB_REINDEX_INTERVAL`) |
 | `kb query`, chat TUI | Client → HTTP → server (`/v1/query`, `/v1/chat`) |
-| `kb docs`, `facts`, `graph`, … | Client → `POST /v1/admin/cli` on server |
+| `kb facts`, `graph`, `entities`, `logs`, `session`, … | Client → `POST /v1/admin/cli` on server |
 | `kb base use`, `skills`, `sync` | Client-only (local state / release-runtime install) |
 
 **Server daemon:** `kb-server start` (not a `kb` subcommand). **Indexing:** configure `KB_GIT_REPOS` on kb-server. **Configuration:** `KB_*` environment variables in your shell profile.
@@ -37,7 +37,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 
 ## Connection visibility
 
-Before work starts (except machine JSON stdout):
+Before work starts:
 
 1. **One-shot CLI** — banner + `formatConnectionContext` line under `🤖 KB Agent Harness`.
 2. **TUI** — pinned `StatusBar` + startup notice with same string.
@@ -49,7 +49,7 @@ Telemetry: `resolveReportHost(config)` on run reports.
 
 ```bash
 kb --host localhost:38117 query "…"
-kb --host http://remote:38117/docs list
+kb --host http://remote:38117 facts list
 kb --host staging:38117          # TUI when no other args
 ```
 

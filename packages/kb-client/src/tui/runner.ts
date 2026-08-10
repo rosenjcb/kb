@@ -1,7 +1,7 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 
 // Lazy-load index.ts so its top-level main() call doesn't fire just from
-// importing runner.ts (which chat-cli pulls in via chat-docs-generate-flow).
+// importing runner.ts.
 async function loadIndex() {
   return import('../cli/index.js')
 }

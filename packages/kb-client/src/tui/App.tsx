@@ -15,6 +15,7 @@ import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
+import { isOutputCommandName } from '@kb/core/commands/command-catalog.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
 import { runCommandForTui, parseShellArgs } from './runner.js'
 import {
@@ -27,22 +28,13 @@ import {
 } from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
 
-function resolveApplyArgs(args: string[]): string[] | null {
-  if (args.includes('--apply')) return null
-  const first = args[0]
-  if (first === 'invalidate') return [...args, '--apply']
-  return null
-}
-
-/** Commands handled inline as transcript-only output; interactive flows stay out of this path. */
-function isOutputOnlyCommand(first: string, args: string[]): boolean {
-  if (first === 'docs' && args[1] === 'generate') return false
-  const known = new Set([
-    'query', 'submit', 'invalidate',
-    'facts', 'graph', 'docs',
-    'base', 'logs', 'skills', 'sync',
-  ])
-  return known.has(first)
+/**
+ * Commands handled inline as transcript-only output. Derived from the shared command
+ * catalog (`tuiKind: 'output'`) so this gate can never drift from the slash registry —
+ * the exact bug that made `/entities` and `/session` silently fall through to chat.
+ */
+function isOutputOnlyCommand(first: string): boolean {
+  return isOutputCommandName(first)
 }
 
 interface Props {
@@ -424,7 +416,7 @@ export function App({
       }
 
       // ── Output-only slash commands (don't touch chatInputResolverRef) ──
-      if (isSlash && firstArg && isOutputOnlyCommand(firstArg, args)) {
+      if (isSlash && firstArg && isOutputOnlyCommand(firstArg)) {
         addEntry({ type: 'chat-you', content: trimmed })
 
         // base delete — refused: deleting a base is an operator action on the server.
@@ -437,30 +429,6 @@ export function App({
               'to remove all server data). In the client you can only switch bases: /base use <base>.',
           })
           return
-        }
-
-        // docs delete — confirmation prompt
-        if (
-          firstArg === 'docs' &&
-          args[1] === 'delete' &&
-          !args.includes('--force') &&
-          !args.includes('-f')
-        ) {
-          const docId = args.slice(2).find(t => !t.startsWith('--'))
-          if (docId) {
-            addEntry({
-              type: 'info',
-              content: `Delete document "${docId}"? This cannot be undone. [y/N]`,
-            })
-            setPendingConfirm({
-              question: `Delete document "${docId}"?`,
-              onConfirm: async () => {
-                const output = await runCommandForTui([...args, '--force'], config, undefined, chatSessionIdRef.current)
-                if (output) addEntry({ type: 'result', content: output })
-              },
-            })
-            return
-          }
         }
 
         if (isRunning) return
@@ -506,18 +474,6 @@ export function App({
               addEntry({ type: 'result', content: (seg as { kind: 'body'; text: string }).text })
             }
           }
-
-          const applyArgs = resolveApplyArgs(args)
-          if (applyArgs) {
-            addEntry({ type: 'info', content: 'Apply these changes? [y/N]' })
-            setPendingConfirm({
-              question: 'Apply?',
-              onConfirm: async () => {
-                const applyOutput = await runCommandForTui(applyArgs, config, undefined, chatSessionIdRef.current)
-                if (applyOutput) addEntry({ type: 'result', content: applyOutput })
-              },
-            })
-          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           updateEntry(resultId, { type: 'error', content: message, loading: false })
@@ -527,7 +483,7 @@ export function App({
         return
       }
 
-      // ── Everything else → chat session (LLM queries, /docs generate) ──
+      // ── Everything else → chat session (LLM queries) ──
       addEntry({ type: 'chat-you', content: trimmed })
       if (shouldStartChatPending({ isSlash, readKind: chatReadKindRef.current })) {
         startChatPending()

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
+  formatSkillsStatusReport,
   installHooks,
   installSkillIntoProject,
   installSkillsGlobally,
@@ -890,5 +891,26 @@ describe('formatSkillInstallReport with hooks', () => {
   it('[TC-383] omits Agent hooks section when hook results not provided', () => {
     const report = formatSkillInstallReport([], [])
     expect(report).not.toContain('Agent hooks')
+  })
+})
+
+describe('formatSkillsStatusReport', () => {
+  it('[TC-446] Given no installed skills, then reports none installed', () => {
+    const report = formatSkillsStatusReport([
+      { skill: 'kb:dev-workflow', agent: 'claude', installed: false, upToDate: false },
+      { skill: 'kb:dev-workflow', agent: 'cursor', installed: false, upToDate: false },
+    ])
+    expect(report).toContain('No agent skills installed')
+    expect(report).toContain('kb skills install')
+  })
+
+  it('[TC-447] Given an installed-but-stale skill, then flags it as update-available', () => {
+    const report = formatSkillsStatusReport([
+      { skill: 'kb:dev-workflow', agent: 'claude', installed: true, upToDate: false },
+      { skill: 'kb:dev-workflow', agent: 'cursor', installed: true, upToDate: true },
+    ])
+    expect(report).toContain('claude')
+    expect(report).toContain('update available')
+    expect(report).toMatch(/cursor\s+installed/)
   })
 })

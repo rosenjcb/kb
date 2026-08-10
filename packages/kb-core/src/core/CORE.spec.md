@@ -11,9 +11,6 @@ tests:
   - ../../../../tests/core/agent-registry.test.ts
   - ../../../../tests/core/code-fact-writer.test.ts
   - ../../../../tests/core/db-migrations-doctype.test.ts
-  - ../../../../tests/core/doc-generate-orchestrator.test.ts
-  - ../../../../tests/core/doc-generate-session.test.ts
-  - ../../../../tests/core/doc-generate-title.test.ts
   - ../../../../tests/core/doc-questionnaire.test.ts
   - ../../../../tests/core/doc-references-footer.test.ts
   - ../../../../tests/core/doc-supporting-facts.test.ts
@@ -65,9 +62,6 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Behaviors in agent-loop.test.ts |
 | FR-2 | Behaviors in agent-registry.test.ts |
 | FR-3 | Behaviors in db-migrations-doctype.test.ts |
-| FR-4 | Behaviors in doc-generate-orchestrator.test.ts |
-| FR-5 | Behaviors in doc-generate-session.test.ts |
-| FR-6 | Behaviors in doc-generate-title.test.ts |
 | FR-7 | Behaviors in doc-questionnaire.test.ts |
 | FR-8 | Behaviors in doc-references-footer.test.ts |
 | FR-9 | Behaviors in doc-supporting-facts.test.ts |
@@ -105,24 +99,6 @@ See companion doc for full vocabulary where applicable.
 | TC-9 | FR-2 | Given getAgentProfile, then returns undefined for unknown id | pass |
 | TC-10 | FR-3 | Given documents/derived_docs/original_docs rows with architecture or checklist, then remaps to reference and runbook | pass |
 | TC-11 | FR-3 | Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied | pass |
-| TC-12 | FR-4 | Given ready session, produceInitialDraft then reject then accept writes once | pass |
-| TC-13 | FR-4 | second revise user prompt lists prior reviewer feedback before latest instruction | pass |
-| TC-14 | FR-4 | Given user-defined sections, startGenerationSession is ready immediately and skips questionnaire | pass |
-| TC-15 | FR-4 | Given user-defined sections, produceInitialDraft sends sections block not structured answers | pass |
-| TC-16 | FR-4 | Given no facts in KB, produceInitialDraft throws before calling draft LLM | pass |
-| TC-17 | FR-5 | Given new session, then first pending index is 0 and not all resolved | pass |
-| TC-18 | FR-5 | Given answers applied until last, then status becomes ready | pass |
-| TC-19 | FR-5 | Given skip on pending slot, then advances and can reach ready | pass |
-| TC-20 | FR-5 | Given setSessionDraft twice, then revisions log holds unified diff | pass |
-| TC-21 | FR-5 | Given sections provided, then status is ready immediately with no gathering phase | pass |
-| TC-22 | FR-5 | Given sections provided, then sections are persisted and reloaded correctly | pass |
-| TC-23 | FR-5 | Given no sections, then status starts as gathering with non-empty questions | pass |
-| TC-24 | FR-5 | Given acceptSessionDraft, then status finalized and draft preserved | pass |
-| TC-25 | FR-6 | strips trailing sentence punctuation | pass |
-| TC-26 | FR-6 | truncates long run-on sentences by word and char caps | pass |
-| TC-27 | FR-6 | uses first line only | pass |
-| TC-28 | FR-6 | prefers documentTitle over oneLineThesis | pass |
-| TC-29 | FR-6 | falls back to squeezed thesis when documentTitle missing | pass |
 | TC-30 | FR-8 | Given facts, then renders a References section with fact:// URIs | pass |
 | TC-31 | FR-8 | Given empty facts array, then returns empty string (no orphan heading) | pass |
 | TC-32 | FR-8 | Given a fact id that is not prefixed, then formatFactUri returns the id unchanged | pass |

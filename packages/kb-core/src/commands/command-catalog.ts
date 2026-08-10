@@ -105,8 +105,10 @@ export const COMMAND_CATALOG: CommandDescriptor[] = [
   },
   {
     name: 'session',
-    summary: 'show the current or most recent session',
-    availability: 'client-local',
+    summary: 'show the most recent chat session and its runs',
+    // Session history lives with the server's run logs (~/.kb/logs), so the
+    // command is forwarded and rendered server-side, same as `logs`.
+    availability: 'server-forwarded',
     tuiContexts: ['idle'],
     tuiKind: 'output',
     cliHelp: true,
@@ -187,4 +189,45 @@ export function isOutputCommandName(name: string): boolean {
 /** Look up a catalog entry by top-level command name. */
 export function findCommand(name: string): CommandDescriptor | undefined {
   return COMMAND_CATALOG.find(c => c.name === name)
+}
+
+/** One slash-command entry (top-level or subcommand) derived from the catalog. */
+export interface CatalogSlashSpec {
+  path: string[]
+  description: string
+  contexts: SlashInputContext[] | 'always'
+}
+
+/**
+ * The TUI slash-command specs implied by the catalog: every command with a TUI
+ * presence (`tuiKind !== 'none'`), plus one entry per subcommand. This is what the
+ * TUI slash registry is built from, so a command added to the catalog appears in the
+ * TUI automatically and can never silently drift.
+ */
+export function catalogSlashSpecs(): CatalogSlashSpec[] {
+  const specs: CatalogSlashSpec[] = []
+  for (const c of COMMAND_CATALOG) {
+    if (c.tuiKind === 'none') continue
+    specs.push({ path: [c.name], description: c.summary, contexts: c.tuiContexts })
+    for (const sub of c.subcommands ?? []) {
+      specs.push({ path: [c.name, sub.name], description: sub.summary, contexts: c.tuiContexts })
+    }
+  }
+  return specs
+}
+
+/** A command shown in the `kb --help` top-level list. `intent` = free-text intent command (query). */
+export interface CliHelpCommand {
+  name: string
+  summary: string
+  intent: boolean
+}
+
+/** Top-level commands that appear in the client `kb --help` listing, derived from the catalog. */
+export function cliHelpCommands(): CliHelpCommand[] {
+  return COMMAND_CATALOG.filter(c => c.cliHelp).map(c => ({
+    name: c.name,
+    summary: c.summary,
+    intent: c.tuiKind === 'chat',
+  }))
 }

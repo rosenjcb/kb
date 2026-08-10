@@ -16,29 +16,11 @@ import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
 import { isInitCancelledError, parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import {
-  ensureOperationalBaseDir,
   listAllBases,
   resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
 } from '@kb/core/storage/base-selection.js'
-import {
-  DocsDeleteError,
-  parseDocsDeleteCommand,
-  runDocsDelete,
-} from '@kb/core/cli/docs-delete-cli.js'
-import {
-  DocsGenerateError,
-  formatDocsGenerateHumanOutput,
-  isDocsGenerateJsonOutputArgs,
-  parseDocsGenerateCommand,
-  runDocsGenerate,
-} from '@kb/core/cli/docs-generate-cli.js'
-import {
-  DocsRenameError,
-  parseDocsRenameCommand,
-  runDocsRename,
-} from '@kb/core/cli/docs-rename-cli.js'
 import { FactsCommandError, runFactsCommand } from '@kb/core/cli/facts-cli.js'
 import {
   GraphCommandError,
@@ -53,15 +35,10 @@ import {
   runEntitiesCommand,
 } from '@kb/core/cli/entities-cli.js'
 import { runLogsCommand } from '@kb/core/cli/logs-cli.js'
-import {
-  ViewCommandError,
-  runListCommand,
-  runViewCommand,
-} from '@kb/core/cli/view-cli.js'
+import { runSessionCommand } from '@kb/core/cli/session-cli.js'
 import {
   printBaseHelp,
   printCliHelp,
-  printDocsHelp,
   printInitHelp,
   printLogsHelp,
   printScanHelp,
@@ -94,7 +71,6 @@ export interface ServerCommandOptions {
  * into it.
  */
 const BASE_SCOPED_COMMANDS = new Set([
-  'docs',
   'facts',
   'graph',
   'entities',
@@ -133,7 +109,6 @@ export async function runServerCommandWithOutput(
 ): Promise<number> {
   const args = applyAmbientBase(rawArgs, options.baseName)
   const mode = options.mode ?? 'cli'
-  const config = options.config
   const sessionId = options.sessionId
   const firstArg = args[0]
 
@@ -248,8 +223,15 @@ export async function runServerCommandWithOutput(
     }
   }
 
-  if (firstArg === 'docs') {
-    return runServerDocsCommand(args.slice(1), out, config, mode)
+  if (firstArg === 'session') {
+    try {
+      out.log(await runSessionCommand(args.slice(1)))
+      return 0
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      out.error(`❌ ${message}`)
+      return 1
+    }
   }
 
   if (firstArg === 'entities') {
@@ -353,125 +335,5 @@ async function runServerBaseCommand(
   }
 
   out.error(`Unknown base subcommand: ${subCmd}\n\n${printBaseHelp(mode)}`)
-  return 1
-}
-
-async function runServerDocsCommand(
-  args: string[],
-  out: CliOutput,
-  config: KbConfig,
-  mode: CmdMode,
-): Promise<number> {
-  const docsAction = args[0]
-
-  if (!docsAction || docsAction === '--help' || docsAction === '-h' || docsAction === 'help') {
-    out.log(printDocsHelp(mode))
-    return 0
-  }
-
-  if (docsAction === 'view') {
-    try {
-      const result = await runViewCommand(args.slice(1))
-      out.write(result.output)
-      return 0
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const code = error instanceof ViewCommandError ? error.exitCode : 1
-      if (code === 0) {
-        out.log(message)
-        return 0
-      }
-      out.error(`❌ ${message}`)
-      return code
-    }
-  }
-
-  if (docsAction === 'list') {
-    try {
-      const result = await runListCommand(args.slice(1))
-      out.write(result.output)
-      return 0
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const code = error instanceof ViewCommandError ? error.exitCode : 1
-      if (code === 0) {
-        out.log(message)
-        return 0
-      }
-      out.error(`❌ ${message}`)
-      return code
-    }
-  }
-
-  if (docsAction === 'generate') {
-    const jsonOut = isDocsGenerateJsonOutputArgs(['docs', 'generate', ...args.slice(1)])
-    try {
-      const parsed = parseDocsGenerateCommand(args.slice(1))
-      const generated = await runDocsGenerate(parsed, process.cwd(), config)
-      const payload = { status: 'accepted' as const, generated }
-      if (parsed.outputFormat === 'json') {
-        out.log(JSON.stringify(payload))
-      } else {
-        out.log(formatDocsGenerateHumanOutput(generated))
-      }
-      return 0
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const code = error instanceof DocsGenerateError ? error.exitCode : 1
-      if (code === 0) {
-        out.log(message)
-        return 0
-      }
-      if (jsonOut) {
-        out.log(JSON.stringify({ status: 'error', message }))
-      } else {
-        out.error(`❌ ${message}`)
-      }
-      return code
-    }
-  }
-
-  if (docsAction === 'delete') {
-    try {
-      const parsed = parseDocsDeleteCommand(args.slice(1))
-      const deleteBaseDir = parsed.base
-        ? await ensureOperationalBaseDir(parsed.base)
-        : (await resolveEffectiveBaseDir()).baseDir
-      await runDocsDelete(parsed, deleteBaseDir, out)
-      return 0
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const code = error instanceof DocsDeleteError ? error.exitCode : 1
-      if (code === 0) {
-        out.log(message)
-        return 0
-      }
-      out.error(`❌ ${message}`)
-      return code
-    }
-  }
-
-  if (docsAction === 'rename') {
-    try {
-      const parsed = parseDocsRenameCommand(args.slice(1))
-      const renameBaseDir = parsed.base
-        ? await ensureOperationalBaseDir(parsed.base)
-        : (await resolveEffectiveBaseDir()).baseDir
-      await runDocsRename(parsed, renameBaseDir, out)
-      return 0
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const code = error instanceof DocsRenameError ? error.exitCode : 1
-      if (code === 0) {
-        out.log(message)
-        return 0
-      }
-      out.error(`❌ ${message}`)
-      return code
-    }
-  }
-
-  out.error(`❌ Unknown docs action: ${docsAction}`)
-  out.error(printDocsHelp(mode))
   return 1
 }

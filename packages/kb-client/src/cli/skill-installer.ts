@@ -140,6 +140,64 @@ export async function installSkillsGlobally(): Promise<SkillInstallResult[]> {
   return all.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
 }
 
+export interface SkillStatusEntry {
+  skill: string
+  agent: string
+  installed: boolean
+  upToDate: boolean
+}
+
+/**
+ * Read-only inventory of the global agent skills: for each agent target, whether
+ * the skill file exists and whether its embedded hash matches the bundled skill.
+ * Backs the bare `kb skills` status view — no writes.
+ */
+export async function readSkillsStatus(): Promise<SkillStatusEntry[]> {
+  const entries: SkillStatusEntry[] = []
+  for (const { name, content } of SKILLS) {
+    const expected = contentHash(content)
+    for (const target of agentTargets(name)) {
+      try {
+        const existing = await readFile(target.skillPath, 'utf8')
+        entries.push({
+          skill: name,
+          agent: target.name,
+          installed: true,
+          upToDate: extractInstalledHash(existing) === expected,
+        })
+      } catch {
+        entries.push({ skill: name, agent: target.name, installed: false, upToDate: false })
+      }
+    }
+  }
+  return entries
+}
+
+export function formatSkillsStatusReport(entries: SkillStatusEntry[]): string {
+  const installed = entries.filter(e => e.installed)
+  const lines: string[] = ['KB agent skills']
+  if (installed.length === 0) {
+    lines.push('')
+    lines.push('  No agent skills installed.')
+    lines.push('')
+    lines.push('Run `kb skills install` to install skill files, the kb-first hook, and MCP configs.')
+    return lines.join('\n')
+  }
+  const width = Math.max(...entries.map(e => e.agent.length)) + 2
+  lines.push('')
+  for (const e of entries) {
+    const state = !e.installed
+      ? 'not installed'
+      : e.upToDate
+        ? 'installed'
+        : 'installed (update available)'
+    lines.push(`  ${e.agent.padEnd(width)}${state}`)
+  }
+  lines.push('')
+  lines.push('Run `kb skills install` to install/update, or `kb skills uninstall` to remove.')
+  return lines.join('\n')
+}
+
 // ─── kb skill install (profile-level blurb) ──────────────────────────────────
 
 const PROFILE_HEADING = '# KB dev workflow'

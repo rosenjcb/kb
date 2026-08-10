@@ -88,7 +88,7 @@ The client always uses HTTP to a kb-server (`localhost:38117` by default, or `--
 ## Invariants
 
 - Never import `@kb/server` — server is a separate binary.
-- Show connection context before retrieval or chat (except machine JSON stdout).
+- Show connection context before retrieval or chat.
 - Server-owned commands require a live kb-server.
 - Long-running TUI output uses `CliOutput`, not raw `console.log`.
 

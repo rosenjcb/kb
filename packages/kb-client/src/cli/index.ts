@@ -22,7 +22,7 @@ import {
   uninitializedBaseNotice,
 } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
-import { isDocsGenerateJsonOutputArgs } from '@kb/core/cli/docs-generate-cli.js'
+import { cliHelpCommands } from '@kb/core/commands/command-catalog.js'
 import {
   applyConfigToEnv,
   ensureDefaultConfig,
@@ -33,10 +33,12 @@ import type { KbConfig } from '@kb/core/config/kb-config.js'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
+  formatSkillsStatusReport,
   installHooks,
   installMcpConfigs,
   installSkillIntoProject,
   installSkillsGlobally,
+  readSkillsStatus,
   uninstallHooks,
   uninstallMcpConfigs,
   uninstallSkills,
@@ -81,7 +83,7 @@ export const FIRST_RUN_WELCOME_NOTICE = [
   'Quick start:',
   '  kb query       ask a question about your codebase',
   '  kb graph       explore how modules connect',
-  '  kb docs        browse or generate documentation',
+  '  kb facts       list, search, or show KB facts',
   '',
   'Type a question below or press ? for help.',
 ].join('\n')
@@ -104,19 +106,10 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
     'Core commands:',
-    '  base        Manage KB bases (use, list)',
-    '  graph       Inspect or edit the knowledge graph',
-    '  entities    Inspect harvested entities (services, surfaces) and name collisions',
-    '  docs        Browse KB documents',
-    '  facts       List, search, or show KB facts',
-    '  sync        Install the latest published KB release',
-    '  logs        Browse and compare run reports',
-    '  skills      Manage agent skills',
-    '  mcp         Install/remove Claude Code + Cursor MCP kb entries',
-    '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
+    ...formatCommandList(false),
     '',
     'Intent commands:',
-    '  query       Search the knowledge base',
+    ...formatCommandList(true),
     '',
     cmdHelpHint(mode),
     '',
@@ -133,10 +126,20 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('sync', mode)}`,
-    `  ${cmd('docs list --base dogfood', mode)}`,
+    `  ${cmd('facts list --base dogfood', mode)}`,
   ]
     .filter((line): line is string => line !== null)
     .join('\n')
+}
+
+/**
+ * Render the `kb --help` command list (Core or Intent) straight from the shared
+ * command catalog, so a command added to the catalog shows up in help automatically.
+ */
+function formatCommandList(intent: boolean): string[] {
+  const commands = cliHelpCommands().filter(c => c.intent === intent)
+  const width = Math.max(...commands.map(c => c.name.length)) + 2
+  return commands.map(c => `  ${c.name.padEnd(width)}${c.summary}`)
 }
 
 function printMcpHelp(): string {
@@ -343,14 +346,15 @@ export async function runMainWithOutput(
         out.error(`❌ ${message}`)
         if (mode === 'cli') process.exitCode = 1
       }
-    } else {
+    } else if (subcommand === '--help' || subcommand === '-h' || subcommand === 'help') {
       out.log(
         [
-          'Usage: kb skills <subcommand>',
+          'Usage: kb skills [subcommand]',
           '',
           'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
           '',
           'Subcommands:',
+          '  (none)      Show install status of each agent skill',
           '  install     Install skill files, profile readmes, kb-first hook,',
           '              and MCP configs for the active connection (localhost default)',
           '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
@@ -359,6 +363,18 @@ export async function runMainWithOutput(
           '                        or: kb mcp install --host <host|url>',
         ].join('\n')
       )
+    } else if (!subcommand) {
+      // Bare `kb skills` → show whether each agent's skill is installed.
+      try {
+        out.log(formatSkillsStatusReport(await readSkillsStatus()))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
+      }
+    } else {
+      out.error(`Unknown skills subcommand: ${subcommand}\n\nRun \`${cmd('skills help', mode)}\`.`)
+      if (mode === 'cli') process.exitCode = 1
     }
     return
   }
@@ -470,16 +486,12 @@ async function main() {
   const kbConfig = await ensureDefaultConfig()
   applyConfigToEnv(kbConfig)
 
-  // Skip banner when docs generate --output json (stdout must be parseable JSON only).
-  const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
-  if (!machineJsonStdout) {
-    console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
-    const display = await resolveDisplayBase(kbConfig)
-    console.log(
-      formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
-    )
-    console.log('')
-  }
+  console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
+  const display = await resolveDisplayBase(kbConfig)
+  console.log(
+    formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+  )
+  console.log('')
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }
 

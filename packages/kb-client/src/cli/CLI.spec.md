@@ -12,16 +12,10 @@ tests:
   - ../../../../tests/cli/base-repos.test.ts
   - ../../../../tests/cli/base-selection.test.ts
   - ../../../../tests/cli/chat-cli.test.ts
-  - ../../../../tests/cli/chat-docs-generate-flow.test.ts
   - ../../../../tests/cli/chat-query-orchestrator.test.ts
   - ../../../../tests/cli/chat-retrieval-refusal.test.ts
   - ../../../../tests/cli/cmd-ref.test.ts
   - ../../../../tests/cli/collect-source-files.test.ts
-  - ../../../../tests/cli/docs-delete-cli.test.ts
-  - ../../../../tests/cli/docs-generate-cli.test.ts
-  - ../../../../tests/cli/docs-generate-flow.test.ts
-  - ../../../../tests/cli/docs-generate-sections.test.ts
-  - ../../../../tests/cli/docs-rename-cli.test.ts
   - ../../../../tests/cli/facts-cli.test.ts
   - ../../../../tests/cli/git-sync.test.ts
   - ../../../../tests/cli/graph-cli.test.ts
@@ -35,14 +29,13 @@ tests:
   - ../../../../tests/cli/kb-config.test.ts
   - ../../../../tests/cli/kb-ignore.test.ts
   - ../../../../tests/cli/logs-cli.test.ts
-  - ../../../../tests/cli/named-list-interview.test.ts
   - ../../../../tests/cli/repo-slug.test.ts
   - ../../../../tests/cli/retrieval-fallback.test.ts
+  - ../../../../tests/cli/session-cli.test.ts
   - ../../../../tests/cli/skill-installer.test.ts
   - ../../../../tests/cli/startup-notices.test.ts
   - ../../../../tests/cli/sync-cli.test.ts
   - ../../../../tests/cli/uninstall-cli.test.ts
-  - ../../../../tests/cli/view-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
 timestamp: 2026-08-02T23:10:00Z
@@ -73,16 +66,10 @@ See companion doc for full vocabulary where applicable.
 | FR-3 | Repo slug/dir helpers and on-volume repo discovery |
 | FR-4 | Base selection resolves `--base` and the active base; with none set the server default applies |
 | FR-5 | Chat REPL delegates to kb-server `/v1/chat`; synthesis helpers stay unit-tested in-client |
-| FR-6 | Chat document-generation flow wires doc tools into chat turns |
 | FR-7 | Chat query orchestrator delegates QUERY turns to shared retrieval |
 | FR-8 | Chat retrieval refusal surfaces when evidence is insufficient |
 | FR-9 | Command reference generation stays in sync with registered commands |
 | FR-10 | Init collects source files from configured git targets |
-| FR-11 | Docs delete CLI removes documents with confirmation and index cleanup |
-| FR-12 | Docs generate CLI drives the document-generation pipeline |
-| FR-13 | Docs generate flow integrates questionnaire → draft → write |
-| FR-14 | Docs generate sections splits and merges generated section files |
-| FR-15 | Docs rename CLI renames documents and updates references |
 | FR-16 | Facts CLI parses list/read subcommands and retrieval flags |
 | FR-17 | Git sync pulls tracked repos and reports sync status |
 | FR-18 | Graph CLI exposes code-graph query and summary subcommands |
@@ -95,18 +82,18 @@ See companion doc for full vocabulary where applicable.
 | FR-25 | KB config loader merges defaults, file config, and env overrides |
 | FR-26 | kb.ignore patterns exclude paths from indexing |
 | FR-27 | Logs CLI reads structured run reports from the logs directory |
-| FR-28 | Named-list interview parses numbered selections in TTY prompts |
 | FR-30 | Retrieval fallback degrades gracefully when deep retrieval fails |
 | FR-31 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs. The kb-first reminder hook fires only on repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query` — never VCS/build/cloud tooling or pipeline-filter greps), throttles to one reminder per session per 15-minute window, and honors `KB_HOOK_REMINDER=false` |
 | FR-32 | Startup notices print one-time migration and version hints |
 | FR-33 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
 | FR-34 | Client uninstall removes release client layout; server uninstall removes server layout and optional ~/.kb data |
-| FR-35 | View CLI renders documents and facts for terminal inspection |
 | FR-36 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
 | FR-37 | Change-detection manifests are isolated per git-repo slug (base-level, surviving `--no-repos` snapshots); a warm rescan of an unchanged multi-repo base detects 0 changed per repo without clobbering sibling repos, so unchanged files are skipped instead of fully re-embedded |
 | FR-38 | A partial rescan re-indexes only files whose content hash changed for that repo and tombstones only files removed from that repo since its last manifest — never unchanged files' facts nor another repo's facts |
 | FR-39 | End-of-session feedback hook (Claude Code only): `kb skills install` writes `~/.kb/hooks/kb-feedback.sh` and registers it for PostToolUse (kb MCP tools), PreToolUse (Bash), and Stop. It records that the session used kb_query, then reminds the agent **once** to call `get_feedback_requests` and resolve what it returns via `submit_feedback` — at the first command-position `git push`, or by blocking the first Stop as a fallback — staying silent after feedback is submitted, after one nudge, when kb_query was never used, or when `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the entries from all three events |
 | FR-40 | [NEW] Answer synthesis never fails silently: a provider error or an empty completion records a structured `answerError` on the result (retrieval results preserved, `status` still `accepted` so downstream source handling is unaffected) instead of returning an answerless success, and a curator that fell back contributes no research note claiming the evidence was focused |
+| FR-41 | Session CLI groups run reports by sessionId and summarizes the most recent (or a named) session, listing each run for `kb logs show` follow-up |
+| FR-42 | Bare `kb skills` reports install status per agent (installed / update available / not installed) without writing any files |
 
 ### QA Test Cases
 
@@ -165,7 +152,6 @@ See companion doc for full vocabulary where applicable.
 | TC-72 | FR-5 | Given retrieval provided, then synthesizes answer from pre-fetched context without extra retrieval | pass |
 | TC-73 | FR-5 | Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult | pass |
 | TC-74 | FR-5 | Given retrieval undefined (chat path), then starts loop from provided messages directly | pass |
-| TC-75 | FR-6 | Given slash line with prompt, answers questionnaire and accept writes document | pass |
 | TC-76 | FR-7 | Given a mocked read_facts result, then returns accepted read_facts IntentResult | pass |
 | TC-77 | FR-8 | refuses when no results | pass |
 | TC-78 | FR-8 | allows when retrieval detail is all-facts:already-in-context even with zero results | pass |
@@ -191,66 +177,6 @@ See companion doc for full vocabulary where applicable.
 | TC-98 | FR-10 | skips excluded directories like node_modules | pass |
 | TC-99 | FR-10 | explores sibling directories at the same depth | pass |
 | TC-100 | FR-10 | respects an ignore matcher (prunes dirs and files) | pass |
-| TC-101 | FR-11 | Given a doc id, then parses it | pass |
-| TC-102 | FR-11 | Given --force flag, then sets force true | pass |
-| TC-103 | FR-11 | Given -f shorthand, then sets force true | pass |
-| TC-104 | FR-11 | Given --base flag, then captures base | pass |
-| TC-105 | FR-11 | Given id with caps/spaces, then normalizes to slug | pass |
-| TC-106 | FR-11 | Given a wildcard pattern, then sets isWildcard true and preserves * | pass |
-| TC-107 | FR-11 | Given a wildcard pattern with caps, then lowercases and preserves * | pass |
-| TC-108 | FR-11 | Given a bare wildcard *, then isWildcard is true | pass |
-| TC-109 | FR-11 | Given no args, then throws with exit code 0 | pass |
-| TC-110 | FR-11 | Given --help, then throws with exit code 0 | pass |
-| TC-111 | FR-11 | Given two positional args, then throws | pass |
-| TC-112 | FR-11 | Given unknown flag, then throws | pass |
-| TC-113 | FR-11 | Given --base with no value, then throws | pass |
-| TC-114 | FR-11 | Given --force and existing doc, then removes the document | pass |
-| TC-115 | FR-11 | Given --force, then output confirms deletion with title and id | pass |
-| TC-116 | FR-11 | Given --force, then other documents are unaffected | pass |
-| TC-117 | FR-11 | Given non-existent doc id, then throws DocsDeleteError | pass |
-| TC-118 | FR-11 | Given non-interactive stdin and no --force, then aborts without deleting | pass |
-| TC-119 | FR-11 | Given a prefix wildcard, then deletes all matching documents | pass |
-| TC-120 | FR-11 | Given a wildcard match, then output lists matched ids and confirms each deletion | pass |
-| TC-121 | FR-11 | Given a wildcard with no matches, then throws DocsDeleteError | pass |
-| TC-122 | FR-11 | Given wildcard and non-interactive stdin without --force, then aborts without deleting | pass |
-| TC-123 | FR-12 | Given help flag, then throws exit 0 | pass |
-| TC-124 | FR-12 | Given start prompt and --limit, then parses | pass |
-| TC-125 | FR-12 | Given --resume and --answer, then parses | pass |
-| TC-126 | FR-12 | Given --resume and --accept, then parses | pass |
-| TC-127 | FR-12 | Given --resume and --reject, then parses feedback | pass |
-| TC-128 | FR-12 | Given --finalize and --accept with resume, then throws mutual exclusion | pass |
-| TC-129 | FR-12 | Given --resume without action, then throws | pass |
-| TC-130 | FR-12 | Given --list, then parses | pass |
-| TC-131 | FR-12 | Given --show id, then parses | pass |
-| TC-132 | FR-12 | Given multiple positional tokens, then joins into prompt | pass |
-| TC-133 | FR-12 | Given --output json, then parses outputFormat | pass |
-| TC-134 | FR-12 | isDocsGenerateJsonOutputArgs detects docs generate --output json | pass |
-| TC-135 | FR-13 | Given full questionnaire answered, finalize writes document with doc type | pass |
-| TC-136 | FR-14 | Given /skip, then returns skip without asking for descriptions | pass |
-| TC-137 | FR-14 | Given blank input, then returns skip | pass |
-| TC-138 | FR-14 | Given /cancel on name prompt, then returns cancel | pass |
-| TC-139 | FR-14 | Given null read on name prompt, then returns cancel | pass |
-| TC-140 | FR-14 | Given name then /cancel on description, then returns cancel | pass |
-| TC-141 | FR-14 | Given multiple sections one at a time, then returns sections after /complete | pass |
-| TC-142 | FR-14 | Given sections with descriptions, then returns sections with user descriptions | pass |
-| TC-143 | FR-14 | Given blank description for a section, then uses default | pass |
-| TC-144 | FR-14 | Given /complete with no sections, then returns skip | pass |
-| TC-145 | FR-14 | Given each added section, then writes running list to output | pass |
-| TC-146 | FR-15 | Given doc id and new title, then parses both | pass |
-| TC-147 | FR-15 | Given --base flag, then captures base | pass |
-| TC-148 | FR-15 | Given doc id with caps/spaces, then normalizes to slug | pass |
-| TC-149 | FR-15 | Given no args, then throws with exit code 0 | pass |
-| TC-150 | FR-15 | Given --help, then throws with exit code 0 | pass |
-| TC-151 | FR-15 | Given only one positional arg, then throws | pass |
-| TC-152 | FR-15 | Given three positional args, then throws with wrapping hint | pass |
-| TC-153 | FR-15 | Given empty string as new title, then throws | pass |
-| TC-154 | FR-15 | Given unknown flag, then throws | pass |
-| TC-155 | FR-15 | Given existing doc, then updates title in stored content | pass |
-| TC-156 | FR-15 | Given existing doc, then doc id is unchanged | pass |
-| TC-157 | FR-15 | Given existing doc, then body content is preserved | pass |
-| TC-158 | FR-15 | Given existing doc with tags and type, then metadata is preserved | pass |
-| TC-159 | FR-15 | Given existing doc, then output confirms old and new title | pass |
-| TC-160 | FR-15 | Given non-existent doc id, then throws DocsRenameError | pass |
 | TC-161 | FR-16 | Given list subcommand, then parses limit and base | pass |
 | TC-162 | FR-16 | Given --help, then throws FactsCommandError exit 0 | pass |
 | TC-163 | FR-16 | Given search without query, then throws | pass |
@@ -420,17 +346,6 @@ See companion doc for full vocabulary where applicable.
 | TC-330 | FR-27 | Given no subcommand, then returns help text | pass |
 | TC-331 | FR-27 | Given --help, then returns help text | pass |
 | TC-332 | FR-27 | Given unknown subcommand, then throws with the subcommand name | pass |
-| TC-333 | FR-28 | Given /skip, then returns skip without asking for descriptions | pass |
-| TC-334 | FR-28 | Given blank input, then returns skip | pass |
-| TC-335 | FR-28 | Given /cancel on name prompt, then returns cancel | pass |
-| TC-336 | FR-28 | Given null read on name prompt, then returns cancel | pass |
-| TC-337 | FR-28 | Given /complete with no items, then returns skip | pass |
-| TC-338 | FR-28 | Given name then /cancel on description, then returns cancel | pass |
-| TC-339 | FR-28 | Given multiple names one at a time, then returns items after /complete and /accept | pass |
-| TC-340 | FR-28 | Given blank description for an item, then uses default | pass |
-| TC-341 | FR-28 | Given each added item, then writes running list to output | pass |
-| TC-342 | FR-28 | Given /reject after /complete, then restarts collection from the beginning | pass |
-| TC-343 | FR-28 | Given /cancel on final confirmation, then returns cancel | pass |
 | TC-350 | FR-30 | Given more than TOP_SOURCE_PREVIEW_LIMIT cited files, then footer says top N of M file(s) | pass |
 | TC-351 | FR-30 | Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M file(s), folding symbols | pass |
 | TC-352 | FR-30 | Given no openable hits (incl. dropped fact:// refs), then footer is (none) | pass |
@@ -486,20 +401,6 @@ See companion doc for full vocabulary where applicable.
 | TC-402 | FR-34 | kb-server uninstall without purge keeps ~/.kb server data | pass |
 | TC-403 | FR-34 | kb-server uninstall --purge removes server data but keeps kb client install | pass |
 | TC-404 | FR-34 | kb-server uninstall --purge --yes deletes server data | pass |
-| TC-405 | FR-35 | Given id selector, then parses normalized id mode | pass |
-| TC-406 | FR-35 | Given title and base flags, then parses title mode with base | pass |
-| TC-407 | FR-35 | Given id and title selectors together, then throws explicit error | pass |
-| TC-408 | FR-35 | Given unknown flag, then throws explicit error | pass |
-| TC-409 | FR-35 | Given no flags, then parses unlimited output by default | pass |
-| TC-410 | FR-35 | Given flags, then parses limit and base | pass |
-| TC-411 | FR-35 | Given positional arg, then throws explicit error | pass |
-| TC-412 | FR-35 | Given document id, then prints full document body with metadata header | pass |
-| TC-413 | FR-35 | Given exact title selector, then returns matching document | pass |
-| TC-414 | FR-35 | Given missing document, then throws not found error | pass |
-| TC-415 | FR-35 | Given duplicate exact title matches, then throws ambiguity error with exit code 2 | pass |
-| TC-416 | FR-35 | Given documents in a base, then lists metadata in human output | pass |
-| TC-417 | FR-35 | Given base filter, then returns document list for that base | pass |
-| TC-418 | FR-35 | Given more than twenty documents, then docs list shows all by default | pass |
 | TC-419 | FR-31 | Given non-search Bash commands, hook stays silent | pass |
 | TC-420 | FR-31 | Given grep only filtering another command output, hook stays silent | pass |
 | TC-421 | FR-31 | Given repo-search commands in command position, hook fires | pass |
@@ -523,6 +424,12 @@ See companion doc for full vocabulary where applicable.
 | TC-439 | FR-40 | model returns only whitespace | answerError kind is empty_response |
 | TC-440 | FR-40 | synthesis succeeds | answer set and no answerError attached |
 | TC-441 | FR-40 | curator fell back without judging | no note claims the evidence was focused |
+| TC-442 | FR-41 | no run reports with a sessionId | returns a friendly "no chat sessions yet" notice |
+| TC-443 | FR-41 | reports across two sessions | summarizes the most recent session's runs and token totals |
+| TC-444 | FR-41 | --session prefix selector | selects that session even when it is not the most recent |
+| TC-445 | FR-41 | unknown --session selector | throws a "Session not found" error |
+| TC-446 | FR-42 | no skill files present | status report says no agent skills are installed |
+| TC-447 | FR-42 | a skill file present with a stale hash | status report flags that agent as update-available |
 
 ### Related docs
 
