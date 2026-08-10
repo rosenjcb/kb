@@ -83,7 +83,7 @@ export interface LaneRoutingEventInput {
 export interface SessionEntryInput {
   sessionDate: string
   base: string
-  eventType: 'validate' | 'query' | 'chat' | 'publish' | 'init' | 'tool-call' | 'system'
+  eventType: 'validate' | 'query' | 'chat' | 'init' | 'tool-call' | 'system'
   summary: string
   metadata?: Record<string, unknown>
 }

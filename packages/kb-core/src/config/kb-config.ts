@@ -29,10 +29,6 @@ export interface KbConfig {
   chat?: {
     experimentalConversationalRetrieval?: boolean
   }
-  notion?: {
-    token?: string
-    parentPageId?: string
-  }
   llm?: {
     /** Explicit provider to use. Auto-detected from env vars when omitted. */
     provider?: 'anthropic' | 'openai' | 'gemini' | 'ollama'
@@ -92,9 +88,6 @@ const SUPPORTED_CONFIG_PATHS = [
   'fact_retrieval_method',
   'graph',
   'graph.enabled',
-  'notion',
-  'notion.token',
-  'notion.parentPageId',
   'llm',
   'llm.provider',
   'llm.geminiModel',
@@ -189,18 +182,6 @@ function buildConfigFromEnv(bases: {
     config.llm = { provider: llmProvider }
   }
 
-  if (process.env.NOTION_TOKEN?.trim() || process.env.NOTION_API_KEY?.trim()) {
-    config.notion = {
-      token: (process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY)?.trim(),
-    }
-  }
-  if (process.env.NOTION_PARENT_PAGE_ID?.trim()) {
-    config.notion = {
-      ...config.notion,
-      parentPageId: process.env.NOTION_PARENT_PAGE_ID.trim(),
-    }
-  }
-
   if (process.env.GEMINI_MODEL?.trim()) {
     config.llm = { ...config.llm, geminiModel: process.env.GEMINI_MODEL.trim() }
   }
@@ -247,7 +228,7 @@ export async function readKbConfig(_configFile?: string): Promise<KbConfig> {
 
 /**
  * Write a minimum viable config for first-time users.
- * All feature flags are enabled by default; notion/llm keys come from env vars.
+ * All feature flags are enabled by default; llm keys come from env vars.
  */
 export async function writeDefaultConfig(): Promise<KbConfig> {
   return readKbConfig()
@@ -356,12 +337,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
       return requireConfigValue(normalized.graph, keyPath)
     case 'graph.enabled':
       return requireConfigValue(normalized.graph?.enabled, keyPath)
-    case 'notion':
-      return requireConfigValue(normalized.notion, keyPath)
-    case 'notion.token':
-      return requireConfigValue(normalized.notion?.token, keyPath)
-    case 'notion.parentPageId':
-      return requireConfigValue(normalized.notion?.parentPageId, keyPath)
     case 'llm':
       return requireConfigValue(normalized.llm, keyPath)
     case 'llm.provider':
@@ -670,16 +645,6 @@ export function applyConfigToEnv(config: KbConfig): void {
     process.env.KB_INTENT_LLM_ANSWER = booleanEnvString(f.intentLlmAnswer)
 }
 
-// ─── Notion ───────────────────────────────────────────────────────────────────
-
-export function resolveNotionToken(config: KbConfig): string | undefined {
-  return (
-    config.notion?.token?.trim() ||
-    process.env.NOTION_TOKEN?.trim() ||
-    process.env.NOTION_API_KEY?.trim()
-  )
-}
-
 // ─── Normalization ────────────────────────────────────────────────────────────
 
 export function normalizeKbConfig(input: KbConfig): KbConfig {
@@ -719,18 +684,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
       experimentalConversationalRetrieval: Boolean(input.chat.experimentalConversationalRetrieval),
     }
   }
-
-  const notion = {
-    token:
-      typeof input.notion?.token === 'string' && input.notion.token.trim()
-        ? input.notion.token.trim()
-        : undefined,
-    parentPageId:
-      typeof input.notion?.parentPageId === 'string' && input.notion.parentPageId.trim()
-        ? input.notion.parentPageId.trim()
-        : undefined,
-  }
-  if (notion.token || notion.parentPageId) normalized.notion = notion
 
   if (input.llm && typeof input.llm === 'object') {
     const llm: KbConfig['llm'] = {}

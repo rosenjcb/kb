@@ -93,12 +93,6 @@ describe('ensureDefaultConfig', () => {
     expect(result.features?.sqliteIndex).toBe(true)
   })
 
-  it('[TC-278] picks up NOTION env vars', async () => {
-    process.env.NOTION_TOKEN = 'ntn_abc'
-    const result = await ensureDefaultConfig()
-    expect(result.notion?.token).toBe('ntn_abc')
-    delete process.env.NOTION_TOKEN
-  })
 })
 
 describe('isLLMConfigured', () => {

@@ -84,7 +84,7 @@ patterns from `KB_SERVER_IGNORE`. There is no client-side repo/ignore CRUD.
 
 Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not `kb init`).
 
-## Skills, uninstall, publish
+## Skills, uninstall
 
 Skills and MCP client wiring are **opt-in**:
 
@@ -108,7 +108,7 @@ HTTP/MCP daemon: [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SER
 ## Gotchas
 
 - **`--host` vs env:** flag wins for one invocation only; shell profile env persists.
-- **Apply defaults:** TUI auto-appends `--apply` for `publish` preview — CLI users pass `--apply` explicitly.
+- **Apply defaults:** TUI auto-appends `--apply` for `invalidate` preview — CLI users pass `--apply` explicitly.
 - **Base resolution:** `@kb/core/storage/base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE`.
 - **Sync layout:** release installs expect `runtime/*/bin/*` plus sibling `node_modules/`, not `node_modules/.bin/*`.
 - **Help copy:** TUI hints use slash form via `cmd(name, 'tui')`; CLI uses `kb …`.

@@ -366,7 +366,6 @@ See companion doc for full vocabulary where applicable.
 | TC-275 | FR-25 | returns config with default features enabled | pass |
 | TC-276 | FR-25 | matches readKbConfig output | pass |
 | TC-277 | FR-25 | returns fresh config with defaults | pass |
-| TC-278 | FR-25 | picks up NOTION env vars | pass |
 | TC-279 | FR-25 | returns false when no LLM env vars are set | pass |
 | TC-280 | FR-25 | returns true when ANTHROPIC_API_KEY is set | pass |
 | TC-281 | FR-25 | throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set | pass |
