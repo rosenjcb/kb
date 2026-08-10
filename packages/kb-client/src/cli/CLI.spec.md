@@ -430,6 +430,10 @@ See companion doc for full vocabulary where applicable.
 | TC-445 | FR-41 | unknown --session selector | throws a "Session not found" error |
 | TC-446 | FR-42 | no skill files present | status report says no agent skills are installed |
 | TC-447 | FR-42 | a skill file present with a stale hash | status report flags that agent as update-available |
+| TC-448 | FR-41 | session reports carry transcript turns | renders the concatenated conversation transcript |
+| TC-449 | FR-27 | logs list with no --command | per-turn chat reports are hidden from the listing |
+| TC-450 | FR-27 | logs list --command chat | chat reports are shown |
+| TC-451 | FR-27 | logs show on a chat run with turns | renders the turn transcript |
 
 ### Related docs
 

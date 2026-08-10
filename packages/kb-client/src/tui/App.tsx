@@ -355,7 +355,16 @@ export function App({
       }
 
       if (trimmed === '/clear') {
+        // The finished session stays snoopable in the run logs; point the user at it.
+        const clearedSession = chatSessionIdRef.current
+        chatSessionIdRef.current = undefined
         setHistory([{ id: 'welcome', type: 'banner', content: '' }])
+        if (clearedSession) {
+          addEntry({
+            type: 'info',
+            content: 'Session cleared. Snoop it later with /session (or kb logs show <runId>).',
+          })
+        }
         // Also forward to the chat session so it resets conversation state + session pool
         const clearResolver = chatInputResolverRef.current
         if (clearResolver) {

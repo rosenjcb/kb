@@ -72,10 +72,22 @@ export interface QueryRetrievalTrace {
   curation?: QueryCurationTrace
 }
 
+/** One exchange line captured on a chat run report, so a session can be read back later. */
+export interface SessionTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 export interface RunReport {
   runId: string
   /** Chat session that spawned this run, if any. */
   sessionId?: string
+  /**
+   * Conversation turns captured for a chat run (one user + one assistant line per turn).
+   * Present only on `chat` reports; `kb session` concatenates these across a session's runs
+   * so the whole conversation is snoopable after `/clear`. Each line is length-capped.
+   */
+  turns?: SessionTurn[]
   /** KB base name used for this run, if known. */
   base?: string
   /** Server host:port the run executed against (e.g. localhost:38117). */

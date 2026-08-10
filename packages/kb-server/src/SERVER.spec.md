@@ -56,6 +56,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 | FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
 | FR-25 | [NEW] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index; allowed on the empty built-in `default` base), `list`, and `delete --base <name>` (prompts unless `--yes`). `create` refuses the reserved `default` slug and any base that already exists; `add-repo` refuses an unknown non-`default` base; all three error when `--base` is missing. |
+| FR-26 | [NEW] Each `/v1/chat` turn writes its run report with a length-capped transcript (`turns`: the user message plus the assistant answer) so a session is reconstructable from its logs after `/clear`; an errored turn still captures the user line. |
 
 ### Known issues
 
@@ -240,6 +241,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-173 | FR-25 | base delete requires a base name | pass |
 | TC-174 | FR-25 | base delete removes a base with --yes | pass |
 | TC-175 | FR-25 | base help lists the subcommands | pass |
+| TC-176 | FR-26 | a /v1/chat turn writes a report whose turns hold the user message and assistant answer | pass |
 
 ### Related docs
 

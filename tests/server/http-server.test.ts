@@ -346,6 +346,39 @@ describe('server-side run report capture', () => {
     expect(report.errorMessage).toBe('llm unavailable')
   })
 
+                it('[TC-176] a /v1/chat turn writes a report whose turns hold the user message and assistant answer', async () => {
+    let resolveReport!: (r: RunReport) => void
+    const reportWritten = new Promise<RunReport>(resolve => { resolveReport = resolve })
+
+    server = createHttpServer({
+      service: makeStubService({
+        chat: async function* () {
+          yield { type: 'answer', text: 'the answer is 42', sources: [], factsRetrieved: 0 }
+          yield { type: 'done' }
+        },
+      }),
+      apiKeys: [],
+      logsDir,
+      onReportWritten: resolveReport,
+    })
+    const base = await listen(server)
+
+    const res = await fetch(`${base}/v1/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'what is the answer?' }),
+    })
+    expect(res.status).toBe(200)
+    await res.text()
+
+    const report = await reportWritten
+    expect(report.command).toBe('chat')
+    expect(report.turns).toEqual([
+      { role: 'user', text: 'what is the answer?' },
+      { role: 'assistant', text: 'the answer is 42' },
+    ])
+  })
+
                 it('[TC-15] does not write a RunReport for /healthz', async () => {
     const reports: RunReport[] = []
     server = createHttpServer({

@@ -114,6 +114,16 @@ function formatSession(sessionId: string, runs: RunReport[]): string {
     const status = r.status === 'success' ? '' : ` [${r.status}]`
     lines.push(`  ${started}  ${padR(normalizeRunCommand(r.command), 10)} ${r.runId}${status}`)
   }
+
+  const transcript = runs.flatMap(r => r.turns ?? [])
+  if (transcript.length > 0) {
+    lines.push('')
+    lines.push('Transcript:')
+    for (const turn of transcript) {
+      const label = turn.role === 'user' ? 'you' : 'kb '
+      lines.push(`  ${label} │ ${turn.text.replace(/\n/g, '\n      │ ')}`)
+    }
+  }
   return lines.join('\n')
 }
 

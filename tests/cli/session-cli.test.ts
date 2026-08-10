@@ -110,4 +110,37 @@ describe('runSessionCommand', () => {
     await expect(runSessionCommand(['--session', 'nope'])).rejects.toThrow('Session not found')
     vi.resetModules()
   })
+
+  it('[TC-448] Given reports with transcript turns, then renders the concatenated conversation', async () => {
+    mockLogsDir([
+      makeReport({
+        runId: 'run-1',
+        command: 'chat',
+        sessionId: 'sess-x',
+        startedAt: '2026-04-17T11:00:00.000Z',
+        turns: [
+          { role: 'user', text: 'what is kb?' },
+          { role: 'assistant', text: 'a knowledge base' },
+        ],
+      }),
+      makeReport({
+        runId: 'run-2',
+        command: 'chat',
+        sessionId: 'sess-x',
+        startedAt: '2026-04-17T11:01:00.000Z',
+        turns: [
+          { role: 'user', text: 'how do I query it?' },
+          { role: 'assistant', text: 'run kb query' },
+        ],
+      }),
+    ])
+    const { runSessionCommand } = await import('@kb/core/cli/session-cli.js')
+    const output = await runSessionCommand([])
+    expect(output).toContain('Transcript:')
+    expect(output).toContain('what is kb?')
+    expect(output).toContain('a knowledge base')
+    expect(output).toContain('how do I query it?')
+    expect(output).toContain('run kb query')
+    vi.resetModules()
+  })
 })

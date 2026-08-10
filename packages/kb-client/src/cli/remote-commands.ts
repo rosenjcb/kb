@@ -310,6 +310,12 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     const input = raw.trim()
     if (!input) continue
     if (input === '/exit' || input === '/quit') break
+    // `/clear` starts a fresh server session rather than being answered as a question.
+    // The prior session's turns are already persisted in run logs (snoop with `kb session`).
+    if (input === '/clear') {
+      sessionId = undefined
+      continue
+    }
 
     try {
       const { sessionId: nextSession, answer } = await runRemoteChatTurn(
@@ -323,6 +329,7 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
         },
         kbConfig
       )
+      if (nextSession !== sessionId) deps.onSessionStart?.(nextSession)
       sessionId = nextSession
       io.setProgressLine?.(null)
       if (answer.trim()) io.write(answer.trim())
