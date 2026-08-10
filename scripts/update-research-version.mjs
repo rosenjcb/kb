@@ -27,21 +27,19 @@ function runChangesetCli(args) {
 
 function regenerateVersionTex() {
   const version = readClientVersion()
-  const releaseDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  // Only the version is provenance here. The paper's printed date is the compile
+  // date (\today in main.tex), so it always reflects when the PDF was built —
+  // no baked-in release date to drift.
   writeFileSync(
     path.join(root, 'research', 'version.tex'),
-    `% Auto-generated — do not edit by hand.\n\\def\\kbversion{${version}}\n\\def\\kbreleasedate{${releaseDate}}\n`,
+    `% Auto-generated — do not edit by hand.\n\\def\\kbversion{${version}}\n`,
     'utf-8'
   )
-  return { version, releaseDate }
+  return { version }
 }
 
 console.log('▶ Applying version bump (changeset version)')
 runChangesetCli('version')
-const { version, releaseDate } = regenerateVersionTex()
-console.log(`→ kb v${version} (${releaseDate})`)
+const { version } = regenerateVersionTex()
+console.log(`→ kb v${version}`)
 console.log('✓ Versions bumped. Commit the result; the merge-to-main gate verifies it.')
