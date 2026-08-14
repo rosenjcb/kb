@@ -3,12 +3,13 @@
  *
  * Cycle 1 (read-inputs):    Discover markdown sources under each cloned repo (recursive).
  * Cycle 2 (code-index):     Deterministic AST indexing (tree-sitter WASM grammars for every
- *                            language) → facts table (symbols, imports, structural edges).
- * Cycle 3 (document-facts): Deterministic sentence segmentation of source markdown → `facts` table.
+ *                            language) → `code_symbols` table (exported symbols + source text).
+ * Cycle 3 (document-index): Each source markdown file → one `documents` row, linked to the
+ *                            code symbols it describes via `doc_code_links`.
  * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
  * Cycle 5 (write):          Upsert documents.
  *
- * Reuses progress reporting and checkpoint patterns from publish-cli.ts.
+ * Reuses progress reporting and checkpoint patterns from the scan/init cycle helpers.
  */
 
 import { createHash } from 'node:crypto'
@@ -17,16 +18,16 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import readline from 'node:readline'
 import dayjs from 'dayjs'
-import { tombstoneRemovedDocSourceFiles } from '@kb/core/core/doc-fact-writer.js'
-import { tombstoneRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
+import { deleteRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
 import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
 import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
 import { writePipelineVersion } from '@kb/core/core/pipeline-version.js'
 import {
-  type ScanFactIngestProgress,
-  ingestSourceMarkdownFilesAsFacts,
-} from '@kb/core/core/scan-fact-ingest.js'
+  type ScanDocumentIngestProgress,
+  deleteRemovedDocuments,
+  indexSourceMarkdownFilesAsDocuments,
+} from '@kb/core/core/scan-document-ingest.js'
 import type { RunCollector } from '@kb/core/core/telemetry.js'
 import { TokenCountingProvider, estimateCost } from '@kb/core/core/telemetry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
@@ -42,8 +43,8 @@ import {
   type CodeIndexStats,
   TREE_SITTER_SKIP_DIRS,
   TreeSitterIndexer,
+  deleteStaleAstSymbols,
   isTreeSitterIndexablePath,
-  tombstoneStaleAstFacts,
 } from '@kb/core/tools/tree-sitter-indexer.js'
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
@@ -55,9 +56,9 @@ import {
 } from '@kb/core/storage/repo-slug.js'
 import {
   ensureOperationalBaseDir,
-  findKbFile,
   getKbHomeDir,
   listAllBases,
+  resolveEffectiveBaseDir,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from '@kb/core/config/cli-prerequisites.js'
@@ -78,7 +79,7 @@ import { assessTopicCoverage, summariseCoverage } from '@kb/core/ops/init-topic-
 import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
 import { type IgnoreMatcher, createIgnoreMatcher, readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
 
-export type InitCycle = 'read-inputs' | 'code-index' | 'document-facts' | 'import-docs' | 'write'
+export type InitCycle = 'read-inputs' | 'code-index' | 'document-index' | 'import-docs' | 'write'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -376,8 +377,8 @@ function formatReadInputsProgress(snapshot: ReadInputsCollectionProgress): strin
   return `${label} ${snapshot.itemsCompleted} collected${current ? ` | ${current}` : ''}`
 }
 
-function formatDocumentFactsProgress(
-  snapshot: ScanFactIngestProgress,
+function formatDocumentIndexProgress(
+  snapshot: ScanDocumentIngestProgress,
   options: { rescan: boolean; unchangedCount: number }
 ): string {
   const activeFileCount = Math.max(snapshot.filesCompleted, snapshot.filesScanned)
@@ -385,7 +386,7 @@ function formatDocumentFactsProgress(
     ? `${activeFileCount}/${snapshot.filesConsidered} changed, ${options.unchangedCount} unchanged`
     : `${activeFileCount}/${snapshot.filesConsidered} processed`
   const current = clipProgressItem(snapshot.currentFile)
-  return `${counts} | ${snapshot.segmentsUpserted} segments${current ? ` | ${current}` : ''}`
+  return `${counts} | ${snapshot.documentsUpserted} documents, ${snapshot.linksWritten} links${current ? ` | ${current}` : ''}`
 }
 
 function formatImportDocsBuildProgress(
@@ -501,7 +502,7 @@ export function parseInitCommand(args: string[]): InitOptions {
   const validCycles: InitCycle[] = [
     'read-inputs',
     'code-index',
-    'document-facts',
+    'document-index',
     'import-docs',
     'write',
   ]
@@ -784,43 +785,42 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           // rather than the whole project graph.
           let treeStatsSummary: CodeIndexStats | undefined
 
-          const astFactIndexer = new SqliteKbIndexer({ dbPath })
-          astFactIndexer.setActiveGitRepo(gitRepoSlug ?? null)
+          const symbolIndexer = new SqliteKbIndexer({ dbPath })
+          symbolIndexer.setActiveGitRepo(gitRepoSlug ?? null)
           try {
-            const treeIndexer = new TreeSitterIndexer(dbPath, astFactIndexer)
+            const treeIndexer = new TreeSitterIndexer(dbPath, symbolIndexer, gitRepoSlug ?? '')
             const treeStats = await treeIndexer.indexProject(scanDir, {
               candidateFiles: candidateAstFiles,
               onProgress: s => {
                 progress.update(
                   'code-index',
-                  `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges`
+                  `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols`
                 )
               },
             })
             treeIndexer.close()
             treeStatsSummary = treeStats
 
-            // Reconcile stale code facts. On a FULL index (fresh init, or a rescan where
-            // every file changed) `treeStats.sourceRefs` covers the whole repo, so the blanket
-            // reconciliation is safe. On a PARTIAL incremental rescan it only covers the changed
-            // files — using it would wrongly tombstone every unchanged file's facts — so we
-            // instead purge only files that disappeared since the last per-repo AST manifest.
+            // Reconcile stale symbols. On a FULL index (fresh init, or a rescan where every
+            // file changed) `treeStats.symbolKeys` covers the whole repo, so the blanket
+            // reconciliation is safe. On a PARTIAL incremental rescan it only covers the
+            // changed files — using it would wrongly purge every unchanged file's symbols —
+            // so we instead drop only files that disappeared since the last AST manifest.
             const indexedFullTree = candidateAstFiles.length === totalAstFileCount
             if (indexedFullTree) {
-              tombstoneStaleAstFacts(astFactIndexer, treeStats.sourceRefs, gitRepoSlug)
+              deleteStaleAstSymbols(symbolIndexer, treeStats.symbolKeys, gitRepoSlug)
             } else {
-              tombstoneRemovedCodeFiles(astFactIndexer, removedAstFiles, gitRepoSlug)
+              deleteRemovedCodeFiles(symbolIndexer, removedAstFiles, gitRepoSlug)
             }
-            astFactIndexer.relinkCodeImportEdges()
           } finally {
-            astFactIndexer.close()
+            symbolIndexer.close()
           }
 
           await writeAstFilesManifest(baseDir, currentAstFiles, gitRepoSlug)
           const s = treeStatsSummary
           progress.update(
             'code-index',
-            `${s.files} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols, ${s.edges} edges${s.errors > 0 ? `, ${s.errors} errors` : ''}`
+            `${s.files} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols${s.errors > 0 ? `, ${s.errors} errors` : ''}`
           )
         }
 
@@ -836,75 +836,67 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('code-index', 'reused from checkpoint')
     }
 
-    if (!checkpoint.completedCycles.includes('document-facts')) {
+    if (!checkpoint.completedCycles.includes('document-index')) {
       const hasAnySourceFiles = Object.keys(context.sourceFiles).length > 0
       if (!hasAnySourceFiles) {
         await persist({
-          completedCycles: ['document-facts'],
+          completedCycles: ['document-index'],
         })
-        progress.finish('document-facts', 'skipped (no markdown documents found)')
+        progress.finish('document-index', 'skipped (no markdown documents found)')
       } else {
-        progress.start('document-facts', '📄 indexing document sentences into facts…')
-        const endScanFacts = makeCycleTimer('document-facts', provider, options.collector, counter)
+        progress.start('document-index', '📄 indexing markdown documents…')
+        const endScanDocs = makeCycleTimer('document-index', provider, options.collector, counter)
+        let purged = 0
         if (options.rescan) {
-          const manifest = await readSourceFilesManifest(baseDir, gitRepoSlug)
           const purgeIndexer = new SqliteKbIndexer({
             dbPath: path.join(baseDir, '.kb-index.sqlite'),
           })
           try {
-            const purged = tombstoneRemovedDocSourceFiles(
-              purgeIndexer,
-              context.sourceFiles,
-              manifest,
-              gitRepoSlug
-            )
+            purged = deleteRemovedDocuments(purgeIndexer, context.sourceFiles, gitRepoSlug)
             if (purged > 0) {
               progress.update(
-                'document-facts',
-                `purged ${purged} segment(s) from deleted source file(s)`
+                'document-index',
+                `purged ${purged} document(s) from deleted source file(s)`
               )
             }
           } finally {
             purgeIndexer.close()
           }
         }
-        const ingestStats = await ingestSourceMarkdownFilesAsFacts({
+        const ingestStats = await indexSourceMarkdownFilesAsDocuments({
           baseDir,
           files: changedSourceFiles,
           matchAstNodes: true,
           gitRepo: gitRepoSlug,
           onProgress: snapshot => {
             progress.update(
-              'document-facts',
-              formatDocumentFactsProgress(snapshot, {
+              'document-index',
+              formatDocumentIndexProgress(snapshot, {
                 rescan: options.rescan === true,
                 unchangedCount: unchangedSourceFileCount,
               })
             )
           },
         })
-        endScanFacts()
+        endScanDocs()
         await persist({
-          completedCycles: ['document-facts'],
+          completedCycles: ['document-index'],
         })
-        const tombstoneNote =
-          ingestStats.segmentsTombstoned > 0
-            ? `, ${ingestStats.segmentsTombstoned} stale segment(s) purged`
-            : ''
+        const purgeNote = purged > 0 ? `, ${purged} stale document(s) purged` : ''
         progress.finish(
-          'document-facts',
+          'document-index',
           options.rescan
-            ? `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s)${tombstoneNote}`
-            : `${ingestStats.segmentsUpserted} segments from ${ingestStats.filesScanned} files${tombstoneNote}`
+            ? `${ingestStats.documentsUpserted} documents from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s), ${ingestStats.linksWritten} code link(s)${purgeNote}`
+            : `${ingestStats.documentsUpserted} documents from ${ingestStats.filesScanned} files, ${ingestStats.linksWritten} code link(s)${purgeNote}`
         )
       }
-      if (options.stopAfter === 'document-facts') throw new InitPausedError('document-facts')
+      if (options.stopAfter === 'document-index') throw new InitPausedError('document-index')
     } else {
-      progress.finish('document-facts', 'reused from checkpoint')
+      progress.finish('document-index', 'reused from checkpoint')
     }
 
     // Entity ontology harvest + fact linking (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md). Runs after
-    // document-facts so both code and doc facts exist for linking. Best-effort and
+    // document-index so both code and doc units exist for linking. Best-effort and
     // idempotent — a failed harvest never fails init/scan, and empty registries leave
     // query behavior untouched.
     progress.start('entity-index', 'harvesting entity ontology…')
@@ -1067,9 +1059,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('write', 'reused from checkpoint')
     }
 
-    // Multi-repo init: index the remaining repos into this same base, then bridge them all
-    // into one connected graph. (Additional repos reuse the rescan path and tag their own
-    // facts; each repo is self-describing via its clone, so nothing is persisted here.)
+    // Multi-repo init: index the remaining repos into this same base. (Additional repos reuse
+    // the rescan path and tag their own rows with their slug; each repo is self-describing via
+    // its clone, so nothing is persisted here.)
     if (!options.rescan && additionalRepos.length > 0) {
       for (const repo of additionalRepos) {
         await runKbInit({
@@ -1089,30 +1081,29 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     }
     if (!options.rescan) {
       const embedder = createEmbedder()
-      const reconcileIndexer = new SqliteKbIndexer({
-        dbPath: path.join(baseDir, '.kb-index.sqlite'),
-        embedder,
-      })
-      try {
-        const linked = reconcileIndexer.reconcileCrossRepoEdges()
-        if (linked > 0) {
-          options.progressSink?.(`[kb init] Linked ${linked} cross-repo edge(s).`)
-        }
-        // Real embeddings for semantic scoring. Best-effort: any failure (no embedder, offline,
-        // model unavailable) leaves the deterministic vectors in place, so init never blocks on it.
-        if (embedder) {
-          try {
-            const embedded = await reconcileIndexer.embedAllFacts()
-            if (embedded > 0) {
-              options.progressSink?.(`[kb init] Embedded ${embedded} fact(s) with ${embedder.modelId}.`)
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
+      // Real embeddings for the neural retrieval lane. Best-effort: any failure (no embedder,
+      // offline, model unavailable) leaves the lexical lane to carry retrieval on its own, so
+      // init never blocks on it.
+      if (embedder) {
+        const embedIndexer = new SqliteKbIndexer({
+          dbPath: path.join(baseDir, '.kb-index.sqlite'),
+          embedder,
+        })
+        try {
+          const documents = await embedIndexer.embedAllDocuments()
+          const symbols = await embedIndexer.embedAllCodeSymbols()
+          const facts = await embedIndexer.embedAllFacts()
+          if (documents + symbols + facts > 0) {
+            options.progressSink?.(
+              `[kb init] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s) with ${embedder.modelId}.`
+            )
           }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
+        } finally {
+          embedIndexer.close()
         }
-      } finally {
-        reconcileIndexer.close()
       }
     }
 
@@ -1212,16 +1203,6 @@ async function runExistingBaseSwap(params: {
           progressSink: options.progressSink,
           questionIO: SILENT_QUESTION_IO,
         })
-      }
-      // Rebuild the cross-repo bridge edges now that new repos joined the graph.
-      const reconcileIndexer = new SqliteKbIndexer({
-        dbPath: path.join(baseDir, '.kb-index.sqlite'),
-      })
-      try {
-        const linked = reconcileIndexer.reconcileCrossRepoEdges()
-        if (linked > 0) emit(`[kb init] Linked ${linked} cross-repo edge(s).`)
-      } finally {
-        reconcileIndexer.close()
       }
     }
 
@@ -1486,20 +1467,24 @@ async function resolveInitBaseName(
   }
 
   if (options.rescan) {
-    // .kb file in CWD or any ancestor takes priority — no prompt needed
-    const kbFileBase = await findKbFile(cwd)
-    if (kbFileBase) {
-      questionIO.write?.(`[kb scan] Using base from .kb file: ${kbFileBase}\n`)
-      return kbFileBase
+    // Fall back to the selected active base (`kb base use`) — no prompt needed.
+    try {
+      const { baseName } = await resolveEffectiveBaseDir(cwd)
+      if (baseName?.trim()) {
+        questionIO.write?.(`[kb scan] Using base: ${baseName}\n`)
+        return baseName
+      }
+    } catch {
+      // No active base selected — fall through to the picker / error.
     }
 
     if (options.nonInteractive) {
       throw new Error(
-        'No .kb file found in this directory. Pass `--base <name>` or cd into a directory with a .kb file.'
+        'No base selected. Pass `--base <name>` or set one with `kb base use <name>`.'
       )
     }
 
-    // No .kb file — show a list picker so the user explicitly chooses
+    // No base selected — show a list picker so the user explicitly chooses
     const bases = await listAllBases()
     if (bases.length === 0) {
       throw new Error('No initialized bases found. Run `kb init --base <name>` first.')
@@ -1511,8 +1496,7 @@ async function resolveInitBaseName(
 
     questionIO.write?.('\n[kb scan] Available bases:\n')
     for (const b of bases) {
-      const tags = [b.isActive ? 'active' : '', b.isDefault ? 'default' : ''].filter(Boolean)
-      const tagStr = tags.length ? `  [${tags.join(', ')}]` : ''
+      const tagStr = b.isActive ? '  [active]' : ''
       questionIO.write?.(`  ${b.name}${tagStr}\n`)
     }
     questionIO.write?.('\n')
@@ -1835,13 +1819,15 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
 const VALID_V3_CYCLES = new Set<InitCycle>([
   'read-inputs',
   'code-index',
-  'document-facts',
+  'document-index',
   'import-docs',
   'write',
 ])
 
 function normalizeStoredCycleId(cycle: string): InitCycle | null {
   if (VALID_V3_CYCLES.has(cycle as InitCycle)) return cycle as InitCycle
+  // `document-facts` was the sentence-level ingest replaced by `document-index`. A checkpoint
+  // that completed it holds no documents, so it is dropped and the new cycle re-runs.
   return null
 }
 

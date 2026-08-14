@@ -69,6 +69,17 @@ describe('parseKbConnectionString', () => {
     expect(() => parseKbConnectionString('http://localhost/raylib')).toThrow(/kb:\/\//)
   })
 
+  it('[TC-68] accepts a schemeless host:port/base as kb:// shorthand', () => {
+    const parsed = parseKbConnectionString('localhost:38117/raylib')
+    expect(parsed).toEqual({
+      url: 'http://localhost:38117',
+      hostname: 'localhost',
+      port: '38117',
+      sslmode: 'prefer',
+      base: 'raylib',
+    })
+  })
+
   it('[TC-43] rejects an unknown sslmode', () => {
     expect(() => parseKbConnectionString('kb://localhost/raylib?sslmode=bogus')).toThrow(/sslmode/)
   })

@@ -68,17 +68,6 @@ for (const file of await readdir(promptsSrc)) {
   }
 }
 
-const docQuestionnairesSrc = path.join(promptsSrc, 'doc-questionnaires')
-const docQuestionnairesDest = path.join(promptsDest, 'doc-questionnaires')
-if (existsSync(docQuestionnairesSrc)) {
-  await mkdir(docQuestionnairesDest, { recursive: true })
-  for (const file of await readdir(docQuestionnairesSrc)) {
-    if (file.endsWith('.md')) {
-      await copyFile(path.join(docQuestionnairesSrc, file), path.join(docQuestionnairesDest, file))
-    }
-  }
-}
-
 // Copy skill SKILL.md files so the bundled binary can resolve them at runtime.
 // skills/<name>/SKILL.md → dist/bin/<name>.skill.md
 const skillsRoot = path.join(projectRoot, 'skills')

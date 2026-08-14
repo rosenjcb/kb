@@ -2,12 +2,13 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We introduced KB, a local-first, facts-first codebase knowledge system.
-KB's deterministic AST indexing and multi-pond BFS retrieval provide
-agents with structured, persistent codebase knowledge without per-session re-exploration.
-A post-retrieval fact curator enforces relevance on the scored pool before
-\texttt{kb query} uses one-shot synthesis to produce plain prose answers.
-Init-time embeddings (local by default) feed semantic scoring during retrieval.
+We introduced KB, a local-first codebase knowledge system.
+KB's deterministic document/symbol indexing and single-pass hybrid rank-fusion
+retrieval provide agents with structured, persistent codebase knowledge without
+per-session re-exploration.  A post-retrieval curator enforces relevance on the
+fused unit pool before \texttt{kb query} uses one-shot synthesis to produce plain
+prose answers.  Init-time per-unit embeddings (local by default) feed the neural
+retrieval lanes.
 Paired harvest evaluations
 (\ResultsUpdated{}) report $\Delta S = \KbSelfCheckDeltaS{}$ on the \texttt{kb} self-check
 suite and $\Delta S = \RaylibDeltaS{}$ on raylib; the full ten-suite portfolio

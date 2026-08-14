@@ -124,14 +124,12 @@ See companion doc for full vocabulary where applicable.
 | TC-78 | FR-11 | leaves normal commands unchanged | pass |
 | TC-79 | FR-11 | scrolls the visible suggestion window with the selected row | pass |
 | TC-80 | FR-11 | suggests /skills when typing /sk | pass |
-| TC-81 | FR-11 | suggests docs subcommands when typing /docs g | pass |
+| TC-81 | FR-11 | suggests logs subcommands when typing /logs c | pass |
 | TC-82 | FR-11 | suggests /facts list when typing /facts li | pass |
-| TC-83 | FR-11 | shows /accept in docs-generate-review and named-list-confirm contexts | pass |
-| TC-84 | FR-11 | shows /complete in init-question and docs-generate-question contexts | pass |
-| TC-85 | FR-11 | shows /skip in docs-generate-question context | pass |
-| TC-86 | FR-11 | shows /cancel in every context | pass |
+| TC-86 | FR-11 | shows /cancel only in init-flow contexts, not at idle | pass |
 | TC-87 | FR-11 | completes multi-segment commands | pass |
 | TC-88 | FR-11 | suppresses suggestions after complete path with trailing args | pass |
+| TC-89 | FR-11 | orders the command menu by catalog section, not alphabetically | pass |
 
 ### Related docs
 

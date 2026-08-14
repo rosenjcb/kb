@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runMigrations } from '@kb/core/core/db-migrations.js'
+import { LATEST_SCHEMA_VERSION, runMigrations } from '@kb/core/core/db-migrations.js'
 
 let tempDir: string
 
@@ -15,25 +15,37 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
+describe('migration runner', () => {
+  it('[TC-11] Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied', () => {
+    const dbPath = path.join(tempDir, 'fresh.sqlite')
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const versions = (
+      db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{
+        version: number
+      }>
+    ).map(r => r.version)
+    expect(versions[0]).toBe(1)
+    expect(versions.at(-1)).toBe(LATEST_SCHEMA_VERSION)
+    // Running twice should not throw and must not re-apply rows.
+    runMigrations(db)
+    const versionsAfter = (
+      db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }
+    ).n
+    expect(versionsAfter).toBe(versions.length)
+    db.close()
+  })
+})
+
+/**
+ * v7 remap SQL is stable (architecture→reference, checklist→runbook). Later clean-slate
+ * migrations replace `documents`, so this TC asserts the remap itself rather than a partial
+ * base walking all the way to LATEST_SCHEMA_VERSION.
+ */
 describe('migration v7: doctype redesign legacy remap', () => {
   it('[TC-10] Given documents/derived_docs/original_docs rows with architecture or checklist, then remaps to reference and runbook', () => {
     const dbPath = path.join(tempDir, '.kb-index.sqlite')
     const db = new Database(dbPath)
-
-    db.exec(`
-      CREATE TABLE schema_migrations (
-        version INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        applied_at TEXT NOT NULL
-      );
-    `)
-
-    const stampApplied = db.prepare(
-      'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)'
-    )
-    for (let v = 1; v <= 6; v += 1) {
-      stampApplied.run(v, `pre-${v}`, new Date().toISOString())
-    }
 
     db.exec(`
       CREATE TABLE documents (
@@ -62,23 +74,17 @@ describe('migration v7: doctype redesign legacy remap', () => {
         ('orig-arch', 'architecture'),
         ('orig-chk',  'checklist'),
         ('orig-run',  'runbook');
-
-      CREATE TABLE facts (
-        id TEXT PRIMARY KEY,
-        fact_text TEXT NOT NULL,
-        normalized_text TEXT NOT NULL,
-        source_kind TEXT NOT NULL,
-        source_ref TEXT,
-        confidence REAL NOT NULL DEFAULT 0.8,
-        supersedes_fact_id TEXT,
-        tombstoned_at TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        lane_id TEXT NOT NULL DEFAULT 'general'
-      );
     `)
 
-    runMigrations(db)
+    // Same SQL as db-migrations version 7.
+    db.exec(`
+      UPDATE documents     SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE documents     SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+      UPDATE derived_docs  SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE derived_docs  SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+      UPDATE original_docs SET doc_type = 'reference' WHERE doc_type = 'architecture';
+      UPDATE original_docs SET doc_type = 'runbook'   WHERE doc_type = 'checklist';
+    `)
 
     const docTypes = (table: string) =>
       Object.fromEntries(
@@ -95,32 +101,15 @@ describe('migration v7: doctype redesign legacy remap', () => {
       'doc-chk': 'runbook',
       'doc-ref': 'reference',
     })
-
     expect(docTypes('derived_docs')).toEqual({
       'der-arch': 'reference',
       'der-chk': 'runbook',
     })
-
     expect(docTypes('original_docs')).toEqual({
       'orig-arch': 'reference',
       'orig-chk': 'runbook',
       'orig-run': 'runbook',
     })
-
-    db.close()
-  })
-
-  it('[TC-11] Given a fresh database with no legacy rows, then migration is a no-op and stamp is applied', () => {
-    const dbPath = path.join(tempDir, '.kb-index.sqlite')
-    const db = new Database(dbPath)
-
-    runMigrations(db)
-
-    const applied = db
-      .prepare('SELECT version FROM schema_migrations ORDER BY version')
-      .all() as Array<{ version: number }>
-
-    expect(applied.map(row => row.version)).toContain(7)
 
     db.close()
   })

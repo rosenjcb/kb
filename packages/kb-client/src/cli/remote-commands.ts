@@ -8,8 +8,12 @@ import {
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import type { ChatStreamEvent, LLMFailureResponse } from '../api/types.js'
-import { resolveServerConnection, formatConnectionContext } from '../api/server-connection.js'
-import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
+import {
+  resolveActiveBaseName,
+  resolveServerConnection,
+  resolveServerConnectionWithBase,
+  formatConnectionContext,
+} from '../api/server-connection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
@@ -45,24 +49,26 @@ export function isClientLocalCommand(args: string[]): boolean {
     return true
   }
   // `base use` is client connection-profile state; `base --help` stays offline.
-  // `base list` / `base delete` run on kb-server.
+  // `base delete` is refused client-side (deletion is an operator action on kb-server),
+  // so keep it local instead of forwarding. `base list` runs on kb-server.
   if (command === 'base') {
     const sub = args[1]
     if (sub === 'use') return true
+    if (sub === 'delete') return true
     if (sub === '--help' || sub === '-h' || sub === 'help') return true
   }
   return false
 }
 
 export async function ensureServerReady(config: KbConfig): Promise<void> {
-  const connection = resolveServerConnection(config)
+  const connection = await resolveServerConnectionWithBase(config)
   const client = createKbApiClient(connection)
   await client.connect()
 }
 
 /**
  * Discover the server's own default base for display when no base was resolved
- * locally (no `--base`, `.kb` file, active/default base). Best-effort: an
+ * locally (no `--base` and no active base). Best-effort: an
  * unreachable server just leaves the caller's existing "(none)" display as-is —
  * the actual command still gets a real connection error later.
  */
@@ -76,13 +82,35 @@ export async function discoverRemoteDefaultBase(config: KbConfig): Promise<strin
   }
 }
 
+export interface DisplayBase {
+  /** Base name to show, or undefined when the server is unreachable. */
+  name?: string
+  /** True when `name` is the server's own default base rather than a locally chosen active base. */
+  isServerDefault: boolean
+}
+
+/**
+ * Resolve the base to *display* (TUI status bar, CLI banner, chat header). It is the
+ * active base — what the wire sends as `X-KB-Base` — when one is selected; otherwise
+ * the server's own default base, discovered over the wire. Surfacing the server default
+ * (instead of "(none)") makes the base flow obvious: with no `kb base use <base>` you are
+ * on the server's default, never truly baseless. Best-effort: an unreachable server
+ * leaves `name` undefined and callers fall back to "(none)".
+ */
+export async function resolveDisplayBase(config: KbConfig, cwd?: string): Promise<DisplayBase> {
+  const active = await resolveActiveBaseName(config, cwd)
+  if (active) return { name: active, isServerDefault: false }
+  const serverDefault = await discoverRemoteDefaultBase(config)
+  return { name: serverDefault, isServerDefault: serverDefault !== undefined }
+}
+
 export async function runRemoteAdminCli(
   args: string[],
   out: CliOutput,
   config?: KbConfig
 ): Promise<{ exitCode: number }> {
   const kbConfig = config ?? (await readKbConfig())
-  const client = createKbApiClient(resolveServerConnection(kbConfig))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(kbConfig))
   await client.connect()
   const result = await client.adminCli(args)
   if (result.output.trim()) {
@@ -103,16 +131,12 @@ export async function runRemoteCliCommand(
     return await runRemoteIntentCommand(args, out, config, mode)
   }
 
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
   const result = await client.adminCli(args)
   if (result.output.trim()) {
     if (result.exitCode === 0) {
-      if (args[0] === 'docs' && (args[1] === 'view' || args[1] === 'list')) {
-        out.write(result.output)
-      } else {
-        out.log(result.output)
-      }
+      out.log(result.output)
     } else {
       out.error(result.output.startsWith('❌') ? result.output : `❌ ${result.output}`)
     }
@@ -127,7 +151,7 @@ export async function runRemoteIntentCommand(
   config: KbConfig,
   mode: CmdMode
 ): Promise<number> {
-  const connection = resolveServerConnection(config)
+  const connection = await resolveServerConnectionWithBase(config)
   const client = createKbApiClient(connection)
   await client.connect()
 
@@ -252,7 +276,7 @@ export async function runRemoteChatTurn(
   out: CliOutput,
   config: KbConfig
 ): Promise<{ sessionId: string; answer: string }> {
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
 
   let activeSession = sessionId
@@ -275,13 +299,8 @@ export async function runRemoteChatTurn(
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
-  let sessionBase: string | undefined
-  try {
-    sessionBase = (await resolveEffectiveBaseDir()).baseName
-  } catch {
-    // no base selected
-  }
-  io.write(formatConnectionContext(kbConfig, sessionBase))
+  const display = await resolveDisplayBase(kbConfig)
+  io.write(formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault }))
 
   let sessionId: string | undefined
 
@@ -291,6 +310,12 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     const input = raw.trim()
     if (!input) continue
     if (input === '/exit' || input === '/quit') break
+    // `/clear` starts a fresh server session rather than being answered as a question.
+    // The prior session's turns are already persisted in run logs (snoop with `kb session`).
+    if (input === '/clear') {
+      sessionId = undefined
+      continue
+    }
 
     try {
       const { sessionId: nextSession, answer } = await runRemoteChatTurn(
@@ -304,6 +329,7 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
         },
         kbConfig
       )
+      if (nextSession !== sessionId) deps.onSessionStart?.(nextSession)
       sessionId = nextSession
       io.setProgressLine?.(null)
       if (answer.trim()) io.write(answer.trim())
@@ -321,7 +347,7 @@ export async function runRemoteSlashCommand(
   write: (line: string) => void,
   config: KbConfig
 ): Promise<{ exitCode: number }> {
-  const client = createKbApiClient(resolveServerConnection(config))
+  const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
   const result = await client.adminCli(argv)
   if (result.output.trim()) {

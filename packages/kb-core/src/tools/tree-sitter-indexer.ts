@@ -4,8 +4,9 @@
  * Supports any language that has a tree-sitter-<lang> npm package with a
  * bundled .wasm file. See LANG_CONFIGS / EXT_MAP for the wired-up set.
  *
- * Writes exported symbol facts, IMPORTS_FILE bridge facts, and structural relationship
- * facts into the facts table via SqliteKbIndexer.
+ * Writes one `code_symbols` row per exported symbol (with its source text). Import,
+ * `extends` and `implements` relationships are parsed but no longer stored — the index
+ * has no fact graph to hang them on.
  */
 
 import crypto from 'node:crypto'
@@ -19,9 +20,10 @@ import type { Node as TsNode } from 'web-tree-sitter'
 import { runMigrations } from '../core/db-migrations'
 import { createRateLimitedYielder, yieldEvery } from '../core/yield'
 import {
+  codeSymbolKey,
+  deleteStaleCodeSymbols,
   getCodeFileState,
-  tombstoneStaleCodeFacts,
-  upsertCodeFileFact,
+  upsertCodeSymbol,
   upsertCodeFileState,
 } from './code-fact-writer'
 import type { SqliteKbIndexer } from './sqlite-kb-index'
@@ -30,6 +32,9 @@ const require = createRequire(import.meta.url)
 
 const SOURCE = 'tree-sitter'
 
+/** Cap on stored symbol source text — a whole 5k-line class is not a retrieval unit. */
+const SYMBOL_SOURCE_TEXT_MAX_CHARS = 1500
+
 // ---------------------------------------------------------------------------
 // Shared code-index types (single AST platform: tree-sitter for every language)
 // ---------------------------------------------------------------------------
@@ -37,10 +42,12 @@ const SOURCE = 'tree-sitter'
 export interface CodeIndexStats {
   files: number
   symbols: number
+  /** Structural relationships seen but deliberately not stored (no fact graph). */
   edges: number
   skipped: number
   errors: number
-  sourceRefs: Set<string>
+  /** `<relPath>@<name>` for every symbol this run wrote — drives stale reconciliation. */
+  symbolKeys: Set<string>
 }
 
 export interface CodeIndexOptions {
@@ -56,14 +63,14 @@ export interface LanguageIndexer {
   close(): void
 }
 
-/** Tombstone facts for files no longer in the repo. Call after indexing finishes.
- *  Scoped to `gitRepo` so re-indexing one repo never tombstones another repo's code facts. */
-export function tombstoneStaleAstFacts(
-  factIndexer: SqliteKbIndexer,
-  allSourceRefs: Set<string>,
+/** Drop symbols for files no longer in the repo. Call after a full index finishes.
+ *  Scoped to `gitRepo` so re-indexing one repo never purges another repo's symbols. */
+export function deleteStaleAstSymbols(
+  symbolIndexer: SqliteKbIndexer,
+  allSymbolKeys: Set<string>,
   gitRepo?: string
 ): number {
-  return tombstoneStaleCodeFacts(factIndexer, allSourceRefs, gitRepo)
+  return deleteStaleCodeSymbols(symbolIndexer, allSymbolKeys, gitRepo)
 }
 
 /** Human-readable kind label for a JS/TS declaration node (nicer fact text than raw grammar types). */
@@ -79,43 +86,10 @@ const JS_KIND_LABEL: Record<string, string> = {
   method_definition: 'method',
 }
 
-/** Strip generics and namespace qualifiers from a type reference: `ns.Base<T>` → `Base`. */
-function stripTypeName(text: string): string {
-  const noGenerics = text.split('<')[0]?.trim() ?? text.trim()
-  return (noGenerics.split('.').pop() ?? noGenerics).trim()
-}
-
-/**
- * Extract base-class and implemented-interface names from a class declaration node.
- * Handles the TS shape (`class_heritage` → `extends_clause`/`implements_clause`) and the
- * JS shape (`class_heritage` → bare extends expression, no implements).
- */
-function extractClassHeritage(classNode: TsNode): { bases: string[]; interfaces: string[] } {
-  const bases: string[] = []
-  const interfaces: string[] = []
-  const heritage = classNode.namedChildren.find(c => c?.type === 'class_heritage')
-  if (!heritage) return { bases, interfaces }
-  for (const child of heritage.namedChildren) {
-    if (!child) continue
-    if (child.type === 'extends_clause') {
-      const value = child.childForFieldName('value') ?? child.namedChildren[0]
-      if (value?.text) bases.push(stripTypeName(value.text))
-    } else if (child.type === 'implements_clause') {
-      for (const t of child.namedChildren) {
-        if (t?.text) interfaces.push(stripTypeName(t.text))
-      }
-    } else {
-      // JS: the extends target sits directly under class_heritage.
-      if (child.text) bases.push(stripTypeName(child.text))
-    }
-  }
-  return { bases, interfaces }
-}
-
 /**
  * Returns a concise string for simple literal initializers (numbers, strings, booleans,
  * short arithmetic/template expressions). Returns undefined for complex expressions —
- * so `defined_in`/constant facts only capture genuinely literal values.
+ * so constant symbols only capture genuinely literal values.
  */
 function extractSimpleInitializerText(text: string | undefined): string | undefined {
   if (!text) return undefined
@@ -501,10 +475,6 @@ export const TREE_SITTER_SKIP_DIRS = new Set([
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sha1(s: string): string {
-  return crypto.createHash('sha1').update(s).digest('hex')
-}
-
 function hashFile(filePath: string): string {
   try {
     return crypto.createHash('sha1').update(readFileSync(filePath)).digest('hex')
@@ -574,7 +544,9 @@ export class TreeSitterIndexer implements LanguageIndexer {
 
   constructor(
     dbPath: string,
-    private factIndexer: SqliteKbIndexer
+    private symbolIndexer: SqliteKbIndexer,
+    /** Repo slug stamped onto every symbol; also scopes per-file symbol replacement. */
+    private gitRepo?: string
   ) {
     this.db = new DatabaseSync(dbPath)
     this.db.exec('PRAGMA journal_mode = WAL')
@@ -594,7 +566,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       edges: 0,
       skipped: 0,
       errors: 0,
-      sourceRefs: new Set(),
+      symbolKeys: new Set(),
     }
     const yieldStride = opts.yieldEveryFiles ?? 10
     const maybeYieldByTime = createRateLimitedYielder(opts.yieldEveryMs ?? 50)
@@ -650,47 +622,22 @@ export class TreeSitterIndexer implements LanguageIndexer {
       if (tree == null) return
 
       try {
-        await this.factIndexer.runInTransaction(() => {
-          // Imports → IMPORTS_FILE bridge facts
+        await this.symbolIndexer.runInTransaction(() => {
+          // Re-extracting a file replaces its symbols wholesale, so a renamed or deleted
+          // export never lingers under the old name.
+          this.symbolIndexer.deleteCodeSymbolsForFile(this.gitRepo ?? '', rel)
+
+          // Import relationships still count toward `edges` for progress reporting, but the
+          // flat doc/symbol index has nowhere to store a file→file edge.
           for (const q of compiled.importQueries) {
             for (const match of q.matches(tree.rootNode)) {
               const importPath = match.captures[0]?.node.text
               if (!importPath) continue
               if (!importPath.startsWith('.') && !importPath.startsWith('/')) continue
-              const resolved = path.resolve(path.dirname(absPath), importPath)
-              const candidates = [
-                resolved,
-                `${resolved}.ts`,
-                `${resolved}.tsx`,
-                `${resolved}.js`,
-                `${resolved}/index.ts`,
-                `${resolved}/index.js`,
-              ]
-              let targetRel: string | null = null
-              for (const c of candidates) {
-                try {
-                  statSync(c)
-                  targetRel = relPath(repoRoot, c)
-                  break
-                } catch {
-                  /* noop */
-                }
-              }
-              if (!targetRel) continue
-              const sourceRef = `ast:import:${sha1(`${rel}→${targetRel}`)}`
-              stats.sourceRefs.add(sourceRef)
-              upsertCodeFileFact(
-                this.factIndexer,
-                sourceRef,
-                `${rel} imports ${targetRel}`,
-                { subject: rel, predicate: 'imports', object: targetRel },
-                'incidental'
-              )
               stats.edges++
             }
           }
 
-          // Exports → symbol facts
           const jsFamily = compiled.config.jsFamily === true
           for (const q of compiled.exportQueries) {
             for (const match of q.matches(tree.rootNode)) {
@@ -701,9 +648,11 @@ export class TreeSitterIndexer implements LanguageIndexer {
               const nameNode = capture.node
               const declNode = getDeclNode(nameNode)
               const rawText = src.slice(declNode.startIndex, declNode.endIndex)
-              const sourceText = rawText.length > 1500 ? `${rawText.slice(0, 1497)}…` : rawText
-              const sourceRef = `ast:${rel}@${name}`
-              stats.sourceRefs.add(sourceRef)
+              const sourceText =
+                rawText.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                  ? `${rawText.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                  : rawText
+              stats.symbolKeys.add(codeSymbolKey(rel, name))
 
               // Readable kind label for JS/TS (from the declaration node), falling back to the
               // raw grammar node type for other languages.
@@ -712,64 +661,14 @@ export class TreeSitterIndexer implements LanguageIndexer {
                 jsFamily && declParent
                   ? (JS_KIND_LABEL[declParent.type] ?? declParent.type)
                   : nameNode.type
-              let factText = `${name} is a ${kind} exported from ${rel}`
 
-              // Exported constants with a simple literal value → carry the value in the fact text.
-              if (jsFamily && declParent?.type === 'variable_declarator') {
-                const valueText = extractSimpleInitializerText(
-                  declParent.childForFieldName('value')?.text
-                )
-                if (valueText)
-                  factText = `${name} is a constant with value ${valueText} exported from ${rel}`
-              }
-
-              upsertCodeFileFact(
-                this.factIndexer,
-                sourceRef,
-                factText,
-                { subject: name, predicate: 'exported_from', object: rel },
-                'declarative',
-                sourceText
-              )
+              upsertCodeSymbol(this.symbolIndexer, rel, name, kind, sourceText, this.gitRepo)
               stats.symbols++
-
-              // Exported classes → EXTENDS / IMPLEMENTS structural edges.
-              if (
-                jsFamily &&
-                (declParent?.type === 'class_declaration' ||
-                  declParent?.type === 'abstract_class_declaration')
-              ) {
-                const { bases, interfaces } = extractClassHeritage(declParent)
-                for (const base of bases) {
-                  const edgeRef = `ast:edge:${sha1(`${rel}@${name}:extends:${base}`)}`
-                  stats.sourceRefs.add(edgeRef)
-                  upsertCodeFileFact(
-                    this.factIndexer,
-                    edgeRef,
-                    `${name} extends ${base} in ${rel}`,
-                    { subject: name, predicate: 'extends', object: base },
-                    'definitional'
-                  )
-                  stats.edges++
-                }
-                for (const iface of interfaces) {
-                  const edgeRef = `ast:edge:${sha1(`${rel}@${name}:implements:${iface}`)}`
-                  stats.sourceRefs.add(edgeRef)
-                  upsertCodeFileFact(
-                    this.factIndexer,
-                    edgeRef,
-                    `${name} implements ${iface} in ${rel}`,
-                    { subject: name, predicate: 'implements', object: iface },
-                    'definitional'
-                  )
-                  stats.edges++
-                }
-              }
             }
           }
 
-          // Top-level non-exported constants with literal values → `defined_in` facts. Only
-          // direct children of the program node (module scope), mirroring the old ts-morph pass.
+          // Top-level non-exported constants with literal values are still worth indexing —
+          // they are how configuration defaults are discovered.
           if (jsFamily) {
             for (const node of tree.rootNode.namedChildren) {
               if (node?.type !== 'lexical_declaration') continue
@@ -782,15 +681,15 @@ export class TreeSitterIndexer implements LanguageIndexer {
                   decl.childForFieldName('value')?.text
                 )
                 if (!valueText) continue
-                const constRef = `ast:const:${rel}@${constName}`
-                stats.sourceRefs.add(constRef)
-                upsertCodeFileFact(
-                  this.factIndexer,
-                  constRef,
-                  `${constName} is a constant with value ${valueText} in ${rel}`,
-                  { subject: constName, predicate: 'defined_in', object: rel },
-                  'descriptive',
-                  decl.text
+                if (stats.symbolKeys.has(codeSymbolKey(rel, constName))) continue
+                stats.symbolKeys.add(codeSymbolKey(rel, constName))
+                upsertCodeSymbol(
+                  this.symbolIndexer,
+                  rel,
+                  constName,
+                  'constant',
+                  decl.text,
+                  this.gitRepo
                 )
                 stats.symbols++
               }

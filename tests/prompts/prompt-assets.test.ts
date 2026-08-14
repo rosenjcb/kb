@@ -8,13 +8,13 @@ import {
 
 describe('prompt-assets', () => {
   it('[TC-9] resolvePromptPath nests under prompts root', () => {
-    expect(resolvePromptPath('doc-questionnaires', 'introduction.md')).toBe(
-      join(promptsRootDir, 'doc-questionnaires', 'introduction.md')
+    expect(resolvePromptPath('sub', 'init-refinement.md')).toBe(
+      join(promptsRootDir, 'sub', 'init-refinement.md')
     )
   })
 
-  it('[TC-10] readPromptAssetUtf8 reads questionnaire file', () => {
-    const raw = readPromptAssetUtf8('doc-questionnaires', 'introduction.md')
-    expect(raw).toContain('oneLineThesis')
+  it('[TC-10] readPromptAssetUtf8 reads a prompt asset file', () => {
+    const raw = readPromptAssetUtf8('init-refinement.md')
+    expect(raw).toContain('refining a KB document set')
   })
 })

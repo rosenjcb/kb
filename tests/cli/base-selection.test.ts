@@ -5,21 +5,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   deleteBase,
   ensureOperationalBaseDir,
-  findKbFile,
-  formatDefaultCommandHelp,
   formatDeleteBaseResult,
   formatUseCommandHelp,
   getKbHomeDir,
   listAllBases,
-  printBaseDeleteHelp,
   readBaseConfig,
   readOptionalCliValue,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
-  writeDefaultBase,
-  writeKbFile,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
@@ -52,12 +47,11 @@ describe('base-selection', () => {
     expect(resolveBaseToDir('/data/kb', '/repo')).toBe('/data/kb')
   })
 
-  // ─── resolveEffectiveBaseDir — session/config precedence ──────────────────
+  // ─── resolveEffectiveBaseDir — active base only ───────────────────────────
 
-  it('[TC-23] active base in config wins over defaultBase', async () => {
+  it('[TC-23] resolves the active base from config', async () => {
     const result = await resolveEffectiveBaseDir('/repo', {
       activeBase: 'session-base',
-      defaultBase: 'config-base',
     })
 
     expect(result.source).toBe('activeBase')
@@ -65,44 +59,20 @@ describe('base-selection', () => {
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
 
-  it('[TC-24] config.defaultBase is used when KB_BASE is not set', async () => {
-    const result = await resolveEffectiveBaseDir('/repo', { defaultBase: 'catalog' })
-
-    expect(result.source).toBe('defaultBase')
-    expect(result.baseName).toBe('catalog')
-    expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'catalog'))
-  })
-
-  it('[TC-25] throws when neither activeBase nor config.defaultBase is set', async () => {
+  it('[TC-25] throws when no activeBase is set (server default takes over)', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(CLI_ERROR_NO_KB_BASE)
   })
 
-  // ─── writeDefaultBase / writeSessionBase / readBaseConfig ────────────────
+  // ─── writeSessionBase / readBaseConfig ───────────────────────────────────
 
-  it('[TC-26] writeDefaultBase persists to config and readBaseConfig reads it back', async () => {
-    await writeDefaultBase('dogfood')
-    const config = await readBaseConfig()
-    expect(config.defaultBase).toBe('dogfood')
-  })
-
-  it('[TC-27] writeDefaultBase overwrites a prior default', async () => {
-    await writeDefaultBase('dogfood')
-    await writeDefaultBase('my-project')
-    const config = await readBaseConfig()
-    expect(config.defaultBase).toBe('my-project')
-  })
-
-  it('[TC-28] writeSessionBase persists the active base separately from the default', async () => {
-    await writeDefaultBase('dogfood')
+  it('[TC-28] writeSessionBase persists the active base', async () => {
     await writeSessionBase('catalog')
 
     const config = await readBaseConfig()
 
-    expect(config.defaultBase).toBe('dogfood')
     expect(config.activeBase).toBe('catalog')
     const raw = await readFile(path.join(getKbHomeDir(), 'state', 'active-base'), 'utf8')
     expect(raw.trim()).toBe('catalog')
-    expect(config.defaultBase).toBe('dogfood')
   })
 
   it('[TC-29] migrates legacy session.json into active-base and removes session.json', async () => {
@@ -160,35 +130,6 @@ describe('base-selection', () => {
     const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Using base: catalog')
     expect(text).toContain('Switched the active base for this session')
-    expect(text).toContain('`kb base use --default <base>`')
-  })
-
-  it('[TC-33] formatDefaultCommandHelp shows persistent default messaging', () => {
-    const text = formatDefaultCommandHelp(
-      'catalog',
-      path.join(getKbHomeDir(), 'sessions', 'catalog')
-    )
-    expect(text).toContain('Default base: catalog')
-    expect(text).toContain('preferred base')
-    expect(text).toContain('`kb base use <base>`')
-  })
-
-  it('[TC-34] formatUseCommandHelp uses slash hints in TUI mode', () => {
-    const text = formatUseCommandHelp(
-      'catalog',
-      path.join(getKbHomeDir(), 'sessions', 'catalog'),
-      'tui'
-    )
-    expect(text).toContain('`/base use --default <base>`')
-  })
-
-  it('[TC-35] formatDefaultCommandHelp uses slash hints in TUI mode', () => {
-    const text = formatDefaultCommandHelp(
-      'catalog',
-      path.join(getKbHomeDir(), 'sessions', 'catalog'),
-      'tui'
-    )
-    expect(text).toContain('`/base use <base>`')
   })
 })
 
@@ -248,17 +189,6 @@ describe('deleteBase', () => {
     expect(after.activeBase).toBeUndefined()
   })
 
-  it('[TC-39] Given the base is the selected (default) base, then clears it from config', async () => {
-    await ensureOperationalBaseDir('default-base')
-    await writeDefaultBase('default-base')
-
-    const result = await deleteBase('default-base')
-
-    expect(result.clearedSelected).toBe(true)
-    const after = await readBaseConfig()
-    expect(after.defaultBase).toBeUndefined()
-  })
-
   it('[TC-40] Given the base does not exist on disk, then succeeds without error', async () => {
     await expect(deleteBase('nonexistent-base')).resolves.toBeDefined()
   })
@@ -268,25 +198,11 @@ describe('deleteBase', () => {
   })
 })
 
-describe('printBaseDeleteHelp', () => {
-  it('[TC-42] includes base delete usage in CLI mode', () => {
-    const text = printBaseDeleteHelp('cli')
-    expect(text).toContain('kb base delete')
-    expect(text).toContain('--force')
-  })
-
-  it('[TC-43] includes base delete usage in TUI mode', () => {
-    const text = printBaseDeleteHelp('tui')
-    expect(text).toContain('/base delete')
-  })
-})
-
 describe('formatDeleteBaseResult', () => {
   it('[TC-44] includes the base name and path in output', () => {
     const result = {
       basePath: '/tmp/sessions/test',
       clearedActive: false,
-      clearedSelected: false,
       purgedPaths: [],
     }
     const text = formatDeleteBaseResult('test', result)
@@ -298,88 +214,10 @@ describe('formatDeleteBaseResult', () => {
     const result = {
       basePath: '/tmp/sessions/test',
       clearedActive: true,
-      clearedSelected: false,
       purgedPaths: [],
     }
     const text = formatDeleteBaseResult('test', result)
     expect(text).toContain('activeBase')
-  })
-
-  it('[TC-46] mentions cleared default base when applicable', () => {
-    const result = {
-      basePath: '/tmp/sessions/test',
-      clearedActive: false,
-      clearedSelected: true,
-      purgedPaths: [],
-    }
-    const text = formatDeleteBaseResult('test', result)
-    expect(text).toContain('defaultBase')
-  })
-})
-
-describe('findKbFile', () => {
-  let tempDir: string
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(path.join(os.tmpdir(), 'kb-find-'))
-  })
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
-
-  it('[TC-47] returns the base name from a .kb file in the given directory', async () => {
-    await writeFile(path.join(tempDir, '.kb'), 'mybase\n', 'utf8')
-    expect(await findKbFile(tempDir)).toBe('mybase')
-  })
-
-  it('[TC-48] finds a .kb file in an ancestor directory', async () => {
-    await writeFile(path.join(tempDir, '.kb'), 'ancestorbase\n', 'utf8')
-    const nested = path.join(tempDir, 'a', 'b', 'c')
-    await mkdir(nested, { recursive: true })
-    expect(await findKbFile(nested)).toBe('ancestorbase')
-  })
-
-  it('[TC-49] returns null when no .kb file exists in any ancestor', async () => {
-    const nested = path.join(tempDir, 'x', 'y')
-    await mkdir(nested, { recursive: true })
-    // tempDir itself has no .kb file
-    expect(await findKbFile(nested)).toBeNull()
-  })
-
-  it('[TC-50] trims whitespace from the base name', async () => {
-    await writeFile(path.join(tempDir, '.kb'), '  spaced-base  \n', 'utf8')
-    expect(await findKbFile(tempDir)).toBe('spaced-base')
-  })
-
-  it('[TC-51] returns null when .kb file is empty', async () => {
-    await writeFile(path.join(tempDir, '.kb'), '   \n', 'utf8')
-    expect(await findKbFile(tempDir)).toBeNull()
-  })
-})
-
-describe('writeKbFile', () => {
-  let tempDir: string
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(path.join(os.tmpdir(), 'kb-write-'))
-  })
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
-
-  it('[TC-52] writes a .kb file containing the base name', async () => {
-    await writeKbFile(tempDir, 'mybase')
-    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('mybase')
-  })
-
-  it('[TC-53] overwrites an existing .kb file', async () => {
-    await writeKbFile(tempDir, 'first')
-    await writeKbFile(tempDir, 'second')
-    const contents = await readFile(path.join(tempDir, '.kb'), 'utf8')
-    expect(contents.trim()).toBe('second')
   })
 })
 
@@ -412,24 +250,20 @@ describe('listAllBases', () => {
     expect(bases[0].name).toBe('initialized')
   })
 
-  it('[TC-56] marks the active and default bases correctly', async () => {
+  it('[TC-56] marks the active base correctly', async () => {
     const sessionsDir = path.join(tempKbHome, 'sessions')
     for (const name of ['alpha', 'beta', 'gamma']) {
       await mkdir(path.join(sessionsDir, name), { recursive: true })
       await writeFile(path.join(sessionsDir, name, '.kb-index.sqlite'), '', 'utf8')
     }
     await writeSessionBase('beta')
-    await writeDefaultBase('gamma')
 
     const bases = await listAllBases()
     const byName = Object.fromEntries(bases.map(b => [b.name, b]))
 
     expect(byName.alpha.isActive).toBe(false)
-    expect(byName.alpha.isDefault).toBe(false)
     expect(byName.beta.isActive).toBe(true)
-    expect(byName.beta.isDefault).toBe(false)
     expect(byName.gamma.isActive).toBe(false)
-    expect(byName.gamma.isDefault).toBe(true)
   })
 
   it('[TC-57] returns bases sorted alphabetically', async () => {
@@ -443,7 +277,7 @@ describe('listAllBases', () => {
   })
 })
 
-describe('resolveEffectiveBaseDir with .kb file', () => {
+describe('resolveEffectiveBaseDir', () => {
   let tempKbHome: string
   let tempDir: string
 
@@ -459,66 +293,17 @@ describe('resolveEffectiveBaseDir with .kb file', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('[TC-58] uses .kb file when no activeBase or defaultBase is configured', async () => {
-    await writeKbFile(tempDir, 'project-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'project-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-
-    const result = await resolveEffectiveBaseDir(tempDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('project-base')
-  })
-
-  it('[TC-59] .kb file takes priority over config.activeBase', async () => {
-    await writeKbFile(tempDir, 'project-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'project-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-    // also set an activeBase in config — .kb should win
-    await writeSessionBase('session-base')
-
-    const result = await resolveEffectiveBaseDir(tempDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('project-base')
-  })
-
-  it('[TC-60] falls back to config.activeBase when no .kb file is found', async () => {
+  it('[TC-60] resolves the configured active base', async () => {
     await writeSessionBase('session-base')
 
     const result = await resolveEffectiveBaseDir(tempDir)
 
     expect(result.source).toBe('activeBase')
     expect(result.baseName).toBe('session-base')
-    // resolveEffectiveBaseDir does NOT write .kb — only scan/init do
-    expect(await findKbFile(tempDir)).toBeNull()
   })
 
-  it('[TC-61] falls back to config.defaultBase when no .kb file and no activeBase', async () => {
-    await writeDefaultBase('default-base')
-
-    const result = await resolveEffectiveBaseDir(tempDir)
-
-    expect(result.source).toBe('defaultBase')
-    expect(result.baseName).toBe('default-base')
-    expect(await findKbFile(tempDir)).toBeNull()
-  })
-
-  it('[TC-62] finds .kb file from a subdirectory via ancestor walk', async () => {
-    await writeKbFile(tempDir, 'ancestor-base')
-    const sessionsDir = path.join(tempKbHome, 'sessions', 'ancestor-base')
-    await mkdir(sessionsDir, { recursive: true })
-    await writeFile(path.join(sessionsDir, '.kb-index.sqlite'), '', 'utf8')
-
-    const nestedDir = path.join(tempDir, 'src', 'lib')
-    await mkdir(nestedDir, { recursive: true })
-
-    const result = await resolveEffectiveBaseDir(nestedDir)
-
-    expect(result.source).toBe('directory:.kb')
-    expect(result.baseName).toBe('ancestor-base')
+  it('[TC-61] throws when no active base is configured', async () => {
+    await expect(resolveEffectiveBaseDir(tempDir)).rejects.toThrow(CLI_ERROR_NO_KB_BASE)
   })
 })
 
@@ -565,7 +350,6 @@ describe('CLI argv helpers (--base)', () => {
     await ensureOperationalBaseDir('only-one')
     await writeSessionBase('only-one')
 
-    // Pass tempKbHome as cwd so findKbFile does not walk into the real project tree
     const dir = await resolveKbStorageDirFromArgs(['graph', '--format', 'json'], tempKbHome)
     expect(dir).toBe(path.join(tempKbHome, 'sessions', 'only-one'))
   })

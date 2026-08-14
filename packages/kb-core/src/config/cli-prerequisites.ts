@@ -12,7 +12,7 @@ export { INDEXING_SERVER_MANAGED_NOTICE, uninitializedBaseNotice }
 
 /** Shown when no effective KB base exists and no `--base` override applies. */
 export const CLI_ERROR_NO_KB_BASE =
-  'No knowledge base selected. Use `kb base use <base>` or `kb base use --default <base>`.'
+  'No knowledge base selected. Use `kb base use <base>` to switch bases, or omit it to use the server default.'
 
 /** Shown when an LLM provider cannot be constructed from config + environment. */
 export const CLI_ERROR_NO_LLM_PROVIDER =

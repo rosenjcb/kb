@@ -40,8 +40,8 @@ KB Agent │ host: localhost:38117 │ base: my-project
 
 [`slash-command-registry.ts`](slash-command-registry.ts) drives autocomplete. `App.tsx` routes:
 
-- **Output-only** (`query`, `facts`, `graph`, `docs list`, `base`, …): `runCommandForTui` → transcript. No LLM loop.
-- **Interactive** (`/docs generate`): stays on chat input; questionnaire via `ChatIO.read`.
+- **Output-only** (`query`, `facts`, `graph`, `entities`, `logs`, `session`, `base`, …): `runCommandForTui` → transcript. No LLM loop.
+- **Interactive** (`/uninstall`): confirmation prompt via `pendingConfirm` before running.
 - **Chat turns** (no `/`): `runChatSession` with `ChatIO` adapter.
 
 Registered slash commands mirror the CLI surface in [`slash-command-registry.ts`](slash-command-registry.ts).

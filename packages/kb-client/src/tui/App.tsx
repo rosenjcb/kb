@@ -2,11 +2,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { Box, useApp, useInput } from 'ink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  deleteBase,
-  formatDeleteBaseResult,
-  resolveEffectiveBaseDir,
-} from '@kb/core/storage/base-selection.js'
+import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
+import { resolveDisplayBase } from '../cli/remote-commands.js'
 import type { ChatIO, ChatReadOptions } from '../cli/chat-cli.js'
 import { runChatSession } from '../cli/chat-cli.js'
 import { performClientUninstall } from '@kb/core/cli/release-uninstall.js'
@@ -18,6 +15,7 @@ import { HistoryPane } from './components/HistoryPane.js'
 import { InputBar } from './components/InputBar.js'
 import { StatusBar } from './components/StatusBar.js'
 import { SuggestionsBar } from './components/SuggestionsBar.js'
+import { isOutputCommandName } from '@kb/core/commands/command-catalog.js'
 import { partitionShellOutputForTui } from './partition-shell-output.js'
 import { runCommandForTui, parseShellArgs } from './runner.js'
 import {
@@ -30,32 +28,32 @@ import {
 } from './slash-commands.js'
 import type { HistoryEntry, TuiMode } from './types.js'
 
-function resolveApplyArgs(args: string[]): string[] | null {
-  if (args.includes('--apply')) return null
-  const first = args[0]
-  if (first === 'publish') return [...args, '--apply']
-  if (first === 'invalidate') return [...args, '--apply']
-  return null
-}
-
-/** Commands handled inline as transcript-only output; interactive flows stay out of this path. */
-function isOutputOnlyCommand(first: string, args: string[]): boolean {
-  if (first === 'docs' && args[1] === 'generate') return false
-  const known = new Set([
-    'query', 'submit', 'invalidate',
-    'facts', 'graph', 'docs',
-    'base', 'logs', 'skills', 'publish', 'sync',
-  ])
-  return known.has(first)
+/**
+ * Commands handled inline as transcript-only output. Derived from the shared command
+ * catalog (`tuiKind: 'output'`) so this gate can never drift from the slash registry —
+ * the exact bug that made `/entities` and `/session` silently fall through to chat.
+ */
+function isOutputOnlyCommand(first: string): boolean {
+  return isOutputCommandName(first)
 }
 
 interface Props {
   config: KbConfig
   startupNotices?: string[]
   serverHost?: string
+  /** Base resolved by the CLI before launch, so the status bar starts correct. */
+  initialBaseName?: string
+  /** Whether initialBaseName is the server's own default base (no local active base). */
+  initialBaseIsServerDefault?: boolean
 }
 
-export function App({ config, startupNotices = [], serverHost = 'localhost' }: Props) {
+export function App({
+  config,
+  startupNotices = [],
+  serverHost = 'localhost',
+  initialBaseName,
+  initialBaseIsServerDefault,
+}: Props) {
   const { exit } = useApp()
 
   const mode: TuiMode = 'chat'
@@ -64,7 +62,10 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   ])
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
-  const [baseName, setBaseName] = useState('…')
+  const [baseName, setBaseName] = useState(initialBaseName ?? '…')
+  const [baseIsServerDefault, setBaseIsServerDefault] = useState(
+    initialBaseIsServerDefault ?? false
+  )
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [baseResolved, setBaseResolved] = useState(false)
 
@@ -130,28 +131,51 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
     chatResponseBufRef.current = ''
   }, [updateEntry])
 
+  // Single base resolver for the status bar: the displayed name comes from the same
+  // `resolveDisplayBase` the CLI banner uses — the active base (also sent on the wire as
+  // `X-KB-Base`) or, when none is selected locally, the server's own default base. So the
+  // bar can never disagree with the base kb-server actually serves, and never shows a bare
+  // "(none)" when the server is in fact serving its default. The local dir (best effort)
+  // is only used for the uninitialized-index notice.
+  const resolveBaseState = useCallback(async () => {
+    const display = await resolveDisplayBase(config).catch(() => ({
+      name: undefined,
+      isServerDefault: false,
+    }))
+    let dir = ''
+    try {
+      dir = (await resolveEffectiveBaseDir()).baseDir
+    } catch {
+      // No local base dir — remote base or none selected.
+    }
+    return { name: display.name ?? '', isServerDefault: display.isServerDefault, dir }
+  }, [config])
+
   const refreshBase = useCallback(() => {
-    return resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: n }) => {
-        storageDirRef.current = baseDir
-        setBaseName(n)
+    return resolveBaseState()
+      .then(({ name, isServerDefault, dir }) => {
+        storageDirRef.current = dir
+        setBaseName(name)
+        setBaseIsServerDefault(isServerDefault)
       })
       .catch(() => {})
-  }, [])
+  }, [resolveBaseState])
 
   useEffect(() => {
-    resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: effectiveBaseName }) => {
-        storageDirRef.current = baseDir
-        setBaseName(effectiveBaseName)
+    resolveBaseState()
+      .then(({ name, isServerDefault, dir }) => {
+        storageDirRef.current = dir
+        setBaseName(name)
+        setBaseIsServerDefault(isServerDefault)
         setBaseResolved(true)
       })
       .catch(() => {
         storageDirRef.current = ''
         setBaseName('')
+        setBaseIsServerDefault(false)
         setBaseResolved(true)
       })
-  }, [])
+  }, [resolveBaseState])
 
   const startChatSession = useCallback(
     (opts: { verbose?: boolean } = {}) => {
@@ -271,16 +295,16 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
   useEffect(() => {
     if (!baseResolved || chatStartedRef.current) return
     chatStartedRef.current = true
-    resolveEffectiveBaseDir()
-      .then(({ baseDir, baseName: effectiveBaseName }) => {
-        const hasIndex = existsSync(path.join(baseDir, '.kb-index.sqlite'))
+    resolveBaseState()
+      .then(({ name, dir }) => {
+        const hasIndex = dir ? existsSync(path.join(dir, '.kb-index.sqlite')) : false
         if (!hasIndex) {
-          addEntry({ type: 'info', content: uninitializedBaseNotice(effectiveBaseName) })
+          addEntry({ type: 'info', content: uninitializedBaseNotice(name || '(none)') })
         }
         startChatSession()
       })
       .catch(() => startChatSession())
-  }, [baseResolved, startChatSession, addEntry])
+  }, [baseResolved, startChatSession, addEntry, resolveBaseState])
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -331,7 +355,16 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
       }
 
       if (trimmed === '/clear') {
+        // The finished session stays snoopable in the run logs; point the user at it.
+        const clearedSession = chatSessionIdRef.current
+        chatSessionIdRef.current = undefined
         setHistory([{ id: 'welcome', type: 'banner', content: '' }])
+        if (clearedSession) {
+          addEntry({
+            type: 'info',
+            content: 'Session cleared. Snoop it later with /session (or kb logs show <runId>).',
+          })
+        }
         // Also forward to the chat session so it resets conversation state + session pool
         const clearResolver = chatInputResolverRef.current
         if (clearResolver) {
@@ -392,57 +425,19 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
       }
 
       // ── Output-only slash commands (don't touch chatInputResolverRef) ──
-      if (isSlash && firstArg && isOutputOnlyCommand(firstArg, args)) {
+      if (isSlash && firstArg && isOutputOnlyCommand(firstArg)) {
         addEntry({ type: 'chat-you', content: trimmed })
 
-        // base delete — confirmation prompt
-        if (
-          firstArg === 'base' &&
-          args[1] === 'delete' &&
-          !args.includes('--force') &&
-          !args.includes('-f')
-        ) {
-          const base = args.slice(2).find(t => !t.startsWith('--'))
-          if (base) {
-            addEntry({
-              type: 'info',
-              content: `Delete base "${base}" and all its data? This cannot be undone. [y/N]`,
-            })
-            setPendingConfirm({
-              question: `Delete base "${base}"?`,
-              onConfirm: async () => {
-                const result = await deleteBase(base)
-                const msg = formatDeleteBaseResult(base, result, 'tui')
-                addEntry({ type: 'result', content: msg })
-                refreshBase()
-              },
-            })
-            return
-          }
-        }
-
-        // docs delete — confirmation prompt
-        if (
-          firstArg === 'docs' &&
-          args[1] === 'delete' &&
-          !args.includes('--force') &&
-          !args.includes('-f')
-        ) {
-          const docId = args.slice(2).find(t => !t.startsWith('--'))
-          if (docId) {
-            addEntry({
-              type: 'info',
-              content: `Delete document "${docId}"? This cannot be undone. [y/N]`,
-            })
-            setPendingConfirm({
-              question: `Delete document "${docId}"?`,
-              onConfirm: async () => {
-                const output = await runCommandForTui([...args, '--force'], config, undefined, chatSessionIdRef.current)
-                if (output) addEntry({ type: 'result', content: output })
-              },
-            })
-            return
-          }
+        // base delete — refused: deleting a base is an operator action on the server.
+        if (firstArg === 'base' && args[1] === 'delete') {
+          addEntry({
+            type: 'error',
+            content:
+              'Deleting a base is an operator action on the server, not a client command. ' +
+              'Run `kb-server base delete --base <base>` on the server host (or `kb-server uninstall --purge` ' +
+              'to remove all server data). In the client you can only switch bases: /base use <base>.',
+          })
+          return
         }
 
         if (isRunning) return
@@ -488,18 +483,6 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
               addEntry({ type: 'result', content: (seg as { kind: 'body'; text: string }).text })
             }
           }
-
-          const applyArgs = resolveApplyArgs(args)
-          if (applyArgs) {
-            addEntry({ type: 'info', content: 'Apply these changes? [y/N]' })
-            setPendingConfirm({
-              question: 'Apply?',
-              onConfirm: async () => {
-                const applyOutput = await runCommandForTui(applyArgs, config, undefined, chatSessionIdRef.current)
-                if (applyOutput) addEntry({ type: 'result', content: applyOutput })
-              },
-            })
-          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           updateEntry(resultId, { type: 'error', content: message, loading: false })
@@ -509,7 +492,7 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
         return
       }
 
-      // ── Everything else → chat session (LLM queries, /docs generate) ──
+      // ── Everything else → chat session (LLM queries) ──
       addEntry({ type: 'chat-you', content: trimmed })
       if (shouldStartChatPending({ isSlash, readKind: chatReadKindRef.current })) {
         startChatPending()
@@ -580,7 +563,11 @@ export function App({ config, startupNotices = [], serverHost = 'localhost' }: P
 
   return (
     <Box flexDirection="column">
-      <StatusBar serverHost={serverHost} baseName={baseName} />
+      <StatusBar
+        serverHost={serverHost}
+        baseName={baseName}
+        baseIsServerDefault={baseIsServerDefault}
+      />
       <HistoryPane entries={history} />
       <InputBar
         value={inputValue}

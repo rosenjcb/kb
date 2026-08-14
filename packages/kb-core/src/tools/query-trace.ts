@@ -4,7 +4,6 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import { isEnvTrue } from '@kb/core/config/env-boolean.js'
 import type { CurationRecord } from './fact-curator'
-import type { FactRow } from './sqlite-kb-index'
 
 /**
  * Opt-in deep query trace.
@@ -86,15 +85,19 @@ function summarizeTitle(text: string): string {
   return trimmed.length <= 72 ? trimmed : `${trimmed.slice(0, 69)}...`
 }
 
-export function tracedFactFromRow(row: FactRow, score: number): TracedFact {
+/** Trace entry for a retrieved unit — `sourceKind` is the unit type (document/symbol/fact). */
+export function tracedUnit(
+  unit: { metadata: { id: string; title: string; gitRepo?: string }; content?: string },
+  sourceKind: string,
+  score: number
+): TracedFact {
   return {
-    id: row.id,
-    title: summarizeTitle(row.fact_text),
+    id: unit.metadata.id,
+    title: summarizeTitle(unit.metadata.title),
     score: Number(score.toFixed(4)),
-    sourceKind: row.source_kind,
-    ...(row.git_repo ? { repo: row.git_repo } : {}),
-    content:
-      row.source_kind === 'import_code' && row.source_text ? row.source_text : row.fact_text,
+    sourceKind,
+    ...(unit.metadata.gitRepo ? { repo: unit.metadata.gitRepo } : {}),
+    content: unit.content ?? unit.metadata.title,
   }
 }
 

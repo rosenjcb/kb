@@ -53,7 +53,7 @@ describe('readKbConfig', () => {
     expect(result.features).toMatchObject(DEFAULT_FEATURES)
   })
 
-  it('[TC-273] migrates legacy config.json base fields into line files', async () => {
+  it('[TC-273] migrates legacy config.json active base into line files', async () => {
     await writeFile(
       path.join(kbHomeDir, 'config.json'),
       `${JSON.stringify({ activeBase: 'legacy', defaultBase: 'def' }, null, 2)}\n`,
@@ -61,7 +61,8 @@ describe('readKbConfig', () => {
     )
     const result = await readKbConfig()
     expect(result.activeBase).toBe('legacy')
-    expect(result.defaultBase).toBe('def')
+    // The persistent default base was removed — legacy defaultBase is dropped, not migrated.
+    expect(result).not.toHaveProperty('defaultBase')
   })
 
   it('[TC-274] reads server profile from KB_HOST/KB_PORT env', async () => {
@@ -92,12 +93,6 @@ describe('ensureDefaultConfig', () => {
     expect(result.features?.sqliteIndex).toBe(true)
   })
 
-  it('[TC-278] picks up NOTION env vars', async () => {
-    process.env.NOTION_TOKEN = 'ntn_abc'
-    const result = await ensureDefaultConfig()
-    expect(result.notion?.token).toBe('ntn_abc')
-    delete process.env.NOTION_TOKEN
-  })
 })
 
 describe('isLLMConfigured', () => {

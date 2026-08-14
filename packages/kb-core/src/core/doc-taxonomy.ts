@@ -7,9 +7,8 @@
  * runtime retrieval routing concept.
  *
  * `DocType` drives:
- *   - KB doc types align with `SqliteDocumentWriter` / publish surfaces (not agent `read_facts` schema)
- *   - `kb docs generate` questionnaire selection
- *   - Init synthesis output type
+ *   - document classification in `SqliteDocumentWriter` (not the agent `read_facts` schema)
+ *   - init synthesis output type
  */
 
 export const DOC_TYPES = ['howto', 'introduction', 'reference', 'decision', 'runbook'] as const

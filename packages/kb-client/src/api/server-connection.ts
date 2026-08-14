@@ -1,5 +1,6 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { KB_ENV, readEnvHost, readEnvPortRaw } from '@kb/core/config/kb-env.js'
+import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import { buildServerUrl, type SslMode } from './connection-string.js'
 import type { ServerConnection } from './types.js'
 
@@ -13,10 +14,15 @@ function readEnvSslMode(): SslMode | undefined {
 }
 
 /**
- * The one connection resolver. Host/port/sslmode funnel through `buildServerUrl` —
- * the same inference `kb://` connection strings use — so `--host`/`KB_HOST` and
+ * Resolve the server endpoint (URL + API key) — host/port/sslmode only, **no base**.
+ * Host/port/sslmode funnel through `buildServerUrl` — the same inference `kb://`
+ * connection strings use — so `--host`/`KB_HOST` and
  * `--connection-string`/`KB_CONNECTION_STRING` can never disagree on scheme or
  * default port for the same bare hostname.
+ *
+ * Base selection is async (it reads persisted base state) and lives in
+ * `resolveActiveBaseName` — the single source of truth shared with the UI. Request
+ * paths compose the two via `resolveServerConnectionWithBase`.
  */
 export function resolveServerConnection(config: KbConfig): ServerConnection {
   const host = readEnvHost() || config.server?.host?.trim() || DEFAULT_HOST
@@ -26,8 +32,46 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
   return {
     url: buildServerUrl(host, port, sslmode),
     apiKey: resolveApiKey(config),
-    base: resolveConnectionBase(config),
   }
+}
+
+/**
+ * The one answer to "which base is this client acting on" — consumed by BOTH the
+ * `X-KB-Base` header (what kb-server actually serves) AND every display (TUI status
+ * bar, CLI banner, chat header). Because the wire and the UI read the same function,
+ * they can never drift. Precedence:
+ *   1. explicit per-invocation base — `--base` / `--connection-string` (both land in `KB_BASE`)
+ *   2. active base — via `resolveEffectiveBaseDir` (also honors `KB_ACTIVE_BASE`), set by `kb base use`
+ *   3. `config.server.base`
+ * Undefined ⇒ kb-server serves its own default base (there is no client-side default).
+ */
+export async function resolveActiveBaseName(
+  config: KbConfig,
+  cwd: string = process.cwd()
+): Promise<string | undefined> {
+  const explicit = process.env[KB_ENV.BASE]?.trim()
+  if (explicit) return explicit
+  try {
+    const { baseName } = await resolveEffectiveBaseDir(cwd)
+    const trimmed = baseName?.trim()
+    if (trimmed) return trimmed
+  } catch {
+    // No active base selected locally — fall through to the server default.
+  }
+  return config.server?.base?.trim() || undefined
+}
+
+/**
+ * Request-path connection: the sync endpoint plus the unified base, sent as
+ * `X-KB-Base`. Every path that actually talks to kb-server builds its client from
+ * this, so the served base always matches what the UI shows.
+ */
+export async function resolveServerConnectionWithBase(
+  config: KbConfig,
+  cwd: string = process.cwd()
+): Promise<ServerConnection> {
+  const base = await resolveActiveBaseName(config, cwd)
+  return { ...resolveServerConnection(config), ...(base ? { base } : {}) }
 }
 
 /** True when the operator explicitly configured a connection (not the implicit localhost default). */
@@ -44,20 +88,6 @@ function resolveApiKey(config: KbConfig): string | undefined {
   return process.env[KB_ENV.SERVER_API_KEY]?.trim() || config.server?.apiKey?.trim() || undefined
 }
 
-/**
- * The base slug carried on the wire (`X-KB-Base`). Sourced from `--base` /
- * `--connection-string` (both land in `KB_BASE`), then `KB_ACTIVE_BASE`, then
- * `config.server.base`. Undefined ⇒ the server serves its own boot/default base.
- */
-function resolveConnectionBase(config: KbConfig): string | undefined {
-  return (
-    process.env[KB_ENV.BASE]?.trim() ||
-    process.env[KB_ENV.ACTIVE_BASE]?.trim() ||
-    config.server?.base?.trim() ||
-    undefined
-  )
-}
-
 export function formatServerAddress(connection: ServerConnection): string {
   try {
     const u = new URL(connection.url)
@@ -67,9 +97,19 @@ export function formatServerAddress(connection: ServerConnection): string {
   }
 }
 
-/** User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header). */
-export function formatConnectionContext(config: KbConfig, baseName?: string): string {
-  const base = baseName?.trim() || '(none)'
+/**
+ * User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header).
+ * When `serverDefault` is set the base name came from the server's own default base
+ * (no local active base), so we label it that way — the user is never truly
+ * "baseless", they are on the server default until they run `kb base use <base>`.
+ */
+export function formatConnectionContext(
+  config: KbConfig,
+  baseName?: string,
+  opts: { serverDefault?: boolean } = {}
+): string {
+  const name = baseName?.trim()
+  const base = name ? (opts.serverDefault ? `${name} (server default)` : name) : '(none)'
   const host = formatServerAddress(resolveServerConnection(config))
   return `host: ${host} │ base: ${base}`
 }

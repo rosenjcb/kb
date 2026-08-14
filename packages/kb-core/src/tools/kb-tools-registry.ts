@@ -15,7 +15,6 @@ import { getKbHomeDir } from '@kb/core/storage/base-selection.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { resolveFactRetrievalMethod, resolveFeatureFlags } from '@kb/core/config/kb-config.js'
 import { DOC_TYPES } from '../core/doc-taxonomy'
-import { placeholderTripletFromFactText } from '../core/fact-triplet-placeholder'
 import type { StreamManager } from '../core/runtime/stream-manager'
 import type { ToolExecutor } from '../core/tool-registry'
 import { createToolRegistry } from '../core/tool-registry'
@@ -106,17 +105,6 @@ export function createKBToolsRegistry(
       type: 'object',
       properties: {
         factText: { type: 'string', description: 'Atomic fact statement text' },
-        triplet: {
-          type: 'object',
-          description: 'Explicit subject–predicate–object triple (recommended for agents)',
-          properties: {
-            subject: { type: 'string' },
-            predicate: { type: 'string' },
-            object: { type: 'string' },
-          },
-          required: ['subject', 'predicate', 'object'],
-          additionalProperties: false,
-        },
         sourceKind: {
           type: 'string',
           enum: ['import_doc', 'import_code'],
@@ -140,22 +128,12 @@ export function createKBToolsRegistry(
   registry.register('upsert_fact', upsertFactToolDef, async input => {
     const payload = input as {
       factText: string
-      triplet?: { subject?: string; predicate?: string; object?: string }
       sourceKind: 'import_doc' | 'import_code'
       sourceRef?: string
       evidence?: FactEvidenceKind
     }
-    const t = payload.triplet
-    const triplet =
-      t &&
-      typeof t.subject === 'string' &&
-      typeof t.predicate === 'string' &&
-      typeof t.object === 'string'
-        ? { subject: t.subject.trim(), predicate: t.predicate.trim(), object: t.object.trim() }
-        : placeholderTripletFromFactText(payload.factText)
     return indexer.upsertFact({
       factText: payload.factText,
-      triplet,
       sourceKind: payload.sourceKind,
       sourceRef: payload.sourceRef,
       evidence: asFactEvidenceKind(payload.evidence),

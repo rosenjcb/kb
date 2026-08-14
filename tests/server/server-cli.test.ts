@@ -35,7 +35,7 @@ vi.mock('@kb/core/storage/repo-slug.js', () => ({
   repoSlugFromGitUrl: vi.fn((url: string) => url.split('/').slice(-2).join('-')),
 }))
 
-vi.mock('@kb/core/tools/graph-query-expansion.js', () => ({
+vi.mock('@kb/core/tools/kb-index-path.js', () => ({
   kbIndexDbPath: vi.fn(() => '/tmp/demo/.kb-index.sqlite'),
 }))
 

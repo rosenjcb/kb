@@ -1,5 +1,16 @@
 # kb-server
 
+## 2.0.0
+
+### Major Changes
+
+- Retire the sentence-level fact graph. Index whole markdown documents and AST code symbols linked by flat doc_code_links; retrieve with hybrid FTS + embeddings (RRF) instead of multi-pond BFS. Existing bases must reindex (schema v21).
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@2.0.0
+
 ## 1.5.7
 
 ### Patch Changes

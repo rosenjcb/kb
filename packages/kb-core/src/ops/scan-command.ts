@@ -4,7 +4,7 @@ import { readOptionalCliValue, resolveBaseToDir, resolveEffectiveBaseDir } from 
 
 /**
  * `kb scan` / `/scan`: pull + re-index every git clone on the resolved base's volume and
- * rebuild the cross-repo graph. Resolves `--base`, else the active/default base. Throws if
+ * rebuild the cross-repo graph. Resolves `--base`, else the active base. Throws if
  * the base has no indexed repos. Returns a one-line summary.
  */
 export async function runScanCommand(

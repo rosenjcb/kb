@@ -14,7 +14,7 @@ timestamp: 2026-06-20T00:00:00Z
 KB uses three loop patterns:
 
 1. **`runIntentLoop`** — the primary harness for the public KB query intent.
-2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init` and `kb publish`.
+2. **Domain-specific cycle loops** — deterministic multi-pass orchestration for commands with a fixed lifecycle such as `kb init`.
 3. **`agentLoop`** — low-level async generator for autonomous tool-calling. Available for programmatic / SDK use; not used by the CLI.
 
 The public KB query intent delegates to the router-owned retrieval path:
@@ -29,14 +29,12 @@ This is the composition principle: `intent → router → tools`. `runIntentLoop
 
 ```mermaid
 flowchart LR
-  Q["kb query / /query"] --> G["expandQueryWithGraph"]
-  G --> R["read_facts<br/>deep BFS pool"]
+  Q["kb query / /query"] --> R["read_facts<br/>hybrid retrieval"]
   R --> C["fact curator<br/>relevance judge"]
-  C --> RR["rerankByGraphConnectivity"]
-  RR --> A["LLM answer<br/>plain prose"]
+  C --> A["LLM answer<br/>plain prose"]
 ```
 
-Graph expansion runs in `index.ts` / `chat-cli.ts` before `runQueryTruthRetrieval()`. The fact curator runs inside `read_facts` on the deep path when the pool exceeds 12 facts. Optional rerank after curation.
+Retrieval is a single hybrid pass (six lexical/neural lanes fused by RRF plus a depth-1 doc↔symbol hop; fanned out over sub-queries in deep mode). The fact curator runs inside `read_facts` on the deep path when the pool is large. There is no graph query expansion or connectivity rerank.
 
 ## Part 1: Intent Loop
 
@@ -115,7 +113,7 @@ Some commands implement deterministic loops over named cycles. LLM is called dir
 | `pass-enrich` | Per-document enrichment in parallel | Enriched `CandidateDoc[]` |
 | `pass3` | Final quality pass | Final `CandidateDoc[]` |
 | `write` | Upsert to SQLite | Written document IDs |
-| `ast-facts` | Deterministic source-code indexing and fact promotion | `facts` + `fact_edges` updates |
+| `code-index` | Deterministic tree-sitter source indexing | `code_symbols` + `doc_code_links` updates |
 
 ## Part 3: Choosing a Pattern
 

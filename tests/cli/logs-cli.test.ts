@@ -94,6 +94,17 @@ const queryReport = makeReport({
   totalEstimatedCostUsd: 0.00012,
 })
 
+const chatReport = makeReport({
+  runId: 'run-400-dddd',
+  command: 'chat',
+  sessionId: 'sess-abc',
+  startedAt: '2026-04-17T09:20:00.000Z',
+  turns: [
+    { role: 'user', text: 'what is a Vector2?' },
+    { role: 'assistant', text: 'a 2D vector struct' },
+  ],
+})
+
 // ─── Mock filesystem ──────────────────────────────────────────────
 
 function mockLogsDir(reports: RunReport[]) {
@@ -179,6 +190,24 @@ describe('runLogsCommand list', () => {
     expect(runIdMatches).toHaveLength(1)
     vi.resetModules()
   })
+
+  it('[TC-449] Given no --command, then per-turn chat reports are hidden', async () => {
+    mockLogsDir([initReportA, chatReport])
+    const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
+    const output = await run(['list'])
+    expect(output).toContain('run-100-aaaa')
+    expect(output).not.toContain('run-400-dddd')
+    vi.resetModules()
+  })
+
+  it('[TC-450] Given --command chat, then chat reports are shown', async () => {
+    mockLogsDir([initReportA, chatReport])
+    const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
+    const output = await run(['list', '--command', 'chat'])
+    expect(output).toContain('run-400-dddd')
+    expect(output).not.toContain('run-100-aaaa')
+    vi.resetModules()
+  })
 })
 
 // ─── kb logs show ─────────────────────────────────────────────────
@@ -191,6 +220,16 @@ describe('runLogsCommand show', () => {
     expect(output).toContain('pass1')
     expect(output).toContain('pass2')
     expect(output).toContain('run-100-aaaa')
+    vi.resetModules()
+  })
+
+  it('[TC-451] Given a chat run with turns, then show renders the transcript', async () => {
+    mockLogsDir([chatReport])
+    const { runLogsCommand: run } = await import('@kb/core/cli/logs-cli.js')
+    const output = await run(['show', 'run-400-dddd'])
+    expect(output).toContain('Transcript:')
+    expect(output).toContain('what is a Vector2?')
+    expect(output).toContain('a 2D vector struct')
     vi.resetModules()
   })
 

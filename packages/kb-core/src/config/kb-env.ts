@@ -47,10 +47,6 @@ export function envVarHint(keyPath: string): string | undefined {
       return KB_ENV.LLM_PROVIDER
     case 'fact_retrieval_method':
       return KB_ENV.FACT_RETRIEVAL_METHOD
-    case 'notion.token':
-      return 'NOTION_TOKEN or NOTION_API_KEY'
-    case 'notion.parentPageId':
-      return 'NOTION_PARENT_PAGE_ID'
     case 'graph.enabled':
       return 'KB_GRAPH'
     default:

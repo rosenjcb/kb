@@ -15,15 +15,15 @@ describe('cmd', () => {
   })
 
   it('[TC-87] handles multi-word names in tui mode', () => {
-    expect(cmd('docs list', 'tui')).toBe('/docs list')
+    expect(cmd('facts list', 'tui')).toBe('/facts list')
   })
 
   it('[TC-88] handles multi-word names in cli mode', () => {
-    expect(cmd('docs list', 'cli')).toBe('kb docs list')
+    expect(cmd('facts list', 'cli')).toBe('kb facts list')
   })
 
   it('[TC-89] handles names with flags in tui mode', () => {
-    expect(cmd('docs list --limit 5', 'tui')).toBe('/docs list --limit 5')
+    expect(cmd('facts list --limit 5', 'tui')).toBe('/facts list --limit 5')
   })
 })
 

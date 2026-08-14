@@ -1,8 +1,4 @@
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
-import { printDocsDeleteHelp } from '@kb/core/cli/docs-delete-cli.js'
-import { printDocsGenerateHelp } from '@kb/core/cli/docs-generate-cli.js'
-import { printDocsRenameHelp } from '@kb/core/cli/docs-rename-cli.js'
-import { printListHelp, printViewHelp } from '@kb/core/cli/view-cli.js'
 import { printLogsHelp } from '@kb/core/cli/logs-cli.js'
 
 export function printCliHelp(mode: CmdMode = 'cli'): string {
@@ -19,12 +15,11 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  init        Build a KB from one or more git remotes',
     '  scan        Refresh a KB by re-indexing its tracked git repos',
     '  graph       Inspect or edit the knowledge graph',
-  '  entities    Inspect harvested entities (services, surfaces) and name collisions',
-    '  docs        Browse KB documents',
+    '  entities    Inspect harvested entities (services, surfaces) and name collisions',
     '  facts       List, search, or show KB facts',
-    '  publish     Publish KB docs',
     '  sync        Install the latest published KB release',
     '  logs        Browse and compare run reports',
+    '  session     Show the most recent chat session and its runs',
     '  skills      Manage agent skills',
     '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
     '',
@@ -64,39 +59,9 @@ export function printBaseHelp(mode: CmdMode = 'cli'): string {
     '',
     'Usage:',
     `  ${cmd('base list', mode)}`,
-    `  ${cmd('base delete <base> [--force]', mode)}`,
-  ].join('\n')
-}
-
-export function printBaseDeleteHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('base delete <base>', mode)}`,
     '',
-    'Flags:',
-    '  --force, -f   Skip confirmation',
-  ].join('\n')
-}
-
-export function printDocsHelp(mode: CmdMode = 'cli'): string {
-  return [
-    `${cmd('docs', mode)} commands`,
-    '',
-    'Usage:',
-    `  ${cmd('docs list', mode)}`,
-    `  ${cmd('docs view <document-id>', mode)}`,
-    `  ${cmd('docs generate "<prompt>"', mode)}`,
-    `  ${cmd('docs rename <documentId> "<new title>"', mode)}`,
-    `  ${cmd('docs delete <documentId>', mode)}`,
-    '',
-    printListHelp(mode),
-    '',
-    printViewHelp(mode),
-    '',
-    printDocsGenerateHelp(mode),
-    '',
-    printDocsRenameHelp(mode),
-    '',
-    printDocsDeleteHelp(mode),
+    'Base creation and deletion are operator actions on the server host',
+    '(`kb-server start --base <name> --git <repo>` / `kb-server base delete --base <name>`).',
   ].join('\n')
 }
 

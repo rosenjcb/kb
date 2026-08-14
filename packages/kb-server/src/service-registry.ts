@@ -22,13 +22,14 @@ import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { createKbService, type KbService } from '@kb/core/service/kb-service.js'
 import type { ChatStreamFn } from '@kb/core/service/chat-types.js'
 import { listAllBases, resolveBaseToDir } from '@kb/core/storage/base-selection.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 
 /** Thrown when a requested base slug has no built index on this host. */
 export class BaseNotFoundError extends Error {
   constructor(public readonly slug: string) {
     super(
-      `unknown base "${slug}": no index found on this server. Build it first (kb init / scan) or omit --base to use the server default.`
+      `unknown base "${slug}": no index found on this server. Create it with ` +
+        `\`kb-server base create --base ${slug} --git <url>\`, or omit the base to use the server default.`
     )
     this.name = 'BaseNotFoundError'
   }

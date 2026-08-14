@@ -9,7 +9,7 @@ timestamp: 2026-06-21T00:00:00Z
 
 # Research Paper
 
-**KB: A Facts-First Codebase Knowledge System with Multi-Objective Exploration Loss Evaluation**
+**KB: A Hybrid-Retrieval Codebase Knowledge System with Multi-Objective Exploration Loss Evaluation**
 
 The paper lives in this directory as a standard LaTeX two-column article.
 
@@ -17,10 +17,11 @@ The paper lives in this directory as a standard LaTeX two-column article.
 
 The paper (prose *and* figures) should read as the durable core strategy, not
 today's tunable knobs. KB's core idea doesn't change release to release: index
-code + doc facts into a graph, then on query locate a seed island of facts and
-hop across graph edges to grow it, curate, synthesize. What *does* change
-constantly — which judge model scores curation, how many facts get dropped per
-round, sufficiency thresholds, candidate caps — belongs in body prose (where it
+a codebase into three retrieval units (documents, code symbols, facts), then on
+query fuse lexical and neural lanes over all three with rank fusion, follow a
+single depth-1 document↔symbol hop, curate, synthesize. What *does* change
+constantly — which judge model scores curation, how many units get dropped per
+round, the RRF damping constant, candidate caps — belongs in body prose (where it
 can be caveated and dated), never baked into a figure. A diagram full of this
 run's magic numbers goes stale before the next eval run finishes.
 
@@ -154,7 +155,7 @@ just `\includegraphics[width=\columnwidth]{figures/your-figure.pdf}` the result.
 | Source | Label | Description |
 |--------|-------|-------------|
 | `figures/system-overview.mmd` | `fig:system-overview` | End-to-end KB + MOEL flow (intro.tex) |
-| `figures/kb-arch.mmd` | `fig:kb-arch` | KB indexing feeding the multi-pond retrieval loop (method.tex) |
+| `figures/kb-arch.mmd` | `fig:kb-arch` | KB indexing feeding the hybrid rank-fusion retriever (method.tex) |
 
 To add a figure: write `figures/name.mmd`, run `pnpm run research:figures` to
 check its rendered aspect ratio (`pdfinfo figures/name.pdf | grep -i "page size"`

@@ -26,7 +26,6 @@ const ConfigSchema = z.object({
 
   // Feature Flags
   enableSemanticSearch: z.boolean().default(false),
-  enableNotionBackend: z.boolean().default(false),
 
   // Environment
   environment: z.enum(['development', 'staging', 'production']).default('development'),

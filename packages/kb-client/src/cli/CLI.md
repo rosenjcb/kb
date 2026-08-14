@@ -19,7 +19,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 |---|---|
 | Git clone + index + reindex | **kb-server** (`KB_GIT_REPOS`, `KB_REINDEX_INTERVAL`) |
 | `kb query`, chat TUI | Client → HTTP → server (`/v1/query`, `/v1/chat`) |
-| `kb docs`, `facts`, `graph`, … | Client → `POST /v1/admin/cli` on server |
+| `kb facts`, `graph`, `entities`, `logs`, `session`, … | Client → `POST /v1/admin/cli` on server |
 | `kb base use`, `skills`, `sync` | Client-only (local state / release-runtime install) |
 
 **Server daemon:** `kb-server start` (not a `kb` subcommand). **Indexing:** configure `KB_GIT_REPOS` on kb-server. **Configuration:** `KB_*` environment variables in your shell profile.
@@ -37,7 +37,7 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 
 ## Connection visibility
 
-Before work starts (except machine JSON stdout):
+Before work starts:
 
 1. **One-shot CLI** — banner + `formatConnectionContext` line under `🤖 KB Agent Harness`.
 2. **TUI** — pinned `StatusBar` + startup notice with same string.
@@ -49,7 +49,7 @@ Telemetry: `resolveReportHost(config)` on run reports.
 
 ```bash
 kb --host localhost:38117 query "…"
-kb --host http://remote:38117/docs list
+kb --host http://remote:38117 facts list
 kb --host staging:38117          # TUI when no other args
 ```
 
@@ -84,7 +84,7 @@ patterns from `KB_SERVER_IGNORE`. There is no client-side repo/ignore CRUD.
 
 Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not `kb init`).
 
-## Skills, uninstall, publish
+## Skills, uninstall
 
 Skills and MCP client wiring are **opt-in**:
 
@@ -108,7 +108,7 @@ HTTP/MCP daemon: [`../../../kb-server/src/SERVER.md`](../../../kb-server/src/SER
 ## Gotchas
 
 - **`--host` vs env:** flag wins for one invocation only; shell profile env persists.
-- **Apply defaults:** TUI auto-appends `--apply` for `publish` preview — CLI users pass `--apply` explicitly.
+- **Apply defaults:** TUI auto-appends `--apply` for `invalidate` preview — CLI users pass `--apply` explicitly.
 - **Base resolution:** `@kb/core/storage/base-selection.ts`; missing base → `CLI_ERROR_NO_KB_BASE`.
 - **Sync layout:** release installs expect `runtime/*/bin/*` plus sibling `node_modules/`, not `node_modules/.bin/*`.
 - **Help copy:** TUI hints use slash form via `cmd(name, 'tui')`; CLI uses `kb …`.

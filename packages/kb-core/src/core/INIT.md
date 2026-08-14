@@ -9,9 +9,9 @@ timestamp: 2026-06-21T00:00:00Z
 
 # KB Init Pipeline
 
-`kb init` bootstraps a knowledge base from **one or more git repositories** — at least one `--git` remote is required (local-directory indexing has been removed). Each remote establishes its **primary branch** at clone time: `url#branch`, a shared `--branch` fallback, or the remote's own default HEAD when omitted. That clone HEAD is what Slack/chat source blob links use later (`discoverBaseRepos` → `gitBranch`) — there is no global source-branch env. In interactive mode it first collects user input upfront — base name and at least one git URL — then clones each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs the multi-phase scan **per repo**: **`read-inputs`** (README-like docs), **`code-index`** (deterministic AST indexing into `facts` + `fact_edges`), **`document-facts`** (sentence facts from markdown sources; OKF frontmatter is stripped first, and a doc's `resource:` scopes which exported symbol each segment anchors to), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Each fact records its origin repo in the **`git_repo`** column.
+`kb init` bootstraps a knowledge base from **one or more git repositories** — at least one `--git` remote is required (local-directory indexing has been removed). Each remote establishes its **primary branch** at clone time: `url#branch`, a shared `--branch` fallback, or the remote's own default HEAD when omitted. That clone HEAD is what Slack/chat source blob links use later (`discoverBaseRepos` → `gitBranch`) — there is no global source-branch env. In interactive mode it first collects user input upfront — base name and at least one git URL — then clones each repo into `~/.kb/sessions/<base>/repos/<slug>/` and runs the multi-phase scan **per repo**: **`read-inputs`** (README-like docs), **`code-index`** (deterministic tree-sitter AST indexing into `code_symbols`), **`document-facts`** (sentence facts from markdown sources; OKF frontmatter is stripped first, and a doc's `resource:` scopes which exported symbol each segment anchors to), **`import-docs`** (one verbatim original SQLite doc per discovered markdown file), and **`write`** (persist docs; with **`kb scan`** this stage also plans/applies claim mutations). Documents are linked to the code symbols they describe via **`doc_code_links`**. Each unit records its origin repo in the **`git_repo`** column.
 
-All repos fold into **one connected graph**. After the per-repo loop, an **integration-ingest** reconciliation pass bridges the subgraphs by linking facts across repos on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references — producing cross-repo `fact_edges` (`depends_on_repo`, `cross_repo_symbol`, `references_repo`). This runs at the end of `kb init`, after **`kb scan`**, and after auto-sync. Use **`kb scan`** to pull + re-index every tracked repo and rebuild the cross-repo links.
+After the per-repo loop, an **integration-ingest** reconciliation pass writes **cross-repo facts** on real integration signals — `package.json` dependencies, cross-repo symbol imports, and `.env`/service references (e.g. "Repository A depends on package B"). This runs at the end of `kb init`, after **`kb scan`**, and after auto-sync. Use **`kb scan`** to pull + re-index every tracked repo and refresh those cross-repo facts.
 
 In the TUI, init/scan progress is rendered as a dedicated live status line instead of transcript history. Any phase that iterates over a collection of files, docs, facts, claims, or mutations emits incremental progress while that collection is being processed; only atomic operations stay start/finish-only. Progress lines include counts and, when useful, the current item. The long-running deterministic phases also yield cooperatively to the event loop between batches so the terminal can repaint and interrupts remain responsive during large scans.
 
@@ -44,11 +44,11 @@ flowchart TD
     IM --> W[write]
     W --> RC[integration-ingest\nreconciliation]
 
-    CI --> CI1["AST indexing\n→ facts + fact_edges\n(git_repo set)"]
+    CI --> CI1["AST indexing\n→ code_symbols\n(git_repo set)"]
     MF --> MF1["Sentence segmentation\n→ facts import_doc"]
     IM --> IM1["One original doc\nper source file"]
     W --> W1["SQLite upsert\n+ scan planner"]
-    RC --> RC1["cross-repo fact_edges:\ndepends_on_repo,\ncross_repo_symbol,\nreferences_repo"]
+    RC --> RC1["cross-repo facts:\ndependencies,\nsymbol imports,\nservice references"]
 ```
 
 ## Write batching & scan performance
@@ -275,13 +275,13 @@ After the upfront questions, each `--git` repo is cloned into `~/.kb/sessions/<b
 
 ## Integration-ingest reconciliation
 
-Once all repos are indexed, the reconciliation pass folds the per-repo subgraphs into one connected graph. It links facts across repos on real integration signals:
+Once all repos are indexed, the reconciliation pass links facts across repos on real integration signals:
 
 - `package.json` dependencies (repo A depends on repo B's package)
 - cross-repo symbol imports
 - `.env` / service references
 
-These emit bridge `fact_edges` of types `depends_on_repo`, `cross_repo_symbol`, and `references_repo`. The pass runs at the end of `kb init`, after `kb scan`, and after auto-sync.
+These emit cross-repo **facts** (repo dependencies, cross-repo symbol imports, and service references) tagged with their origin repo. The pass runs at the end of `kb init`, after `kb scan`, and after auto-sync.
 
 ## Document Provenance
 
@@ -303,11 +303,11 @@ Documents are routed by provenance via the `is_original` flag:
 
 When **derived** documents are persisted (the curated/autogenerated layer, or any path using **`SqliteDocumentWriter`** that writes non-original docs), the writer **indexes candidate facts** from the document body (deterministic sentence segmentation with OKF frontmatter stripped first, length filters, and capped inserts into the **`facts`** table). That is **incremental** fact growth alongside init; see **`facts-architecture.md`** §2 / §7 for the full ingest model.
 
-**Original/source docs are excluded from this pass.** Their facts already come from the dedicated **`document-facts`** ingest (`scan-fact-ingest.ts`), which anchors triplets to AST symbols and namespaces `source_ref` as `path#sN`. Re-segmenting them again in the `write` phase was redundant churn — and it overwrote that richer `source_ref` with a bare doc-id, silently breaking per-file fact tombstoning on rescan. So `SqliteDocumentWriter.writeDocument` skips fact extraction when `isOriginal` is set; only the verbatim `original_docs` row is written.
+**Original/source docs are excluded from this pass.** Their facts already come from the dedicated **`document-facts`** ingest (`scan-fact-ingest.ts`), which anchors segments to AST symbols and namespaces `source_ref` as `path#sN`. Re-segmenting them again in the `write` phase was redundant churn — and it overwrote that richer `source_ref` with a bare doc-id, silently breaking per-file fact tombstoning on rescan. So `SqliteDocumentWriter.writeDocument` skips fact extraction when `isOriginal` is set; only the verbatim `original_docs` row is written.
 
-## Code-derived facts (AST-only)
+## Code symbols (AST-only)
 
-Source code facts come **only** from deterministic AST indexing (`TreeSitterIndexer`) during the **`code-index`** cycle. Supported languages get symbol facts and structural edges in `facts` / `fact_edges`. Languages without a wired WASM grammar are **not indexed** — there is no LLM fallback.
+Code symbols come **only** from deterministic AST indexing (`TreeSitterIndexer`) during the **`code-index`** cycle, written to the `code_symbols` table. Languages without a wired WASM grammar are **not indexed** — there is no LLM fallback.
 
 See **Language Support** below for the current AST matrix and the removed fallback list.
 
@@ -331,8 +331,8 @@ WASM grammars ship in `tree-sitter-*` npm packages — no native compilation, al
 
 ### What gets written
 
-- **`facts`** (`source_kind='import_code'`) — one fact per exported symbol (`"Foo is a Class exported from src/foo.ts"`) with `source_text` set to the raw declaration (capped at 1500 chars)
-- **`fact_edges`** — structural edges: `IMPORTS_FILE`, `EXPORTS_SYMBOL`, `EXTENDS`, `IMPLEMENTS`
+- **`code_symbols`** — one row per exported symbol (name, kind, `rel_path`, `git_repo`) with `source_text` set to the raw declaration (capped at 1500 chars)
+- **`doc_code_links`** — links documents to the code symbols they describe (powers the depth-1 retrieval hop)
 - **`code_file_state`** — per-file content hash for incremental skip on re-run
 
 ### Incremental behaviour

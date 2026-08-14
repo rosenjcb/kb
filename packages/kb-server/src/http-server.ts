@@ -44,7 +44,19 @@ import {
   RunCollector,
   estimateCost,
   type RunReport,
+  type SessionTurn,
 } from '@kb/core/core/telemetry.js'
+
+/** Per-line cap on captured chat transcript text, so run logs stay bounded. */
+const MAX_TURN_CHARS = 4000
+
+function cappedTurn(role: SessionTurn['role'], text: string): SessionTurn {
+  const trimmed = text.trim()
+  return {
+    role,
+    text: trimmed.length > MAX_TURN_CHARS ? `${trimmed.slice(0, MAX_TURN_CHARS - 1)}…` : trimmed,
+  }
+}
 
 export interface HttpServerOptions {
   /** The boot/default base service (serves requests with no `X-KB-Base`). */
@@ -291,6 +303,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
       outputTokens?: number
       provider?: string
       model?: string
+      turns?: SessionTurn[]
     } = {}
   ): void {
     if (!reportWriter) return
@@ -322,6 +335,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     report.totalDurationMs = now - ctx.startMs
     report.startedAt = new Date(ctx.startMs).toISOString()
     report.finishedAt = new Date(now).toISOString()
+    if (opts.turns && opts.turns.length > 0) report.turns = opts.turns
     writeReport(report)
   }
 
@@ -702,6 +716,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     send('session', { sessionId })
 
     let answerLen = 0
+    let answerText = ''
     let factsRetrieved = 0
     let inputTokens = 0
     let outputTokens = 0
@@ -713,6 +728,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         log.debug('chat event', { requestId: ctx.requestId, sessionId, event: event.type })
         if (event.type === 'answer') {
           answerLen = event.text.length
+          answerText = event.text
           factsRetrieved = event.factsRetrieved
         }
         if (event.type === 'done') {
@@ -733,6 +749,10 @@ export function createHttpServer(options: HttpServerOptions): Server {
         outputTokens,
         provider: svcHealth.provider,
         model: svcHealth.model,
+        turns: [
+          cappedTurn('user', message),
+          ...(answerText ? [cappedTurn('assistant', answerText)] : []),
+        ],
       })
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error)
@@ -751,6 +771,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         outputTokens,
         provider: svcHealth.provider,
         model: svcHealth.model,
+        turns: [cappedTurn('user', message)],
       })
     } finally {
       res.end()

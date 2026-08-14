@@ -657,6 +657,142 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE facts DROP COLUMN confidence;
     `,
   },
+  {
+    // Major clean-slate: retire the sentence-level fact graph. Index whole markdown
+    // documents + AST code symbols, linked by a flat doc_code_links table. No
+    // fact_edges / fact_concepts / traversable graph. Existing bases must reindex.
+    version: 21,
+    name: 'document_symbol_index',
+    sql: `
+      DROP TABLE IF EXISTS entity_links;
+      DROP TABLE IF EXISTS fact_embeddings;
+      DROP TABLE IF EXISTS facts_fts;
+      DROP TABLE IF EXISTS fact_edges;
+      DROP TABLE IF EXISTS fact_concepts;
+      DROP TABLE IF EXISTS facts;
+      DROP TABLE IF EXISTS chunk_embeddings;
+      DROP TABLE IF EXISTS chunks_fts;
+      DROP TABLE IF EXISTS chunks;
+      DROP TABLE IF EXISTS documents;
+
+      CREATE TABLE documents (
+        id TEXT PRIMARY KEY,
+        git_repo TEXT NOT NULL DEFAULT '',
+        rel_path TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        indexed_at TEXT NOT NULL,
+        UNIQUE (git_repo, rel_path)
+      );
+
+      CREATE INDEX idx_documents_git_repo
+        ON documents(git_repo);
+
+      CREATE VIRTUAL TABLE documents_fts USING fts5(
+        doc_id UNINDEXED,
+        body,
+        tokenize='porter unicode61'
+      );
+
+      CREATE TABLE doc_embeddings (
+        doc_id TEXT PRIMARY KEY,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        embedded_at TEXT NOT NULL,
+        FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE code_symbols (
+        id TEXT PRIMARY KEY,
+        git_repo TEXT NOT NULL DEFAULT '',
+        rel_path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        source_text TEXT,
+        content_hash TEXT NOT NULL,
+        indexed_at TEXT NOT NULL,
+        UNIQUE (git_repo, rel_path, name)
+      );
+
+      CREATE INDEX idx_code_symbols_git_repo
+        ON code_symbols(git_repo);
+
+      CREATE INDEX idx_code_symbols_name
+        ON code_symbols(name);
+
+      CREATE VIRTUAL TABLE code_symbols_fts USING fts5(
+        symbol_id UNINDEXED,
+        name,
+        source_text,
+        tokenize='porter unicode61'
+      );
+
+      CREATE TABLE code_embeddings (
+        symbol_id TEXT PRIMARY KEY,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        embedded_at TEXT NOT NULL,
+        FOREIGN KEY (symbol_id) REFERENCES code_symbols(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE doc_code_links (
+        doc_id TEXT NOT NULL,
+        symbol_id TEXT NOT NULL,
+        score REAL NOT NULL DEFAULT 1.0,
+        link_kind TEXT NOT NULL DEFAULT 'relates_to',
+        PRIMARY KEY (doc_id, symbol_id),
+        FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (symbol_id) REFERENCES code_symbols(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX idx_doc_code_links_symbol
+        ON doc_code_links(symbol_id);
+
+      CREATE TABLE facts (
+        id TEXT PRIMARY KEY,
+        git_repo TEXT,
+        text TEXT NOT NULL,
+        source_ref TEXT,
+        evidence TEXT NOT NULL DEFAULT 'curated',
+        tombstoned_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_facts_git_repo_live
+        ON facts(git_repo) WHERE tombstoned_at IS NULL;
+
+      CREATE VIRTUAL TABLE facts_fts USING fts5(
+        fact_id UNINDEXED,
+        text,
+        tokenize='porter unicode61'
+      );
+
+      CREATE TABLE fact_embeddings (
+        fact_id TEXT PRIMARY KEY,
+        model_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        embedded_at TEXT NOT NULL,
+        FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+      );
+
+      -- Unit↔entity membership for scope inference. unit ids may be facts, documents, or
+      -- code_symbols — no FK so all three can participate under the same table shape.
+      CREATE TABLE entity_links (
+        fact_id    TEXT NOT NULL,
+        entity_id  TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL,
+        PRIMARY KEY (fact_id, entity_id, role)
+      );
+
+      CREATE INDEX idx_entity_links_entity
+        ON entity_links(entity_id);
+    `,
+  },
 ]
 
 /**

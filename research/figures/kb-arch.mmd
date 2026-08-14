@@ -1,16 +1,15 @@
 flowchart TB
-    subgraph S1["Facts"]
+    subgraph S1["Index (3 unit types)"]
         direction LR
-        A["Source + docs"] --> B["Facts<br/>(atomic, graph-linked)"]
+        A["Source + docs"] --> B["Documents · Code symbols · Facts<br/>(FTS5 + embeddings, doc↔symbol links)"]
     end
 
     B --> D
 
-    subgraph S2["Retrieval loop"]
+    subgraph S2["Hybrid retrieval (single pass)"]
         direction LR
-        D["Seed: locate an<br/>island of facts"] --> E["Hop: expand the island<br/>across graph edges"]
-        E --> F{"Island<br/>sufficient?"}
-        F -- "no, more hops" --> D
+        D["6 lanes: lexical + neural<br/>over docs / symbols / facts"] --> E["Reciprocal Rank Fusion"]
+        E --> F["Depth-1 doc↔symbol hop"]
     end
 
     subgraph S3["Answer"]
@@ -18,4 +17,4 @@ flowchart TB
         G["Curate: drop<br/>what's off-topic"] --> H["Synthesize<br/>the answer"]
     end
 
-    F -- "yes" --> G
+    F --> G

@@ -259,10 +259,9 @@ function resolveEndpoint(
 }
 
 /**
- * Exact-match linking: a fact links to an entity only when its subject or object
- * normalizes to one of the entity's aliases. Longest-alias precedence is implicit
- * because the whole string must match — "internal services" as a subject can only
- * equal the surface's alias, never the service's.
+ * Exact-match linking: a unit links to an entity when a symbol name, document title,
+ * document path basename, or curated fact text normalizes to one of the entity's aliases.
+ * (The pre-v21 path matched fact subject/object triplets; those columns no longer exist.)
  */
 function linkFactsToEntities(dbPath: string, registry: EntityRegistry): number {
   const aliasToEntities = new Map<string, string[]>()
@@ -278,28 +277,42 @@ function linkFactsToEntities(dbPath: string, registry: EntityRegistry): number {
   }
   if (aliasToEntities.size === 0) return 0
 
+  const linkAlias = (unitId: string, value: string, role: 'subject' | 'object' | 'mention') => {
+    const entityIds = aliasToEntities.get(normalizeEntityName(value))
+    if (!entityIds) return 0
+    let n = 0
+    for (const entityId of entityIds) {
+      registry.linkFact(unitId, entityId, role)
+      n++
+    }
+    return n
+  }
+
   const db = new DatabaseSync(dbPath, { readOnly: true })
   let linked = 0
   try {
-    const rows = db
-      .prepare(
-        `SELECT id, subject, object FROM facts
-         WHERE tombstoned_at IS NULL AND (subject != '' OR object != '')`
-      )
-      .all() as Array<{ id: string; subject: string; object: string }>
-    for (const row of rows) {
-      for (const [value, role] of [
-        [row.subject, 'subject'],
-        [row.object, 'object'],
-      ] as const) {
-        if (!value) continue
-        const entityIds = aliasToEntities.get(normalizeEntityName(value))
-        if (!entityIds) continue
-        for (const entityId of entityIds) {
-          registry.linkFact(row.id, entityId, role)
-          linked++
-        }
-      }
+    const symbols = db
+      .prepare('SELECT id, name FROM code_symbols')
+      .all() as Array<{ id: string; name: string }>
+    for (const row of symbols) {
+      linked += linkAlias(row.id, row.name, 'subject')
+    }
+
+    const docs = db
+      .prepare('SELECT id, title, rel_path FROM documents')
+      .all() as Array<{ id: string; title: string; rel_path: string }>
+    for (const row of docs) {
+      linked += linkAlias(row.id, row.title, 'mention')
+      const base = row.rel_path.split('/').pop()?.replace(/\.[^.]+$/, '') ?? ''
+      if (base) linked += linkAlias(row.id, base, 'mention')
+    }
+
+    const facts = db
+      .prepare('SELECT id, text FROM facts WHERE tombstoned_at IS NULL')
+      .all() as Array<{ id: string; text: string }>
+    for (const row of facts) {
+      // Exact whole-text alias match only — curated facts are short assertions.
+      linked += linkAlias(row.id, row.text, 'mention')
     }
   } finally {
     db.close()

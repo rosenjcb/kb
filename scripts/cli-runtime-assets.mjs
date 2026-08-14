@@ -11,17 +11,6 @@ export async function copyCliRuntimeAssets(projectRoot, binDir) {
     }
   }
 
-  const docQuestionnairesSrc = path.join(promptsSrc, 'doc-questionnaires')
-  const docQuestionnairesDest = path.join(binDir, 'doc-questionnaires')
-  if (existsSync(docQuestionnairesSrc)) {
-    await mkdir(docQuestionnairesDest, { recursive: true })
-    for (const file of await readdir(docQuestionnairesSrc)) {
-      if (file.endsWith('.md')) {
-        await copyFile(path.join(docQuestionnairesSrc, file), path.join(docQuestionnairesDest, file))
-      }
-    }
-  }
-
   const skillsRoot = path.join(projectRoot, 'skills')
   if (existsSync(skillsRoot)) {
     for (const skillName of await readdir(skillsRoot)) {

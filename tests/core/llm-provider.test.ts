@@ -24,7 +24,7 @@ function streamResponse(chunks: string[], status = 200): Response {
 const sse = (obj: unknown) => `data: ${JSON.stringify(obj)}\n\n`
 
 describe('llm-provider', () => {
-  it('[TC-77] Given each provider name in factory config, then should return a provider with matching name', () => {
+  it('[TC-72] Given each provider name in factory config, then should return a provider with matching name', () => {
     expect(createProvider({ provider: 'anthropic', apiKey: 'k' }).name).toBe('anthropic')
     expect(createProvider({ provider: 'openai', apiKey: 'k' }).name).toBe('openai')
     expect(createProvider({ provider: 'gemini', apiKey: 'k' }).name).toBe('gemini')
@@ -33,11 +33,11 @@ describe('llm-provider', () => {
     )
   })
 
-  it('[TC-78] Given GeminiProvider with no model arg, then defaults to documented gemini-3-flash-preview', () => {
+  it('[TC-73] Given GeminiProvider with no model arg, then defaults to documented gemini-3-flash-preview', () => {
     expect(new GeminiProvider('k').model).toBe('gemini-3-flash-preview')
   })
 
-  it('[TC-79] Given an anthropic non-ok response, then should throw a readable api error instead of crashing on undefined content', async () => {
+  it('[TC-74] Given an anthropic non-ok response, then should throw a readable api error instead of crashing on undefined content', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: { message: 'invalid key' } }), {
         status: 401,
@@ -57,7 +57,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-80] Given an openai malformed but successful payload, then should return safe defaults rather than throw', async () => {
+  it('[TC-75] Given an openai malformed but successful payload, then should return safe defaults rather than throw', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({}), {
         status: 200,
@@ -78,7 +78,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-81] Given GEMINI_API_BASE_URL, then provider calls the override host', async () => {
+  it('[TC-76] Given GEMINI_API_BASE_URL, then provider calls the override host', async () => {
     const prev = process.env.GEMINI_API_BASE_URL
     process.env.GEMINI_API_BASE_URL = 'http://llm-mock:8080'
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -113,7 +113,7 @@ describe('llm-provider', () => {
     }
   })
 
-  it('[TC-82] Given a custom Gemini model, then provider calls the matching model endpoint', async () => {
+  it('[TC-77] Given a custom Gemini model, then provider calls the matching model endpoint', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -140,7 +140,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-83] Given a Gemini system prompt and assistant history, then provider sends system_instruction and model-role contents', async () => {
+  it('[TC-78] Given a Gemini system prompt and assistant history, then provider sends system_instruction and model-role contents', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -172,7 +172,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-194] resolveGeminiThinkingBudget prefers call arg, then GEMINI_THINKING_BUDGET, then mode default', () => {
+  it('[TC-182] resolveGeminiThinkingBudget prefers call arg, then GEMINI_THINKING_BUDGET, then mode default', () => {
     const prev = process.env.GEMINI_THINKING_BUDGET
     try {
       delete process.env.GEMINI_THINKING_BUDGET
@@ -192,7 +192,7 @@ describe('llm-provider', () => {
     }
   })
 
-  it('[TC-195] Given a plain Gemini call, then thinkingConfig is present with budget 0 (never omitted)', async () => {
+  it('[TC-183] Given a plain Gemini call, then thinkingConfig is present with budget 0 (never omitted)', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -216,7 +216,7 @@ describe('llm-provider', () => {
     }
   })
 
-  it('[TC-196] Given Gemini usageMetadata with thoughtsTokenCount, then generateContent folds thoughts into outputTokens', async () => {
+  it('[TC-184] Given Gemini usageMetadata with thoughtsTokenCount, then generateContent folds thoughts into outputTokens', async () => {
     expect(
       parseGeminiUsageMetadata({
         promptTokenCount: 100,
@@ -249,7 +249,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-197] Given Gemini stream usageMetadata, then thoughts fold into outputTokens (and total−prompt when thoughts absent)', async () => {
+  it('[TC-185] Given Gemini stream usageMetadata, then thoughts fold into outputTokens (and total−prompt when thoughts absent)', async () => {
     expect(
       parseGeminiUsageMetadata({
         promptTokenCount: 50,
@@ -286,7 +286,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-84] Given thinkingBudget 0 on a Gemini 2.5 model, then generationConfig includes thinkingConfig', async () => {
+  it('[TC-79] Given thinkingBudget 0 on a Gemini 2.5 model, then generationConfig includes thinkingConfig', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -313,7 +313,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-85] Given Gemini parts with thought true, then visible text excludes reasoning parts', async () => {
+  it('[TC-80] Given Gemini parts with thought true, then visible text excludes reasoning parts', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -343,7 +343,7 @@ describe('llm-provider', () => {
     fetchMock.mockRestore()
   })
 
-  it('[TC-86] Given Gemini preview uses the first small token budget on thoughts only, then provider retries once with a larger budget and returns visible text', async () => {
+  it('[TC-81] Given Gemini preview uses the first small token budget on thoughts only, then provider retries once with a larger budget and returns visible text', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
@@ -384,7 +384,7 @@ describe('llm-provider', () => {
   })
 
   describe('reasoning streaming (onReasoning)', () => {
-    it('[TC-87] Given an Anthropic onReasoning callback, then thinking enabled, deltas streamed, and text/usage reconstructed', async () => {
+    it('[TC-82] Given an Anthropic onReasoning callback, then thinking enabled, deltas streamed, and text/usage reconstructed', async () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         streamResponse([
           sse({ type: 'message_start', message: { usage: { input_tokens: 5 } } }),
@@ -417,7 +417,7 @@ describe('llm-provider', () => {
       fetchMock.mockRestore()
     })
 
-    it('[TC-88] Given an Anthropic streamed tool_use, then input JSON deltas reconstruct the tool call', async () => {
+    it('[TC-83] Given an Anthropic streamed tool_use, then input JSON deltas reconstruct the tool call', async () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         streamResponse([
           sse({ type: 'message_start', message: { usage: { input_tokens: 1 } } }),
@@ -441,7 +441,7 @@ describe('llm-provider', () => {
       fetchMock.mockRestore()
     })
 
-    it('[TC-89] Given an Anthropic stream that errors, then call falls back to the non-streaming path', async () => {
+    it('[TC-84] Given an Anthropic stream that errors, then call falls back to the non-streaming path', async () => {
       const fetchMock = vi
         .spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(streamResponse(['nope'], 500))
@@ -470,7 +470,7 @@ describe('llm-provider', () => {
       fetchMock.mockRestore()
     })
 
-    it('[TC-90] Given an OpenAI reasoning stream, then reasoning deltas and tool calls reconstruct', async () => {
+    it('[TC-85] Given an OpenAI reasoning stream, then reasoning deltas and tool calls reconstruct', async () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         streamResponse([
           sse({ choices: [{ delta: { reasoning: 'thinking…' } }] }),
@@ -498,7 +498,7 @@ describe('llm-provider', () => {
       fetchMock.mockRestore()
     })
 
-    it('[TC-91] Given a Gemini onReasoning callback, then thought parts stream and visible text/tools reconstruct', async () => {
+    it('[TC-86] Given a Gemini onReasoning callback, then thought parts stream and visible text/tools reconstruct', async () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         streamResponse([
           sse({ candidates: [{ content: { parts: [{ text: 'pondering', thought: true }] } }] }),

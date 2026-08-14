@@ -64,25 +64,43 @@ Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE
 
 ### 2) Start the server
 
-The server needs an LLM API key to synthesize answers and at least one git repo to index:
+The server needs an LLM API key to synthesize answers:
 
 ```bash
 export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
+kb-server start --with-mcp
+```
+
+Leave that terminal running (or add `-d` to background it). It comes up on `localhost:38117` with a base named **`default`** — KB's built-in base, the way Postgres ships a `postgres` database. You never name a base just to start one. At this point `default` is **empty**: the server is up but has nothing indexed yet, and it will say so if you ask it something.
+
+### 2b) Add your favorite repo
+
+Point the `default` base at a repo and it starts archiving (clone → index; the first run takes a minute depending on repo size):
+
+```bash
+kb-server base add-repo --base default --git https://github.com/acme/auth-svc
+```
+
+The target base is always the explicit `--base` flag — no positional, no implicit default. Add more any time (pin a branch per repo with `<url>#branch`):
+
+```bash
+kb-server base add-repo --base default --git https://github.com/acme/web#develop
+```
+
+**Prefer to skip the empty state?** Pass the repos right at boot — same result:
+
+```bash
 kb-server start --git https://github.com/acme/auth-svc --with-mcp
 ```
 
-Leave that terminal running (or add `-d` to background it). The server clones and indexes into a base named **`base`** — KB's default, the way Postgres ships a `postgres` database. You never name a base just to start one. Default address: `localhost:38117`; the first run takes a minute depending on repo size.
-
-Index several repos at once — and name the base if you like:
+**Want a separate, named base** (kept apart from `default`)? Create it with at least one repo, then query it with `--base`:
 
 ```bash
-kb-server start --base acme \
-  --git https://github.com/acme/auth \
-  --git https://github.com/acme/web#develop \
-  --with-mcp
+kb-server base create --base acme --git https://github.com/acme/auth --git https://github.com/acme/web#develop
+kb-server base list          # see every base on this server
 ```
 
-Pin a branch per repo with `<url>#branch`. In containers you can declare repos with `KB_SERVER_BASE_GIT_REPOS` instead of `--git` flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
+Base lifecycle — `create`, `add-repo`, `list`, `delete` — is an **operator** job on `kb-server`. The `kb` client can only *switch* which base it talks to (`kb base use <name>`), never create or delete one. In containers you can also declare the default base's repos with `KB_SERVER_BASE_GIT_REPOS` instead of flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
 
 ### 3) Ask something
 
@@ -106,8 +124,9 @@ No arguments. KB opens an interactive session (status bar shows **host** and **b
 - **Follow up**: context carries across turns; ask "show me the file" or "what about error handling?"
 - **Slash commands**: `/help` lists everything. Useful ones early on:
   - `/query <question>`: run a structured lookup inline
-  - `/docs list`: browse generated docs for the base
+  - `/facts list`: browse the curated facts for the base
   - `/graph summary`: see how modules connect
+  - `/session`: review the most recent chat session and its runs
   - `/exit`: leave
 
 The first time you run `kb`, you'll see a short welcome. If the server hasn't finished indexing yet, wait for kb-server logs to settle, then try again.
@@ -192,20 +211,16 @@ kb --host <host:port|url>   …   # overrides KB_HOST / KB_PORT / KB_SSLMODE for
 kb query "<topic>" [--base <name>] [--discovery shallow|deep] [--verbose]
 ```
 
-### Documents
-
-```
-kb docs list|view|generate|rename|delete ...
-```
-
 ### Other commands
 
 ```
-kb base use <base>             — switch active base
-kb base use --default <base>   — save persistent default
+kb base use <base>             — switch active base (omit to use the server default)
 kb facts list|search|show ...
 kb graph ...
-kb skills install|uninstall
+kb entities ...                — inspect harvested entities and name collisions
+kb logs list|show|compare ...  — browse run reports
+kb session                     — most recent chat session and its runs (snoop past /clear)
+kb skills [install|uninstall]  — bare `kb skills` shows install status
 kb mcp install|status|uninstall   — point Claude/Cursor MCP at a local or team host
 kb-server start [--with-mcp]
 kb sync

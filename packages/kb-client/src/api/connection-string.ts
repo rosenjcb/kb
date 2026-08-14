@@ -63,7 +63,11 @@ function parseSslMode(raw: string, sourceForError: string): SslMode {
  */
 export function parseKbConnectionString(raw: string): ParsedConnectionString {
   const trimmed = raw.trim()
-  const schemeMatch = /^kb:\/\//i.exec(trimmed)
+  // Accept a schemeless `host[:port]/base` as shorthand for `kb://host[:port]/base`
+  // so `--connection-string localhost:38117/raylib` works like the explicit form.
+  // A string that carries some *other* scheme (`http://…`) is still rejected below.
+  const normalized = /:\/\//.test(trimmed) ? trimmed : `kb://${trimmed}`
+  const schemeMatch = /^kb:\/\//i.exec(normalized)
   if (!schemeMatch) {
     throw new Error(`Invalid connection string (expected kb://host[:port]/base): ${raw}`)
   }
@@ -72,7 +76,7 @@ export function parseKbConnectionString(raw: string): ParsedConnectionString {
   // host, port, path, and query handling for free.
   let parsed: URL
   try {
-    parsed = new URL(`http://${trimmed.slice(schemeMatch[0].length)}`)
+    parsed = new URL(`http://${normalized.slice(schemeMatch[0].length)}`)
   } catch {
     throw new Error(`Invalid connection string (expected kb://host[:port]/base): ${raw}`)
   }

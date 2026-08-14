@@ -16,9 +16,9 @@ Test runner: **Vitest**. Run with `pnpm test` (single pass) or `pnpm run test:wa
 Source files mirror their tests under `packages/`:
 
 ```
-packages/kb-client/src/cli/publish-cli.ts   →   tests/cli/publish-cli.test.ts
-packages/kb-core/src/core/publish/notion-sync.ts   →   tests/core/notion-sync.test.ts
-packages/kb-core/src/tools/document-writer.ts   →   tests/tools/document-writer.test.ts
+packages/kb-core/src/cli/session-cli.ts   →   tests/cli/session-cli.test.ts
+packages/kb-core/src/core/scan-document-ingest.ts   →   tests/core/scan-document-ingest.test.ts
+packages/kb-core/src/tools/hybrid-retriever.ts   →   tests/tools/hybrid-retriever.test.ts
 ```
 
 ## Behavioral specs and test tags

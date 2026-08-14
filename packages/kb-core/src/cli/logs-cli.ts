@@ -57,7 +57,10 @@ async function runLogsList(args: string[], logsDir: string): Promise<string> {
   const base = readOption(args, '--base')
   const limit = parseLimit(readOption(args, '--limit')) ?? 20
 
-  const reports = await loadReports(logsDir, { command, since, base })
+  const loaded = await loadReports(logsDir, { command, since, base })
+  // Per-turn `chat` reports are session noise — the whole conversation is browsable
+  // via `kb session`. Hide them from the default listing; `--command chat` shows them.
+  const reports = command ? loaded : loaded.filter(r => normalizeRunCommand(r.command) !== 'chat')
   const recent = reports.slice(-limit).reverse()
 
   if (recent.length === 0) {
@@ -141,33 +144,41 @@ function formatSingleReport(report: RunReport): string {
 
   if (report.stages.length === 0) {
     lines.push('No stages recorded.')
-    return lines.join('\n')
-  }
-
-  const stageHeader = `${padR('Stage', 28) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8)}Cost`
-  const stageDivider = '─'.repeat(stageHeader.length)
-  lines.push(stageHeader)
-  lines.push(stageDivider)
-  for (const s of report.stages) {
-    const cost = s.estimatedCostUsd > 0 ? `$${s.estimatedCostUsd.toFixed(5)}` : '-'
+  } else {
+    const stageHeader = `${padR('Stage', 28) + padR('Duration', 10) + padR('In tok', 8) + padR('Out tok', 8)}Cost`
+    const stageDivider = '─'.repeat(stageHeader.length)
+    lines.push(stageHeader)
+    lines.push(stageDivider)
+    for (const s of report.stages) {
+      const cost = s.estimatedCostUsd > 0 ? `$${s.estimatedCostUsd.toFixed(5)}` : '-'
+      lines.push(
+        padR(s.stage, 28) +
+          padR(formatDuration(s.durationMs), 10) +
+          padR(String(s.inputTokens), 8) +
+          padR(String(s.outputTokens), 8) +
+          cost
+      )
+    }
+    lines.push(stageDivider)
+    const totalCost =
+      report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '-'
     lines.push(
-      padR(s.stage, 28) +
-        padR(formatDuration(s.durationMs), 10) +
-        padR(String(s.inputTokens), 8) +
-        padR(String(s.outputTokens), 8) +
-        cost
+      padR('Total', 28) +
+        padR(formatDuration(report.totalDurationMs), 10) +
+        padR(String(report.totalInputTokens), 8) +
+        padR(String(report.totalOutputTokens), 8) +
+        totalCost
     )
   }
-  lines.push(stageDivider)
-  const totalCost =
-    report.totalEstimatedCostUsd > 0 ? `$${report.totalEstimatedCostUsd.toFixed(5)}` : '-'
-  lines.push(
-    padR('Total', 28) +
-      padR(formatDuration(report.totalDurationMs), 10) +
-      padR(String(report.totalInputTokens), 8) +
-      padR(String(report.totalOutputTokens), 8) +
-      totalCost
-  )
+
+  if (report.turns && report.turns.length > 0) {
+    lines.push('')
+    lines.push('Transcript:')
+    for (const turn of report.turns) {
+      const label = turn.role === 'user' ? 'you' : 'kb '
+      lines.push(`  ${label} │ ${turn.text.replace(/\n/g, '\n      │ ')}`)
+    }
+  }
 
   return lines.join('\n')
 }
@@ -314,7 +325,7 @@ function formatCompareRow(
 
 // ─── Report loading ───────────────────────────────────────────────
 
-async function loadReports(
+export async function loadReports(
   logsDir: string,
   filters: { command?: string; since?: string; base?: string }
 ): Promise<RunReport[]> {

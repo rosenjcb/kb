@@ -72,17 +72,20 @@ function withIndex<T>(baseDir: string, fn: (indexer: SqliteKbIndexer) => T): T {
   }
 }
 
-function factCountForRepo(baseDir: string, slug: string): number {
-  return withIndex(baseDir, i => i.listFactsForQuery(99999).filter(f => f.git_repo === slug).length)
+/** Active index units for one repo (documents + symbols + curated facts). */
+function unitCountForRepo(baseDir: string, slug: string): number {
+  return withIndex(baseDir, i => {
+    return (
+      i.listDocumentsByRepo(slug).length +
+      i.listCodeSymbolsByPathPrefix('', slug).length +
+      i.listFactsForQuery(99999).filter(f => f.git_repo === slug).length
+    )
+  })
 }
 
-function astRefsForFile(baseDir: string, slug: string, relFile: string): string[] {
+function symbolNamesForFile(baseDir: string, slug: string, relFile: string): string[] {
   return withIndex(baseDir, i =>
-    i
-      .listActiveFactsBySourceRefPrefix('ast:')
-      .filter(f => f.git_repo === slug && typeof f.source_ref === 'string')
-      .map(f => f.source_ref as string)
-      .filter(ref => ref.includes(`${relFile}@`))
+    i.listCodeSymbolsByPathPrefix(relFile, slug).filter(s => s.rel_path === relFile).map(s => s.name)
   )
 }
 
@@ -145,8 +148,8 @@ describe('multi-repo incremental rescan', () => {
       expect(existsSync(path.join(baseDir, 'source-files-manifest.json'))).toBe(false)
       expect(existsSync(path.join(baseDir, 'ast-files-manifest.json'))).toBe(false)
 
-      // Part B: an unchanged rescan of BOTH repos must not lose any facts.
-      const before = repos.map(r => ({ slug: r.slug, count: factCountForRepo(baseDir, r.slug) }))
+      // Part B: an unchanged rescan of BOTH repos must not lose any index units.
+      const before = repos.map(r => ({ slug: r.slug, count: unitCountForRepo(baseDir, r.slug) }))
       expect(before.every(r => r.count > 0)).toBe(true)
 
       for (const repo of repos) {
@@ -154,7 +157,7 @@ describe('multi-repo incremental rescan', () => {
       }
 
       for (const { slug, count } of before) {
-        expect(factCountForRepo(baseDir, slug)).toBe(count)
+        expect(unitCountForRepo(baseDir, slug)).toBe(count)
       }
     },
     120000
@@ -196,8 +199,8 @@ describe('multi-repo incremental rescan', () => {
 
       const slugA = repoAEntry.slug
       const slugB = repoBEntry.slug
-      const repoBCountInitial = factCountForRepo(baseDir, slugB)
-      expect(astRefsForFile(baseDir, slugA, 'src/keep.ts').length).toBeGreaterThan(0)
+      const repoBCountInitial = unitCountForRepo(baseDir, slugB)
+      expect(symbolNamesForFile(baseDir, slugA, 'src/keep.ts')).toContain('keepMe')
 
       // --- Change one file in repo A (partial rescan) ---
       await writeFile(
@@ -207,20 +210,20 @@ describe('multi-repo incremental rescan', () => {
       )
       await rescanRepo('multi-partial', repoADir, slugA)
 
-      // The unchanged sibling file's facts survive (the blanket-tombstone data-loss guard).
-      expect(astRefsForFile(baseDir, slugA, 'src/keep.ts').length).toBeGreaterThan(0)
-      // Repo B was never scanned — its fact count is untouched.
-      expect(factCountForRepo(baseDir, slugB)).toBe(repoBCountInitial)
+      // The unchanged sibling file's symbols survive (no blanket purge of the whole repo).
+      expect(symbolNamesForFile(baseDir, slugA, 'src/keep.ts')).toContain('keepMe')
+      // Repo B was never scanned — its unit count is untouched.
+      expect(unitCountForRepo(baseDir, slugB)).toBe(repoBCountInitial)
 
       // --- Delete a file in repo A (pure-deletion rescan) ---
       await rm(path.join(repoADir, 'src/keep.ts'))
       await rescanRepo('multi-partial', repoADir, slugA)
 
-      // Only the deleted file's facts are purged.
-      expect(astRefsForFile(baseDir, slugA, 'src/keep.ts')).toEqual([])
-      // The changed file's facts remain, and repo B is still untouched.
-      expect(astRefsForFile(baseDir, slugA, 'src/a.ts').length).toBeGreaterThan(0)
-      expect(factCountForRepo(baseDir, slugB)).toBe(repoBCountInitial)
+      // Only the deleted file's symbols are purged.
+      expect(symbolNamesForFile(baseDir, slugA, 'src/keep.ts')).toEqual([])
+      // The changed file's symbols remain, and repo B is still untouched.
+      expect(symbolNamesForFile(baseDir, slugA, 'src/a.ts')).toContain('aOne')
+      expect(unitCountForRepo(baseDir, slugB)).toBe(repoBCountInitial)
     },
     120000
   )

@@ -4,7 +4,6 @@ import {
   isEvidenceLabel,
   parseEvidenceLabel,
 } from '../core/evidence-label'
-import { DatabaseSync } from 'node:sqlite'
 import {
   MAX_FACT_CONTENT_CHARS,
   formatRetrievedFactsForLLM,
@@ -16,8 +15,7 @@ import type { LLMProvider, Message, ToolDefinition } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
 import { loadPrompt } from '../prompts/loader.js'
 import type { ChatTrace } from '../service/chat-types.js'
-import { DEFAULT_FACT_LIMIT } from '../tools/facts-query-research-orchestrator.js'
-import { expandQueryWithGraph, kbIndexDbPath } from '../tools/graph-query-expansion.js'
+import { DEFAULT_FACT_LIMIT } from '../tools/hybrid-retriever.js'
 import { type Printer, createReasoningProgressSink } from '../ui/printer.js'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { CuratorAudit } from './intent-cli.js'
@@ -290,19 +288,7 @@ export async function runChatSynthesis(params: {
         params.printer.chatMeta('query', q)
         trace('tool_call', { q })
 
-        let expandedQuery = q
-        if (params.kbStorageDir && !params.isAllFacts) {
-          try {
-            const db = new DatabaseSync(kbIndexDbPath(params.kbStorageDir), { readOnly: true })
-            try {
-              expandedQuery = expandQueryWithGraph(q, db)
-            } finally {
-              db.close()
-            }
-          } catch {
-            // graph expansion is best-effort
-          }
-        }
+        const expandedQuery = q
 
         const retrievalRun = await withStageProgress(
           params.printer,

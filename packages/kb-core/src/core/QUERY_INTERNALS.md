@@ -1,190 +1,134 @@
 ---
 type: "Architecture"
-title: "Query Internals: Facts Retrieval"
-description: "The shared facts-retrieval path behind kb query and chat QUERY turns."
+title: "Query Internals: Hybrid Retrieval"
+description: "The shared retrieval path behind kb query and chat QUERY turns."
 resource: ./src/core
-tags: [query, retrieval, facts]
-timestamp: 2026-06-21T00:00:00Z
+tags: [query, retrieval, hybrid]
+timestamp: 2026-08-09T00:00:00Z
 ---
 
-# Query internals: facts retrieval
+# Query internals: hybrid retrieval
 
-`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`** (`src/cli/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** → **`read_facts`** (registry in `src/tools/kb-tools-registry.ts`). There is **no** workspace README injection and **no** markdown chunk hybrid pipeline on this path.
+`kb query` and chat QUERY turns share **`runQueryTruthRetrieval()`**
+(`src/query/query-truth-retrieval.ts`): **`runIntentLoop`** → **`DefaultIntentRouter`** →
+**`read_facts`** (registry in `src/tools/kb-tools-registry.ts`) →
+**`FactsDocumentReader.queryDocuments()`** → **`retrieveHybrid`**. There is no workspace
+README injection on this path.
 
-## Evidence store
+> **History.** Retrieval used to be a facts-only multi-pond BFS that walked `fact_edges`
+> across repos (`FactsQueryResearchOrchestrator`). That graph and orchestrator were removed
+> in the indexing redesign; retrieval is now a single bounded hybrid pass (fanned out in
+> deep mode). See [`tools/hybrid-retriever.ts`](../tools/hybrid-retriever.ts).
 
-- **`facts` / `facts_fts`** — canonical rows for Q&A (`SqliteKbIndexer.searchFacts`, concept links, deterministic semantic scores over fact ids).
-- **Documents** — human-facing artifacts (`kb docs`, publish). They are **not** chunked for `read_facts`.
+## Retrieval units
 
-## Shallow vs deep discovery
+Retrieval scores **three unit types** in one fused pool — not facts alone:
 
-The router maps the legacy **`read_documents`**-shaped envelope to **`FactsDocumentReader.queryDocuments()`** (`src/tools/facts-document-reader.ts`).
+- **`documents`** / `documents_fts` — whole markdown files.
+- **`code_symbols`** / `code_symbols_fts` — exported AST symbols with source text.
+- **`facts`** / `facts_fts` — curated atomic claims.
+
+## `retrieveHybrid` — six lanes, RRF, one hop
+
+Each unit type is searched by a **lexical** lane (FTS5/BM25, `LANE_DEPTH = 40`) and a
+**neural** lane (embedding cosine that re-ranks the lexical pool). The six ranked lists are
+fused with **Reciprocal Rank Fusion** (`score += 1 / (RRF_K + rank)`, `RRF_K = 60`), then a
+**depth-1 doc↔symbol hop** over `doc_code_links` (`HOP_LIMIT = 8`) pulls in the code a top
+document describes and the docs that describe a top symbol. The result is capped at
+`DEFAULT_FACT_LIMIT` (40) and its `detail` string is `hybrid:docs=…,symbols=…,facts=…,hops=…`.
+
+Embeddings are optional: with `KB_EMBEDDER=none` the neural lanes fall back to a
+deterministic hash vector and the lexical lanes carry the result. The reader pre-embeds the
+query once (`cacheQueryEmbedding`) so every pass scores against one vector.
+
+## Shallow vs deep
 
 | `discoveryDepth` | Behavior |
 |------------------|----------|
-| **`shallow`** | Lexical FTS over facts (`searchFacts`), or `listFactsForQuery` when the query string is empty. |
-| **`deep`** | **`FactsQueryResearchOrchestrator`** (`src/tools/facts-query-research-orchestrator.ts`): adaptive passes merging **BFS edge-walk neighbors** (`fact_edges`), lexical hits, concept-frontier rows, and deterministic semantic rescoring until the LLM judge confirms sufficiency, the frontier is exhausted, or a safety budget is reached. Retrieval is **repo-scoped**: expansion lands in whichever repo the strongest hit belongs to (via the fact's `git_repo` column) and exhausts that repo's fact pool first, then walks the cross-repo `fact_edges` to sibling repos (`depends_on_repo` links first). |
+| **`shallow`** | A single `retrieveHybrid` pass over the query. |
+| **`deep`** (default for `kb query`) | Fan-out: the base query **plus** sub-queries, each a `retrieveHybrid` pass, fused again with RRF (`mergeRetrievals`, k=60), then curated. |
 
-## Deep loop — per-iteration sources
-
-Each pass round-robins an **exploration pond** — a sub-query with its own BFS frontier — so one code-heavy neighborhood cannot monopolize the walk.
-
-Pond seeds come from `buildPondQueries`: the full query, token pairs (`languages supported`, `init scan`, …), and single-token fallbacks. Each pond gets a diverse lexical seed (mixed `source_kind`) before the loop starts.
-
-Each pass merges five candidate streams before dedup and scoring:
-
-1. **Edge neighbors** — `getFactNeighbors(activePond.frontierFactIds, seenIds, perIterationLimit)`: one BFS hop from the **active pond's** frontier only.
-2. **Lexical (primary)** — FTS for the original query string.
-3. **Lexical (pond)** — FTS for the active pond's sub-query (skipped when identical to primary).
-4. **Concept frontier** — facts sharing any concept token in the active concept set.
-5. **Concept rows** — facts sharing active concepts (broader union than frontier).
+Deep-mode sub-queries come from **ontology-typed inquiry lanes** (`query/inquiry-lanes.ts`,
+built by the caller from the stage-0 scope verdict — deterministic, entity-grounded, not
+gated on query length). When no entity resolved, the generic LLM **query expander**
+(`tools/query-expander.ts`, short-query gated) is the fallback.
 
 ```mermaid
 flowchart TD
-  P["active pond<br/>(sub-query + BFS frontier)"] --> M{"merge 5 streams"}
-  M --> E["1. edge neighbors<br/>getFactNeighbors"]
-  M --> LP["2. lexical (primary FTS)"]
-  M --> LPo["3. lexical (pond FTS)"]
-  M --> CF["4. concept frontier"]
-  M --> CR["5. concept rows"]
-  E --> DD
-  LP --> DD
-  LPo --> DD
-  CF --> DD
-  CR --> DD
-  DD["dedup + score by source_kind<br/>(+anchor boosts)"] --> UF["update pond frontier<br/>advance graphHops"]
-  UF -->|"sufficiency / frontier exhausted / budget"| STOP([stop])
-  UF -->|"else → next pond"| P
+  Q["query (+ scope-expanded terms)"] --> B["base retrieveHybrid pass"]
+  Q --> L["inquiry-lane / expander sub-query passes"]
+  B --> RRF["RRF merge (mergeRetrievals)"]
+  L --> RRF
+  RRF --> CUR["fact curator (deep only)"]
+  CUR --> OUT["ranked unit pool → synthesis"]
 ```
 
-Primary lexical hits from pass 1 are tracked as **anchors** (+0.10 score boost; up to 3 reserved in the final slice). When a pond stalls (no new edge or pond-lexical facts), it is marked exhausted and the loop advances to the next pond. Fresh concept neighbors can spawn an additional pond mid-loop. `frontier_exhausted` fires only when **all ponds** are exhausted and every stream returns nothing new.
+## `allFacts` mode
 
-After scoring, the active pond's frontier is updated from its edge neighbors, pond-lexical hits, and local top scores. `graphHops` counts global BFS levels across ponds.
+`resolveFactRetrievalMethod(config) === 'all_facts'` (or the reader's default) dumps every
+fact once via `listFactsForQuery` instead of retrieving — for agents that want the whole
+store in context. Subsequent calls in the same session return empty (`already-in-context`).
 
-**Repo ordering:** the walk first exhausts the fact pool of the repo the strongest hit belongs to (the fact's `git_repo`), then crosses into sibling repos by following cross-repo `fact_edges` — `depends_on_repo` edges are walked before `cross_repo_symbol` / `references_repo`. There is no fact-category widening; repo edges drive the reach across subgraphs.
+## Post-retrieval curation (deep)
 
-## Fact scoring
-
-Scoring differs by `source_kind` because identifier-name text overlap is unreliable for code facts.
-
-**Doc facts** (`import_doc`, `submit`):
-```
-score = overlapScore × 0.45 + semanticScore × 0.35 + evidenceWeight × 0.20 + boosts
-```
-
-**Code facts** (`import_code`):
-```
-score = overlapScore × 0.20 + graphProximityScore × 0.60 + evidenceWeight × 0.20 + boosts
-```
-
-- `overlapScore` — fraction of query tokens present in the fact text.
-- `semanticScore` — deterministic hash-based cosine similarity (lexical proxy, not neural embeddings).
-- `graphProximityScore` — max score of the frontier parent that led to this code fact via BFS traversal. Zero when the fact was found only by text search. This is the primary discriminator for code facts: a function discovered via graph traversal from a high-scoring doc fact scores 0.55–0.80; a function matched only by identifier name overlap scores 0.25–0.39.
-- `evidence` — what kind of evidence the fact is, stored as a label and turned into a weight by the single table in [`core/fact-evidence.ts`](./fact-evidence.ts): `incidental` 0.3 (a bare import edge), `contextual` 0.55, `descriptive` 0.6, `declarative` 0.65 (an export), `definitional` 0.7 (`extends` / `implements`), `curated` 0.8. An import edge therefore ranks below an inheritance edge by construction. Those weights are inherited from the pre-label constants and are **asserted, not measured** — retuning them needs no reindex (the label is what is stored), which is what makes them testable once the ablation harness lands (see #207).
-- `boosts` — anchor boost +0.10, frontier boost +0.06.
-
-Facts scoring below `MIN_FACT_SCORE` (0.20) are dropped from the final result set (reserved anchor and per-source-kind minimum facts bypass this floor).
-
-## Sufficiency and early exit
-
-Three stopping criteria, checked in this order each iteration:
-
-1. **Heuristic** — `assessSufficiency()`: exits immediately when ≥20 facts score ≥0.50. Fast, no LLM cost.
-2. **LLM sufficiency judge** (`src/tools/facts-sufficiency-judge.ts`): called every 3 iterations when ≥5 facts score ≥0.50. Sends condensed top facts to the LLM and asks "ANSWERABLE or INSUFFICIENT?" in a single word. Exits with `stop:llm_judge_answerable` when the LLM confirms. Falls back to `insufficient` on any error.
-3. **Plateau** — 3 consecutive iterations with no new fact scoring ≥0.50 triggers `weak_evidence_after_exhaustion`.
-
-The judge requires an `LLMProvider` to be wired into `FactsDocumentReader` (via `createKBToolsRegistry(..., { taskProvider: llm })`). When no LLM is available, only the heuristic and plateau checks apply.
+A **fact curator** (`src/tools/fact-curator.ts`) runs when the pool exceeds its threshold
+(`shouldCurate`). It is judge-in-the-loop: deterministically auto-keeps high-overlap units,
+sends the rest to a single structured LLM verdict (`{keep, gaps, sufficient}`) keyed on the
+**raw user question**, then hard-drops what the judge did not keep. When it reports `gaps`
+and the set is not yet `sufficient`, it issues **bounded shallow re-discovery** (a
+`retrieveHybrid` pass over the gap sub-query, skipping known ids) to refill. It fails safe to
+the unfiltered pool on any LLM/parse error and never returns empty. Decisions are recorded
+out-of-band on **`retrieval.curation`** (kept/dropped/re-queried counts) — never injected
+into the synthesis context.
 
 ## Answer enrichment
 
-After retrieval, ranked facts are turned into prose via **`formatRetrievedFactsForLLM()`** (`src/core/retrieval-context.ts`) with `maxContentChars: 2000` per fact.
+After retrieval, ranked units are turned into prose via **`formatRetrievedFactsForLLM()`**
+(`src/core/retrieval-context.ts`).
 
 | Command | Synthesis | Notes |
 |---------|-----------|-------|
-| **`kb query`** | **`enrichReadDocumentsAnswerWithLLM()`** (`intent-cli.ts`) | **One-shot** — single LLM call; uses pre-expansion `synthesisQuestion` for prompt/scaffold checks (not graph-expanded query string). |
-| **`kb chat`** | **`runChatSynthesis()`** (`chat-cli.ts`) | **Multi-turn** — optional `query_kb` tool rounds for targeted follow-up retrieval before final answer. |
-
-A **post-retrieval fact curator** (`src/tools/fact-curator.ts`) runs when the pool exceeds 12 facts. It is judge-in-the-loop, not a one-shot filter: it deterministically **auto-keeps** high-overlap facts (no LLM cost), sends the rest to a single **structured LLM verdict** (`{keep, gaps, sufficient}`) keyed on the **raw user question** (not the graph-expanded string), then **hard-drops** everything the judge did not keep — there is **no 15% floor**. When the judge reports `gaps` and the set is not yet `sufficient`, the curator issues **bounded shallow re-discovery** queries (`searchFacts`, excluding what's already known) to refill, so aggressive dropping is safe. It fails safe to the unfiltered pool on any LLM/parse error, and guards against ever returning an empty set (deterministic top-K fallback). Curator decisions are recorded **out-of-band** on `retrieval.curation` (kept/dropped/re-queried counts) for terminal + session-log surfacing — they are **never** injected into the synthesis context, since the whole point is to shrink the prompt.
+| **`kb query`** | **`enrichReadDocumentsAnswerWithLLM()`** (`intent-cli.ts`) | One-shot — a single LLM call over the retrieved pool. |
+| **`kb chat`** | **`runChatSynthesis()`** (`chat-cli.ts`) | Multi-turn — optional `query_kb` tool rounds for targeted follow-up before the final answer. |
 
 ## When synthesis fails
 
-Retrieval and synthesis fail independently, and the difference is load-bearing: retrieval
-is deterministic, so an identical query can return identical evidence and still produce no
+Retrieval and synthesis fail independently, and the difference is load-bearing: retrieval is
+deterministic, so an identical query can return identical evidence and still produce no
 answer when the provider call fails. Synthesis therefore **never fails silently**.
 
 A provider error (429, spent credits, bad key, 5xx, timeout) or an empty completion records
 **`data.answerError`** — a structured `{ stage, kind, message, provider, status, retryable }`
 (see `src/core/llm-error.ts`). `kind` is classified rather than inferred from the status code,
 because credit exhaustion is not uniform: Anthropic reports it as `400 credit balance is too
-low`, OpenAI as `429 insufficient_quota`. Status alone would file the first as a bad request
-and the second as a rate limit.
+low`, OpenAI as `429 insufficient_quota`.
 
 Rules that hold on this path:
 
 - **Retrieval results survive.** The sources are real; only the answer-writing step failed.
-- **`status` stays `accepted`.** `isReadFactsResult()` gates on it, and flipping it to `error`
+- **`status` stays `accepted`.** `isReadFactsResult()` gates on it; flipping it to `error`
   would strip sources from chat replies and skip re-synthesis on retry.
-- **Best-effort stages report too.** Scope inference, graph rerank, the sufficiency judge, and
-  the curator all keep failing safe, but each now records on **`retrieval.degraded[]`** instead
-  of vanishing into a bare `catch`. A sufficiency-judge outage used to be indistinguishable
-  from a genuine `insufficient` verdict, which silently burned the full iteration budget.
+- **Best-effort stages report too.** Scope inference and the curator fail safe, each recording
+  on **`retrieval.degraded[]`** instead of vanishing into a bare `catch`.
 - **The curator claims nothing it did not do.** When it falls back (`fellBack`), it contributes
-  no research note — the previous behavior told the synthesis prompt the evidence had been
-  "focused to N facts" when no judging had run.
+  no research note.
 
-Terminal **`evidence>`** is a **single summary header** (`formatEvidenceSummaryHeader()` in `src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles, walk/stop/conf. No per-fact bullet lines. See **`src/core/EVIDENCE_SUMMARY.md`**.
+Terminal **`evidence>`** is a single summary header (`formatEvidenceSummaryHeader()` in
+`src/core/evidence-summary.ts`) — count, doc/code mix, top themes, lead titles.
 
 ## Deep query trace (opt-in)
 
-The per-run report on `~/.kb/logs/<date>.jsonl` (see `src/core/telemetry.ts`) is a **distillation** — counts, stop reason, curator drop **ids**. It answers "how far did the walk go", not "what did it actually hold". For the latter, `kb query --trace` (or `KB_QUERY_TRACE=true`) turns on a **full content dump** written out-of-band to `~/.kb/traces/<traceId>.json` (`src/tools/query-trace.ts`):
-
-- **`lanes[].discovered`** — every fact the walk scored, best score first, **with content** (code facts dump `source_text`). This is the "did it ever find fact X?" record.
-- **`lanes[].returned`** / **`lanes[].droppedBelowFloor`** — what reached curation vs. what was cut below `MIN_FACT_SCORE`.
-- **`lanes[].passTrace`** / **`checkpoints`** — the per-pass count breadcrumbs and stop/continue decisions.
-- **`curation`** — the facts the curator kicked out, **with the judge's reason and full content** (recovered by id from `discovered`).
-
-The dump is built at two seams — the orchestrator's `buildResponse` (discovery) and `FactsDocumentReader.finalizeDeep` (curation) — and is **never** fed into synthesis: `finalizeDeep` writes the file and strips the heavy lane before returning. Off by default; it never affects the answer or the eval score.
-
-## Limits
-
-**Deep loop** (`discoveryDepth: deep` — default for `kb query`):
-
-| Layer | Default |
-|-------|---------|
-| Facts sent to synthesis | Ranked pool above `MIN_FACT_SCORE` (0.20); **fact curator** hard-drops off-topic facts + re-discovers gaps when **>12** facts |
-| Per-fact content | 2000 chars (`MAX_FACT_CONTENT_CHARS`) |
-| Per DB call | 50 rows (`perIterationLimit`) |
-| Loop passes | 24 (`KB_FACTS_QUERY_MAX_ITERS`; absolute max 512) |
-| Graph hops | 20 (`KB_FACTS_QUERY_MAX_HOPS`) |
-| Relevant-fact bar | score ≥ `RELEVANT_FACT_SCORE` (0.35) for plateau / judge gating |
-| Plateau min relevant | `PLATEAU_MIN_RELEVANT` (12); 18 when concept coverage is low |
-
-**Shallow** (`--discovery shallow`): lexical FTS; retrieval defaults to 500 facts (`DEFAULT_FACT_LIMIT`).
-
-## Graph expansion
-
-When graph mode is enabled, **`expandQueryWithGraph()`** in `index.ts` / `chat-cli.ts` widens the query string before **`read_facts`**. See **`src/tools/GRAPH.md`**. Optional post-retrieval rerank: **`rerankByGraphConnectivity()`**.
-
-## Environment knobs (facts deep loop)
-
-- `KB_FACTS_QUERY_MAX_ITERS` (default `24`, clamped 1–24; `-1` = unlimited up to 512 passes)
-- `KB_FACTS_QUERY_MAX_HOPS` (default `20`, clamped 1–40; `-1` = unlimited)
-- `KB_FACTS_QUERY_MAX_PONDS` (default `6`, clamped 2–12; `-1` = unlimited up to 32 ponds)
-
-Use `-1` only for debugging — absolute safety caps still apply on iters/ponds.
-
-## Crawl (init-time only)
-
-Code facts at query time come from the AST-indexed `facts` table (`source_kind='import_code'`). See **`src/core/INIT.md`** for ingest coverage.
+`kb query --trace` (or `KB_QUERY_TRACE=true`) writes a full content dump out-of-band to
+`~/.kb/traces/<traceId>.json` (`src/tools/query-trace.ts`): what each pass discovered (with
+content), what reached curation vs. what was cut, and the curator's keep/drop reasons. It is
+never fed into synthesis and never affects the answer or the eval score.
 
 ## See also
 
-- `src/cli/query-truth-retrieval.ts` — shared retrieval entry for CLI query + chat
-- `src/tools/facts-document-reader.ts` — shallow path + deep orchestrator dispatch
-- `src/tools/facts-query-research-orchestrator.ts` — deep fact retrieval loop
-- `src/tools/facts-sufficiency-judge.ts` — LLM-based early-exit judge
-- `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator (hard-drop + bounded re-discovery)
-- `src/tools/query-trace.ts` — opt-in `--trace` full content dump of discovery + curation
-- `src/tools/sqlite-kb-index.ts` — `searchFacts`, concepts, semantic scores
+- `src/query/query-truth-retrieval.ts` — shared retrieval entry for CLI query + chat
+- `src/tools/facts-document-reader.ts` — shallow pass + deep fan-out + curation dispatch
+- `src/tools/hybrid-retriever.ts` — six-lane RRF retriever + depth-1 doc↔symbol hop
+- `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator
+- `src/tools/query-trace.ts` — opt-in `--trace` content dump
 - `src/core/CHAT.md` — chat vs query alignment
 - `src/core/AGENT_LOOP.md` — intent loop wiring

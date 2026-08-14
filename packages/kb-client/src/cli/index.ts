@@ -10,14 +10,11 @@ import path from 'node:path'
 import { CLIENT_VERSION } from '../version.js'
 import {
   ensureOperationalBaseDir,
-  findKbFile,
-  formatDefaultCommandHelp,
   formatUseCommandHelp,
   migrateLegacyKbSessionJson,
   readBaseConfig,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
-  writeDefaultBase,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import {
@@ -25,7 +22,7 @@ import {
   uninitializedBaseNotice,
 } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
-import { isDocsGenerateJsonOutputArgs } from '@kb/core/cli/docs-generate-cli.js'
+import { cliHelpCommands } from '@kb/core/commands/command-catalog.js'
 import {
   applyConfigToEnv,
   ensureDefaultConfig,
@@ -36,16 +33,23 @@ import type { KbConfig } from '@kb/core/config/kb-config.js'
 import {
   formatSkillInstallReport,
   formatSkillUninstallReport,
+  formatSkillsStatusReport,
   installHooks,
   installMcpConfigs,
   installSkillIntoProject,
   installSkillsGlobally,
+  readSkillsStatus,
   uninstallHooks,
   uninstallMcpConfigs,
   uninstallSkills,
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
-import { discoverRemoteDefaultBase, isClientLocalCommand, runRemoteCliCommand } from './remote-commands.js'
+import {
+  discoverRemoteDefaultBase,
+  resolveDisplayBase,
+  isClientLocalCommand,
+  runRemoteCliCommand,
+} from './remote-commands.js'
 import {
   resolveServerConnection,
   formatServerAddress,
@@ -79,7 +83,7 @@ export const FIRST_RUN_WELCOME_NOTICE = [
   'Quick start:',
   '  kb query       ask a question about your codebase',
   '  kb graph       explore how modules connect',
-  '  kb docs        browse or generate documentation',
+  '  kb facts       list, search, or show KB facts',
   '',
   'Type a question below or press ? for help.',
 ].join('\n')
@@ -102,20 +106,10 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
     'Core commands:',
-    '  base        Manage KB bases (use, delete)',
-    '  graph       Inspect or edit the knowledge graph',
-    '  entities    Inspect harvested entities (services, surfaces) and name collisions',
-    '  docs        Browse KB documents',
-    '  facts       List, search, or show KB facts',
-    '  publish     Publish KB docs',
-    '  sync        Install the latest published KB release',
-    '  logs        Browse and compare run reports',
-    '  skills      Manage agent skills',
-    '  mcp         Install/remove Claude Code + Cursor MCP kb entries',
-    '  uninstall   Remove the kb client binary (server/data untouched; see kb-server uninstall)',
+    ...formatCommandList(false),
     '',
     'Intent commands:',
-    '  query       Search the knowledge base',
+    ...formatCommandList(true),
     '',
     cmdHelpHint(mode),
     '',
@@ -132,10 +126,20 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('mcp install --host https://kb.example.com:38117', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
     `  ${cmd('sync', mode)}`,
-    `  ${cmd('docs list --base dogfood', mode)}`,
+    `  ${cmd('facts list --base dogfood', mode)}`,
   ]
     .filter((line): line is string => line !== null)
     .join('\n')
+}
+
+/**
+ * Render the `kb --help` command list (Core or Intent) straight from the shared
+ * command catalog, so a command added to the catalog shows up in help automatically.
+ */
+function formatCommandList(intent: boolean): string[] {
+  const commands = cliHelpCommands().filter(c => c.intent === intent)
+  const width = Math.max(...commands.map(c => c.name.length)) + 2
+  return commands.map(c => `  ${c.name.padEnd(width)}${c.summary}`)
 }
 
 function printMcpHelp(): string {
@@ -172,17 +176,19 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base', mode)}                          Show status and list all bases`,
     `  ${cmd('base list', mode)}                     List all initialized bases`,
     `  ${cmd('base use <base>', mode)}               Switch the active base`,
-    `  ${cmd('base use --default <base>', mode)}     Set the persistent default base`,
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
-    `  ${cmd('base delete <base> [--force]', mode)}  Delete a base`,
     '',
-    'The repos a base indexes and the paths it skips are declared on the server via',
-    'KB_SERVER_BASE_GIT_REPOS and KB_SERVER_IGNORE — see packages/kb-server/README.md.',
+    'With no active base selected you are on the server\'s own default base (shown as',
+    '"(server default)"); `base use <base>` switches to a named base for this client.',
+    '',
+    'Bases are created and deleted on the server (operator actions): a base is built by',
+    '`kb-server base create --base <name> --git <repo>` and removed by',
+    '`kb-server base delete --base <name>`. The repos a base indexes and the paths it skips',
+    'are declared on the server — see packages/kb-server/README.md.',
     '',
     'Examples:',
     `  ${cmd('base', mode)}`,
     `  ${cmd('base use dogfood', mode)}`,
-    `  ${cmd('base delete ci-test --force', mode)}`,
   ].join('\n')
 }
 
@@ -203,7 +209,7 @@ export async function runMainWithOutput(
     return
   }
 
-  // Forward server-owned commands (query, docs, facts, graph, logs, publish, base list/delete, …).
+  // Forward server-owned commands (query, docs, facts, graph, logs, base list, …).
   if (!isClientLocalCommand(args)) {
     const code = await runRemoteCliCommand(args, out, config, mode)
     if (code && mode === 'cli') process.exitCode = code
@@ -214,16 +220,26 @@ export async function runMainWithOutput(
     const subArgs = args.slice(1)
     const subCmd = subArgs[0]
 
-    // Only `base use` is client-local; list/delete already forwarded above.
+    // Only `base use` (and `base delete`, which we refuse) are client-local; `base list`
+    // was already forwarded above.
     if (subCmd === '--help' || subCmd === '-h' || subCmd === 'help') {
       out.log(printBaseHelp(mode))
+      return
+    }
+
+    if (subCmd === 'delete') {
+      out.error(
+        'Deleting a base is an operator action on the server, not a client command. ' +
+          'Run `kb-server base delete --base <base>` on the server host (or `kb-server uninstall --purge` ' +
+          'to remove all server data). The client can only switch bases: `kb base use <base>`.'
+      )
+      if (mode === 'cli') process.exitCode = 1
       return
     }
 
     if (subCmd === 'use') {
       const useArgs = subArgs.slice(1)
       const show = useArgs.includes('--show')
-      const makeDefault = useArgs.includes('--default')
       const help = useArgs.includes('--help') || useArgs.includes('-h') || useArgs[0] === 'help'
       const base = useArgs.find(token => !token.startsWith('--'))
 
@@ -234,7 +250,6 @@ export async function runMainWithOutput(
 
       if (show || !base) {
         const configured = await readBaseConfig()
-        const kbFileBase = await findKbFile(process.cwd())
         let effective: Awaited<ReturnType<typeof resolveEffectiveBaseDir>> | null = null
         try {
           effective = await resolveEffectiveBaseDir()
@@ -247,16 +262,20 @@ export async function runMainWithOutput(
           out.log(`Base: ${effective.baseName}`)
           out.log(`Resolved path: ${effective.baseDir}`)
         } else {
-          out.log(CLI_ERROR_NO_KB_BASE)
+          // No local active base — surface the server's own default so it's clear which
+          // base commands will actually hit (and that the user isn't truly baseless).
+          const serverDefault = await discoverRemoteDefaultBase(config)
+          if (serverDefault) {
+            out.log('Source: server default')
+            out.log(`Base: ${serverDefault} (server default)`)
+            out.log('No active base selected — using the server default.')
+            out.log(`Run \`${cmd('base use <base>', mode)}\` to switch to a named base.`)
+          } else {
+            out.log(CLI_ERROR_NO_KB_BASE)
+          }
         }
         if (configured.activeBase) {
           out.log(`Active base: ${configured.activeBase}`)
-        }
-        if (configured.defaultBase) {
-          out.log(`Default base: ${configured.defaultBase}`)
-        }
-        if (kbFileBase) {
-          out.log(`.kb file: ${kbFileBase}  (found in current or ancestor directory)`)
         }
         return
       }
@@ -272,13 +291,7 @@ export async function runMainWithOutput(
 
       await writeSessionBase(base)
       const resolved = await ensureOperationalBaseDir(base)
-      const kbFileBase = await findKbFile(process.cwd())
-      if (makeDefault) {
-        await writeDefaultBase(base)
-        out.log(formatDefaultCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
-        return
-      }
-      out.log(formatUseCommandHelp(base, resolved, mode, kbFileBase ?? undefined))
+      out.log(formatUseCommandHelp(base, resolved, mode))
       return
     }
 
@@ -333,14 +346,15 @@ export async function runMainWithOutput(
         out.error(`❌ ${message}`)
         if (mode === 'cli') process.exitCode = 1
       }
-    } else {
+    } else if (subcommand === '--help' || subcommand === '-h' || subcommand === 'help') {
       out.log(
         [
-          'Usage: kb skills <subcommand>',
+          'Usage: kb skills [subcommand]',
           '',
           'Manage the bundled KB agent skills for Claude, Cursor, Codex, and Copilot.',
           '',
           'Subcommands:',
+          '  (none)      Show install status of each agent skill',
           '  install     Install skill files, profile readmes, kb-first hook,',
           '              and MCP configs for the active connection (localhost default)',
           '  uninstall   Remove skill files, readme entries, hook, and MCP entries',
@@ -349,6 +363,18 @@ export async function runMainWithOutput(
           '                        or: kb mcp install --host <host|url>',
         ].join('\n')
       )
+    } else if (!subcommand) {
+      // Bare `kb skills` → show whether each agent's skill is installed.
+      try {
+        out.log(formatSkillsStatusReport(await readSkillsStatus()))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        out.error(`❌ ${message}`)
+        if (mode === 'cli') process.exitCode = 1
+      }
+    } else {
+      out.error(`Unknown skills subcommand: ${subcommand}\n\nRun \`${cmd('skills help', mode)}\`.`)
+      if (mode === 'cli') process.exitCode = 1
     }
     return
   }
@@ -435,16 +461,19 @@ async function main() {
     }
 
     const serverHost = formatServerAddress(resolveServerConnection(kbConfig))
-    let sessionBase: string | undefined
-    try {
-      sessionBase = (await resolveEffectiveBaseDir()).baseName
-    } catch {
-      // no base selected locally — ask the server which base it defaults to
-      sessionBase = await discoverRemoteDefaultBase(kbConfig)
-    }
-    startupNotices.unshift(formatConnectionContext(kbConfig, sessionBase))
+    // One base resolver for the wire and the UI; if none is selected locally, show
+    // the base kb-server will actually serve (its own default), labeled as such.
+    const display = await resolveDisplayBase(kbConfig)
+    startupNotices.unshift(
+      formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+    )
     const { launchTui } = await import('../tui/index.js')
-    await launchTui(kbConfig, { startupNotices, serverHost })
+    await launchTui(kbConfig, {
+      startupNotices,
+      serverHost,
+      baseName: display.name,
+      baseIsServerDefault: display.isServerDefault,
+    })
     return
   }
 
@@ -457,20 +486,12 @@ async function main() {
   const kbConfig = await ensureDefaultConfig()
   applyConfigToEnv(kbConfig)
 
-  // Skip banner when docs generate --output json (stdout must be parseable JSON only).
-  const machineJsonStdout = isDocsGenerateJsonOutputArgs(args)
-  if (!machineJsonStdout) {
-    console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
-    let cliBase: string | undefined
-    try {
-      cliBase = (await resolveEffectiveBaseDir()).baseName
-    } catch {
-      // no base selected locally — ask the server which base it defaults to
-      cliBase = await discoverRemoteDefaultBase(kbConfig)
-    }
-    console.log(formatConnectionContext(kbConfig, cliBase))
-    console.log('')
-  }
+  console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
+  const display = await resolveDisplayBase(kbConfig)
+  console.log(
+    formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+  )
+  console.log('')
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }
 

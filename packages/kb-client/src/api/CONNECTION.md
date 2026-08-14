@@ -47,9 +47,13 @@ Auth: `KB_SERVER_API_KEY` → Bearer on every request (`kb-api-client.ts`). The 
 
 ### Base on the wire (`X-KB-Base`)
 
-One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request**: `resolveServerConnection` resolves `ServerConnection.base` (from `--base` / `--connection-string` → `KB_BASE`, then `KB_ACTIVE_BASE`, then `config.server.base`) and `kb-api-client` stamps it as the `X-KB-Base` header on every request. An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
+One `kb-server` process can serve **many bases** (psql/libpq's one-postmaster-many-databases model). The client selects the base **per request** via **one** resolver, `resolveActiveBaseName` — `KB_BASE` (explicit `--base` / `--connection-string`) → active base (via `resolveEffectiveBaseDir`) → `config.server.base`. There is **no client-side default base**: the default is the server's concern. `resolveServerConnectionWithBase` puts the resolved base on `ServerConnection.base` and `kb-api-client` stamps it as the `X-KB-Base` header on every request. An **omitted** header ⇒ the server uses its boot/default base (libpq's behavior when `dbname` is omitted); an **unknown** base ⇒ `404 unknown_base`.
 
-The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Client-side `kb base use` only updates the local connection-profile hint (`~/.kb/state/active-base`).
+**The server always has a base.** `kb-server start` binds one at boot — `--base` / `KB_SERVER_BASE_NAME` / `KB_BASE`, else a locally selected base, else the golden default slug `base` (à la Postgres's `postgres` DB) — so it can never boot baseless. A client therefore always lands on *some* base even with nothing selected locally.
+
+**Display can never disagree with the wire, and never hides the default.** The status bar / CLI banner / chat header resolve their label through `resolveDisplayBase`: the active base when one is selected (identical to what the wire sends), otherwise the server's own default base discovered via `discoverRemoteDefaultBase`, shown as `base: <name> (server default)`. So the user always sees the real base kb-server is serving and can tell at a glance whether it is their chosen active base or the server default — running `kb base use <base>` switches from the default to a named active base.
+
+The server-side index for `<base>` lives under `~/.kb/sessions/<base>/` on the **server host**, not the laptop. Client-side `kb base use` updates the local base state (`~/.kb/state/active-base`), which `resolveActiveBaseName` then reads. (There is no directory `.kb`-file base pin and no persistent client default — both were removed; select a base with `--base` or `kb base use`, or fall back to the server default.)
 
 ### Connection string grammar
 
@@ -101,7 +105,7 @@ Shared formatter: `formatConnectionContext(config, baseName?)` in `server-connec
 
 Display: `host: hostname:port │ base: …`.
 
-**Invariant:** Do not start retrieval or chat without showing connection context first (except machine JSON stdout paths like `docs generate --output json`).
+**Invariant:** Do not start retrieval or chat without showing connection context first.
 
 ## HTTP surface
 
@@ -137,7 +141,7 @@ Operator guide copy lives in `INDEXING_SERVER_MANAGED_NOTICE` (`@kb/core/config/
 
 - `--host` applies only to the current process; profile env vars persist across shells.
 - `formatServerAddress` strips scheme/path — display is `host:port`, not full URL.
-- TUI `serverHost` prop is the host segment only; base updates async after `resolveEffectiveBaseDir`.
+- TUI `serverHost` prop is the host segment only; the status-bar base updates async from `resolveActiveBaseName` (the same value sent as `X-KB-Base`).
 - `base use` is client-local (writes state files); other `base` subcommands hit server admin CLI in remote mode.
 - `mcp`, `skills`, `uninstall`, and `sync` are always client-local — they rewrite agent configs on the laptop, not server state.
 - Startup is read-only for agent wiring: no skill install, no MCP rewrite until the operator runs `kb skills install` / `kb mcp install`.

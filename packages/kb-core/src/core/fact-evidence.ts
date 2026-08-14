@@ -50,24 +50,6 @@ export const FACT_EVIDENCE_KINDS = [
 
 export type FactEvidenceKind = (typeof FACT_EVIDENCE_KINDS)[number]
 
-/**
- * The one numeric table. Consumed only by ranking (`facts-query-research-orchestrator`),
- * where a score has to be arithmetic.
- *
- * These values are the pre-existing per-write-site constants, carried over
- * unchanged so the representation change is provably behavior-neutral. Every one
- * of them is a guess inherited from the float era — they are what the ablation
- * harness (#207) exists to test, and should not be treated as established.
- */
-const FACT_EVIDENCE_WEIGHTS: Record<FactEvidenceKind, number> = {
-  incidental: 0.3,
-  contextual: 0.55,
-  descriptive: 0.6,
-  declarative: 0.65,
-  definitional: 0.7,
-  curated: 0.8,
-}
-
 /** Fallback for rows written before the label existed, or an unrecognized value. */
 export const DEFAULT_FACT_EVIDENCE: FactEvidenceKind = 'curated'
 
@@ -77,21 +59,4 @@ export function isFactEvidenceKind(value: unknown): value is FactEvidenceKind {
 
 export function asFactEvidenceKind(value: unknown): FactEvidenceKind {
   return isFactEvidenceKind(value) ? value : DEFAULT_FACT_EVIDENCE
-}
-
-/** Ranking weight for a label. The only place a fact's evidence becomes a number. */
-export function factEvidenceWeight(kind: FactEvidenceKind | undefined): number {
-  return FACT_EVIDENCE_WEIGHTS[kind ?? DEFAULT_FACT_EVIDENCE]
-}
-
-/**
- * SQL `CASE` expression yielding the ranking weight, for the one query that has
- * to order by evidence in the database rather than in TypeScript. Kept here so
- * the weights are never written down twice.
- */
-export function factEvidenceWeightSql(column: string): string {
-  const cases = FACT_EVIDENCE_KINDS.map(
-    kind => `WHEN '${kind}' THEN ${FACT_EVIDENCE_WEIGHTS[kind]}`
-  ).join(' ')
-  return `CASE ${column} ${cases} ELSE ${FACT_EVIDENCE_WEIGHTS[DEFAULT_FACT_EVIDENCE]} END`
 }

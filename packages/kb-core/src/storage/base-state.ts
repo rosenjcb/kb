@@ -4,7 +4,6 @@ import path from 'node:path'
 
 const STATE_DIR = 'state'
 const ACTIVE_BASE_FILE = 'active-base'
-const DEFAULT_BASE_FILE = 'default-base'
 
 function kbHomeDir(): string {
   const override = process.env.KB_HOME?.trim()
@@ -33,34 +32,26 @@ export async function readActiveBaseName(): Promise<string | undefined> {
   return process.env.KB_ACTIVE_BASE?.trim() || (await readLineFile(ACTIVE_BASE_FILE))
 }
 
-export async function readDefaultBaseName(): Promise<string | undefined> {
-  return process.env.KB_BASE?.trim() || (await readLineFile(DEFAULT_BASE_FILE))
-}
-
 export async function writeActiveBaseName(base: string): Promise<void> {
   await writeLineFile(ACTIVE_BASE_FILE, base)
 }
 
-export async function writeDefaultBaseName(base: string): Promise<void> {
-  await writeLineFile(DEFAULT_BASE_FILE, base)
-}
-
-/** One-time migration from removed config.json base fields into state files. */
+/** One-time migration of the removed config.json active base into the state file. */
 export async function migrateLegacyConfigJsonBases(
-  legacy: { activeBase?: string; defaultBase?: string }
+  legacy: { activeBase?: string }
 ): Promise<void> {
   const configPath = path.join(kbHomeDir(), 'config.json')
   const legacyActivePath = path.join(kbHomeDir(), 'active-base')
+  // The persistent client default base was removed — the server owns the default now.
+  // Drop any leftover default-base state so it can never silently override the active base.
   const legacyDefaultPath = path.join(kbHomeDir(), 'default-base')
+  const stateDefaultPath = statePath('default-base')
 
   if (legacy.activeBase && !(await readLineFile(ACTIVE_BASE_FILE))) {
     await writeActiveBaseName(legacy.activeBase)
   }
-  if (legacy.defaultBase && !(await readLineFile(DEFAULT_BASE_FILE))) {
-    await writeDefaultBaseName(legacy.defaultBase)
-  }
 
-  // Migrate flat files from earlier env-only rollout.
+  // Migrate the flat active-base file from earlier env-only rollout.
   try {
     const flatActive = (await readFile(legacyActivePath, 'utf8')).trim()
     if (flatActive && !(await readLineFile(ACTIVE_BASE_FILE))) {
@@ -69,16 +60,9 @@ export async function migrateLegacyConfigJsonBases(
   } catch {
     // no flat file
   }
-  try {
-    const flatDefault = (await readFile(legacyDefaultPath, 'utf8')).trim()
-    if (flatDefault && !(await readLineFile(DEFAULT_BASE_FILE))) {
-      await writeDefaultBaseName(flatDefault)
-    }
-  } catch {
-    // no flat file
-  }
 
   await rm(configPath, { force: true })
   await rm(legacyActivePath, { force: true })
   await rm(legacyDefaultPath, { force: true })
+  await rm(stateDefaultPath, { force: true })
 }

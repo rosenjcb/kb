@@ -12,8 +12,8 @@ with a curated question pack scored by the same LLM-as-judge rubric.
 \noindent\textbf{Raylib (external benchmark).}  The
 \href{https://github.com/raysan5/raylib}{raylib C library} is the primary
 \emph{external} target: it is not the KB codebase (eliminating evaluator familiarity
-bias), has rich cross-module structure for graph retrieval, and ships stable
-upstream documentation.  $N_{\text{q}} = 11$.
+bias), has rich cross-module structure that exercises the document$\leftrightarrow$symbol
+hop, and ships stable upstream documentation.  $N_{\text{q}} = 11$.
 
 \medskip
 \noindent\textbf{KB self-check.}  Suite \texttt{kb} evaluates KB against its
@@ -42,7 +42,7 @@ Each evaluation executes, in order:
 the named session and \texttt{kb scan} on subsequent runs; \texttt{--force-init}
 deletes the base and re-runs \texttt{kb init} from scratch);
 (2)~$N_{\text{q}}$ \texttt{kb query} calls (condition \textbf{K})---one-shot synthesis
-over the curator-kept fact pool (\S\ref{subsec:synthesis});
+over the curator-kept unit pool (\S\ref{subsec:synthesis});
 (3)~the same questions handed to a headless coding agent with no KB
 (condition \textbf{N});
 (4)~LLM scoring ($\times 3$ averaged) on the five quality axes for both sides,
@@ -59,7 +59,7 @@ headline grade is $\Delta S = S_K - S_N$ (Eq.~\ref{eq:delta-s}).
 Each suite covers questions spanning capabilities, architecture, installation,
 configuration, platform specifics, conventions, gotchas, and (for \texttt{kb})
 adversarial or out-of-scope probes---topics that
-stress different retrieval paths through the fact graph.
+stress different lanes of the hybrid retriever (documents, symbols, and facts).
 Scoring has two families that both enter the harvest grade $S$
 (Eq.~\ref{eq:success}):
 
@@ -187,7 +187,7 @@ correctness, usefulness, \emph{and} relevance all score $\geq 3$ on the 0--4 sca
 
 \medskip
 \noindent\textbf{Retrieval-side relevance.}  For condition~K, we log how many
-retrieved facts the curator kept, dropped, and re-queried (\S\ref{subsec:curation}),
+retrieved units the curator kept, dropped, and re-queried (\S\ref{subsec:curation}),
 and compute retrieval precision as $\text{kept}/(\text{kept}+\text{dropped})$.
 This complements answer-level relevance in the rubric: low precision with high
 answer relevance indicates heavy pre-synthesis filtering; low answer relevance
@@ -234,7 +234,7 @@ The remaining eight repositories report paired $\Delta S$ values of
 ($S_K$ and pass rates in Table~\ref{tab:harvest-results}).
 They span Rust CLI tooling, Java/UI orchestration, Haskell AST analysis,
 Go and Python TUIs, Python data products, proxy/networking code, and Ruby DSL
-packaging---exercising parsers, graph retrieval, and UI/product inference beyond
+packaging---exercising parsers, hybrid retrieval, and UI/product inference beyond
 monolithic C libraries.
 Control agents vary by suite: \texttt{kb}, \texttt{raylib}, \texttt{fzf},
 \texttt{shellcheck}, \texttt{lazygit}, and \texttt{fish-shell} use Cursor Agent
@@ -256,12 +256,16 @@ curation work; under the fixed $S$ weights it does not overturn the efficiency
 margin.
 
 \medskip
-\noindent\textbf{Retrieval cost profile.}  Per-question telemetry from the kb
-and raylib runs shows the deep BFS loop and curator dominate K-side cost:
-thinking (retrieval + in-loop judges) accounts for $\approx$72--73\% of query
-tokens vs.\ $\approx$27--28\% for final synthesis; the curator drops
-$\approx$97\% of facts that reach it before synthesis (typical kept counts in
-the single digits to low teens).  Many questions exit only after the loop
-reaches exhaustion rather than early on the sufficiency judge---so token
-efficiency on kb self-check and raylib coexists with a retrieval path that still
-spends most of its budget exploring rather than synthesizing.
+\noindent\textbf{Retrieval cost profile.}  The hybrid retriever is a
+\emph{single bounded pass}: the six lexical/neural lanes and the depth-1
+document$\leftrightarrow$symbol hop are deterministic SQLite work with no LLM in
+the loop, so---unlike the iterative graph-walk it replaced---retrieval no longer
+consumes model tokens by exploring until an in-loop judge declares the pool
+sufficient.  On the K side the only LLM calls are the curator's structured
+relevance verdict (plus any bounded gap re-queries) and the one-shot synthesis
+call; per-question telemetry records the thinking-vs-synthesis token split and
+the curator's kept/dropped/re-queried counts (retrieval precision,
+Table~\ref{tab:harvest-results}).  Removing the unbounded loop is what keeps
+K-side weighted token totals an order of magnitude below the control agent's
+while retrieval cost stays bounded by the candidate pool rather than by index
+connectivity.

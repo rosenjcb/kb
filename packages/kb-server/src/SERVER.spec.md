@@ -54,7 +54,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
-| FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, graph rerank, sufficiency judge, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
+| FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
+| FR-25 | [NEW] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index; allowed on the empty built-in `default` base), `list`, and `delete --base <name>` (prompts unless `--yes`). `create` refuses the reserved `default` slug and any base that already exists; `add-repo` refuses an unknown non-`default` base; all three error when `--base` is missing. |
+| FR-26 | [NEW] Each `/v1/chat` turn writes its run report with a length-capped transcript (`turns`: the user message plus the assistant answer) so a session is reconstructable from its logs after `/clear`; an errored turn still captures the user line. |
 
 ### Known issues
 
@@ -227,6 +229,19 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-160 | FR-24 | kb_query when synthesis failed | answerError in payload, sources still cited |
 | TC-161 | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
 | TC-163 | FR-6 | [NEW] REST `/v1/query` with `verbose: true` returns full evidence dump (`results`, `retrieval.detail`, GroupedSource facts) | pass |
+| TC-164 | FR-25 | base create refuses the reserved `default` slug | pass |
+| TC-165 | FR-25 | base create requires at least one --git for a named base | pass |
+| TC-166 | FR-25 | base create refuses a base that already exists | pass |
+| TC-167 | FR-25 | base create builds a new named base from its repos | pass |
+| TC-168 | FR-25 | base add-repo refuses a non-existent named base | pass |
+| TC-169 | FR-25 | base add-repo allows adding a repo to the empty default base | pass |
+| TC-170 | FR-25 | base add-repo requires at least one --git | pass |
+| TC-171 | FR-25 | base list reports when no bases are initialized | pass |
+| TC-172 | FR-25 | base list shows an initialized base | pass |
+| TC-173 | FR-25 | base delete requires a base name | pass |
+| TC-174 | FR-25 | base delete removes a base with --yes | pass |
+| TC-175 | FR-25 | base help lists the subcommands | pass |
+| TC-176 | FR-26 | a /v1/chat turn writes a report whose turns hold the user message and assistant answer | pass |
 
 ### Related docs
 

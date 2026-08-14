@@ -1,4 +1,4 @@
-import { formatFactUri } from '@kb/core/core/fact-uri.js'
+import { basename } from 'node:path'
 import type { FactRow } from '@kb/core/tools/sqlite-kb-index.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 import { ensureOperationalBaseDir, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
@@ -133,17 +133,38 @@ async function resolveBaseDir(parsed: ParsedFactsCommand, cwd: string): Promise<
     : (await resolveEffectiveBaseDir(cwd)).baseDir
 }
 
-function formatFactHuman(row: FactRow, baseLabel?: string): string {
-  const baseLine = baseLabel ? `base: ${baseLabel}\n` : ''
-  return [
-    `${baseLine}id: ${row.id}`,
-    `uri: ${formatFactUri(row.id)}`,
-    `repo: ${row.git_repo ?? '(unscoped)'}`,
-    `source: ${row.source_kind}${row.source_ref ? ` (${row.source_ref})` : ''}`,
-    `triple: (${row.subject}) [${row.predicate}] (${row.object})`,
+function repoLabel(row: FactRow): string {
+  return row.git_repo?.trim() || '(unscoped)'
+}
+
+/**
+ * One fact as a compact entry: the claim first, then a single metadata line.
+ * The base is shown once in the list header, not per row; repo/evidence are shown
+ * once here rather than repeated across id/uri/source_ref (the old format restated
+ * the same repo three times).
+ */
+function formatFactListItem(row: FactRow, index: number): string {
+  return `${index}. ${row.text.trim()}\n   ${row.id} · ${repoLabel(row)} · ${row.evidence}`
+}
+
+/** Full detail for `facts show` — the claim, then its metadata, each shown once. */
+function formatFactDetail(row: FactRow, baseName: string): string {
+  const lines = [
+    row.text.trim(),
     '',
-    row.fact_text.trim(),
-  ].join('\n')
+    `id:        ${row.id}`,
+    `repo:      ${repoLabel(row)}`,
+    `evidence:  ${row.evidence}`,
+  ]
+  if (row.source_ref) lines.push(`source:    ${row.source_ref}`)
+  lines.push(`base:      ${baseName}`)
+  return lines.join('\n')
+}
+
+/** Render a list/search result set with a single header naming the base. */
+function formatFactList(rows: FactRow[], baseName: string, heading: string): string {
+  const body = rows.map((r, i) => formatFactListItem(r, i + 1)).join('\n\n')
+  return `${heading} in base "${baseName}":\n\n${body}`
 }
 
 function buildRepoStatsBlock(indexer: SqliteKbIndexer): string {
@@ -193,23 +214,20 @@ export async function runFactsCommand(
   const parsed = parseFactsCommand(args)
   const cwd = options.cwd ?? process.cwd()
   const baseDir = await resolveBaseDir(parsed, cwd)
+  const baseName = basename(baseDir)
   const dbPath = `${baseDir}/.kb-index.sqlite`
   const indexer = new SqliteKbIndexer({ dbPath })
   try {
     if (parsed.sub === 'list') {
       const rows = indexer.listFactsForQuery(parsed.limit)
-      if (rows.length === 0) return '(no live facts in this base)'
-      return rows
-        .map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`)
-        .join('\n\n')
+      if (rows.length === 0) return `No facts in base "${baseName}".`
+      return formatFactList(rows, baseName, `${rows.length} fact${rows.length === 1 ? '' : 's'}`)
     }
 
     if (parsed.sub === 'search') {
       const rows = indexer.searchFacts(parsed.query ?? '', parsed.limit)
-      if (rows.length === 0) return `No facts matched: ${parsed.query}`
-      return rows
-        .map((r, i) => `--- ${i + 1} ---\n${formatFactHuman(r, parsed.base)}`)
-        .join('\n\n')
+      if (rows.length === 0) return `No facts matched "${parsed.query}" in base "${baseName}".`
+      return formatFactList(rows, baseName, `${rows.length} match${rows.length === 1 ? '' : 'es'} for "${parsed.query}"`)
     }
 
     const q = (parsed.query ?? '').trim()
@@ -218,7 +236,7 @@ export async function runFactsCommand(
     if (!row) {
       throw new FactsCommandError(`No active fact matched: ${q}`)
     }
-    return formatFactHuman(row, parsed.base)
+    return formatFactDetail(row, baseName)
   } finally {
     indexer.close()
   }

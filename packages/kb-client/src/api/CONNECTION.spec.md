@@ -58,14 +58,15 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-14 | CLI and TUI startup never call `syncKbMcpConfigs` — MCP install is opt-in via `kb mcp install` / `kb skills install` only |
 | FR-15 | `kb mcp install --key`/`--api-key` (and the `syncKbMcpConfigs` `apiKey` option) writes the Bearer header without requiring `KB_SERVER_API_KEY` in the environment, and takes precedence over the env/config key when both are set |
 | FR-16 | `parseGlobalCliFlags` strips `--base`, `--connection-string`, `--port`, `--sslmode`, and `--api-key`/`--key` (space and `=` forms) and throws on a missing value |
-| FR-17 | `parseKbConnectionString` parses `kb://[apikey@]host[:port]/[base][?sslmode=]` into decomposed `{hostname, port?, sslmode, apiKey?, base?}` (plus a convenience `url`): credential from userinfo, base from path, TLS from `sslmode` (default `prefer`, loopback ⇒ http), rejecting non-`kb://` schemes and unknown `sslmode` |
+| FR-17 | `parseKbConnectionString` parses `kb://[apikey@]host[:port]/[base][?sslmode=]` into decomposed `{hostname, port?, sslmode, apiKey?, base?}` (plus a convenience `url`): credential from userinfo, base from path, TLS from `sslmode` (default `prefer`, loopback ⇒ http). A schemeless `host[:port]/base` is accepted as `kb://` shorthand; a string carrying any *other* scheme (`http://…`) and unknown `sslmode` are rejected |
 | FR-18 | `applyConnectionOverrides` applies precedence `--connection-string` / `KB_CONNECTION_STRING` > `--host` > `--port` > `--sslmode` > `--api-key` > `--base` > env, expanding a connection string into `KB_HOST` / `KB_PORT` / `KB_SSLMODE` / `KB_SERVER_API_KEY` / `KB_BASE` |
-| FR-19 | `resolveServerConnection` carries `base` (`KB_BASE` > `KB_ACTIVE_BASE` > `config.server.base`); `kb-api-client` sends it as `X-KB-Base` on every request |
+| FR-19 | `resolveActiveBaseName` is the **single** base resolver shared by the wire and the UI — `KB_BASE` (explicit `--base` / `--connection-string`) > active base (via `resolveEffectiveBaseDir`) > `config.server.base`. `resolveServerConnectionWithBase` puts it on the connection and `kb-api-client` sends it as `X-KB-Base`; the status bar / CLI banner / chat header display the same value, so the served base and the shown base can never drift. `resolveServerConnection` (endpoint only) carries no base. There is no client-side default base — an unset base means kb-server uses its own default |
 | FR-20 | `dispatchRemoteChatStreamEvent` routes chat SSE `reasoning` to progress and `meta` to log (never both to progress) |
-| FR-21 | `discoverRemoteDefaultBase` probes the server's health endpoint and returns `HealthResponse.base` for display when no base was resolved locally (no `--base`, `.kb` file, active, or default base); returns `undefined` without throwing when the server is unreachable |
+| FR-21 | `discoverRemoteDefaultBase` probes the server's health endpoint and returns `HealthResponse.base` for display when no base was resolved locally (no `--base` and no active base); returns `undefined` without throwing when the server is unreachable |
 | FR-22 | `applyPortCliOverride` / `applySslModeCliOverride` / `applyApiKeyCliOverride` set `KB_PORT` / `KB_SSLMODE` / `KB_SERVER_API_KEY` for this process from `--port` / `--sslmode` / `--api-key`(`--key`); `--sslmode` rejects anything other than `require`/`prefer`/`disable` |
 | FR-23 | `hasExplicitConnectionOverride` (aliased as `hasExplicitServerHost`) is true when `KB_CONNECTION_STRING`, `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, or `config.server.host` is explicitly set — the one canonical "explicit vs. implicit localhost default" check, shared by MCP sync instead of its own duplicated env reads |
 | FR-24 | `mcp install` has no independent flag parser — `--host`/`--port`/`--sslmode`/`--api-key`/`--key`/`--base`/`--connection-string` are all global flags stripped by `parseGlobalCliFlags` before dispatch; `mcp install` itself only rejects genuinely unrecognized leftover arguments and otherwise syncs from the already-applied ambient connection |
+| FR-25 | `resolveDisplayBase` resolves the base to *display* (status bar / banner / chat header): the active base (`isServerDefault: false`) when one is selected, else the server's own default base via `discoverRemoteDefaultBase` (`isServerDefault: true`), or `{ name: undefined }` when the server is unreachable. `formatConnectionContext` labels the server-default case as `base: <name> (server default)`, so the client never shows a bare `(none)` while kb-server is in fact serving its default — making it obvious that with no `kb base use <base>` you are on the server default |
 
 ### QA Test Cases
 
@@ -99,7 +100,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-26 | FR-12 | Given no MCP files | status shows unset / missing entries |
 | TC-27 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
 | TC-28 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
-| TC-29 | FR-13 | Given `query` / `docs list` | `isClientLocalCommand` is false (forwarded remotely) |
+| TC-29 | FR-13 | Given `query` / `facts list` / `session` | `isClientLocalCommand` is false (forwarded remotely) |
 | TC-30 | FR-2 | Given only `config.server.host` (bare, non-loopback) + apiKey | Infers `https` with no port (implicit 443); sync installs with Bearer |
 | TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
 | TC-32 | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |
@@ -120,10 +121,16 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-47 | FR-18 | Given a connection string | expands into `KB_HOST`/`KB_PORT`/`KB_SSLMODE`/`API_KEY`/`BASE` |
 | TC-48 | FR-18 | Given connection string + `--base` | `--base` refines the base |
 | TC-49 | FR-19 | Given a connection with `base` | `kb-api-client` sends `X-KB-Base` |
-| TC-50 | FR-19 | Given `KB_BASE` set | `resolveServerConnection` carries it as `base` |
+| TC-50 | FR-19 | Given `KB_BASE` set | `resolveActiveBaseName` returns it; the endpoint resolver `resolveServerConnection` carries no base |
+| TC-67 | FR-19 | Given `KB_BASE` set | `resolveServerConnectionWithBase` sends the same base `resolveActiveBaseName` resolves (wire == UI, no drift) |
+| TC-68 | FR-17 | Given a schemeless `host:port/base` | parsed as `kb://` shorthand with `base` populated |
 | TC-51 | FR-20 | Given interleaved meta + reasoning SSE events | meta → log; reasoning → progress only |
 | TC-52 | FR-21 | Given no local base and a reachable server | `discoverRemoteDefaultBase` returns the server-reported `base` |
 | TC-53 | FR-21 | Given no local base and an unreachable server | `discoverRemoteDefaultBase` resolves `undefined` |
+| TC-69 | FR-25 | Given an active base is selected | `resolveDisplayBase` returns it with `isServerDefault: false` and never probes |
+| TC-70 | FR-25 | Given no active base and a reachable server | `resolveDisplayBase` returns the server default with `isServerDefault: true` |
+| TC-71 | FR-25 | Given no active base and an unreachable server | `resolveDisplayBase` returns `{ name: undefined, isServerDefault: false }` |
+| TC-72 | FR-25 | Given a server-default base | `formatConnectionContext` renders `base: <name> (server default)`; a local active base has no label |
 | TC-54 | FR-2 | Given `KB_HOST` (remote) + `KB_SSLMODE=disable` | Forces plaintext despite the remote host |
 | TC-55 | FR-2 | Given `KB_HOST` (remote) + explicit `KB_PORT` | Inferred `https` scheme keeps the explicit port |
 | TC-56 | FR-16 | Given `--port`, `--sslmode`, `--api-key`, and the `--key` alias | All four stripped, both space and `=` forms |

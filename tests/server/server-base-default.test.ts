@@ -8,7 +8,7 @@ import { resolveServerBaseDir } from '@kb/server/server-cli.js'
 /**
  * `kb-server start` must never require naming a base to boot: with no `--base`,
  * no `KB_SERVER_BASE_NAME` / `KB_BASE`, and no locally-selected base, it binds
- * the golden default slug `base` (issue #173, Postgres's maintenance-DB model).
+ * the golden default slug `default` (Postgres's maintenance-DB model).
  */
 describe('resolveServerBaseDir golden default', () => {
   const ENV_KEYS = ['KB_HOME', 'KB_BASE', 'KB_ACTIVE_BASE', 'KB_SERVER_BASE_NAME'] as const
@@ -40,10 +40,10 @@ describe('resolveServerBaseDir golden default', () => {
 
   const emptyPlan: BootstrapPlan = { gitTargets: [], source: 'none' }
 
-  it('binds slug "base" when no base is declared and none is selected locally', async () => {
+  it('binds slug "default" when no base is declared and none is selected locally', async () => {
     const resolved = await resolveServerBaseDir(emptyPlan)
-    expect(resolved.baseRef).toBe('base')
-    expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'base'))
+    expect(resolved.baseRef).toBe('default')
+    expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
   })
 
   it('honors an explicit plan base over the golden default', async () => {

@@ -66,7 +66,7 @@ describe('subagent scenario matrix (106)', () => {
     }
   })
 
-  it('[TC-85] runs orchestrator scenario matrix (optional home snapshot)', async () => {
+  it('[TC-61] runs orchestrator scenario matrix (optional home snapshot)', async () => {
     const rows: Array<{
       scenario: string
       status: string

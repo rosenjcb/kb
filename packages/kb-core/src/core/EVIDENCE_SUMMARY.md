@@ -27,8 +27,7 @@ Segments join with ` · ` (middle dot):
 | **Mix** | `metadata.tags[0]` source_kind tallies | `mix: 142 doc · 58 code` or `mix: all doc` |
 | **Repos** | `git_repo` origin tallies across the pool (top 4 by frequency) | `repos: auth-svc, web, shared` |
 | **Leads** | top 3 unique `metadata.title` values (rank order) | `leads: Language \| Extensions, TreeSitterIndexer, …` |
-| **Walk** | parsed from `retrieval.detail` | `walk: 24p/20h/6 ponds` |
-| **Stop** | `stop:` token in `retrieval.detail` | `stop: budget_exhausted` |
+| **Retrieval** | hybrid unit counts parsed from `retrieval.detail` | `retrieval: 12 docs · 8 sym · 0 facts · 4 hops (+3 expanded)` |
 | **Evidence** | last checkpoint `evidence` label | `evidence: moderate` |
 
 Optional segments omitted when data missing.
@@ -36,7 +35,7 @@ Optional segments omitted when data missing.
 ## Example
 
 ```
-evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · repos: auth-svc, web, shared · leads: Language | Extensions | Code-graph (AST), SqliteKbIndexer, Tree-Sitter Code Graph Indexer · walk: 24p/20h/6 ponds · stop: budget_exhausted · conf: 0.68
+evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · repos: auth-svc, web, shared · leads: Language | Extensions | Code-graph (AST), SqliteKbIndexer, Tree-Sitter Code Graph Indexer · retrieval: 120 docs · 80 sym · 0 facts · 6 hops (+3 expanded) · evidence: moderate
 ```
 
 ## Related footer lines

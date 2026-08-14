@@ -36,7 +36,7 @@ See companion doc for full vocabulary where applicable.
 |---------|------------|----------|------------------|
 | TC-1 | FR-1 | Given query_truth without discoveryDepth, then defaults to deep discovery like chat | pass |
 | TC-2 | FR-1 | Given query_truth with high-recall token query, then uses default limit without floor | pass |
-| TC-3 | FR-1 | Given query_truth without explicit limit, then defaults to 500 facts | pass |
+| TC-3 | FR-1 | Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts | pass |
 | TC-4 | FR-1 | Given a collector on the constructor, then query_truth operationInput carries it through | pass |
 
 ### Related docs

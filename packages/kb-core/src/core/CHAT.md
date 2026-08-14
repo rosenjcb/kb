@@ -43,13 +43,12 @@ flowchart TD
    LLM returns no `tool_use` blocks OR `MAX_CHAT_TURNS` (12) is hit. Each round calls the
    LLM with the `query_kb` tool. All tool calls in a batch execute concurrently.
 
-3. **Graph expansion** — before each retrieval, `expandQueryWithGraph` may widen the query string.
-
-4. **Retrieval** — `executeChatQueryTruthRetrieval()` → `runQueryTruthRetrieval()` →
-   `runIntentLoop` → router → `read_facts` → `FactsQueryResearchOrchestrator` (up to 24
-   passes, plateau/frontier-based early exit). Each retrieval is independent — facts are not
-   carried over from prior turns (`query_truth` still accepts an optional `excludeIds`, but the
-   chat path does not populate it).
+3. **Retrieval** — `executeChatQueryTruthRetrieval()` → `runQueryTruthRetrieval()` →
+   `runIntentLoop` → router → `read_facts` → `FactsDocumentReader` → `retrieveHybrid`
+   (six lexical/neural lanes fused by RRF, depth-1 doc↔symbol hop; deep mode fans out over
+   sub-queries and re-fuses). Each retrieval is independent — facts are not carried over
+   from prior turns (`query_truth` still accepts an optional `excludeIds`, but the chat path
+   does not populate it).
 
 5. **Curation** — when the pool exceeds 12 facts, the **fact curator**
    (`src/tools/fact-curator.ts`) judges it against the user's question, hard-drops off-topic

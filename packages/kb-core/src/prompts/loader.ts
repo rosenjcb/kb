@@ -4,7 +4,7 @@ import { readPromptAssetUtf8 } from './prompt-assets'
 export { promptsRootDir, readPromptAssetUtf8, resolvePromptPath } from './prompt-assets'
 
 /**
- * Load a top-level prompt file (`<name>.md` next to `doc-questionnaires/`) as a trimmed string.
+ * Load a top-level prompt file (`<name>.md` in the prompts root) as a trimmed string.
  */
 export function loadPrompt(name: string): string {
   return readPromptAssetUtf8(name).trim()

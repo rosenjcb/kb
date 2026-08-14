@@ -26,8 +26,11 @@ afterEach(async () => {
   process.env.KB_ENTITY_INDEX = undefined
 })
 
-/** Seed the #167 scenario: a service `internal` and a surface `Internal Services`. */
-async function seedCollisionRepo(): Promise<{ serviceFact: string; surfaceFact: string; otherFact: string }> {
+/**
+ * Seed the #167 scenario: a service `internal` and a surface `Internal Services`.
+ * Units link by exact alias match on symbol name / document title / fact text (not triplets).
+ */
+async function seedCollisionRepo(): Promise<{ serviceUnit: string; surfaceUnit: string; otherUnit: string }> {
   await writeFile(
     path.join(scanDir, 'docker-compose.yml'),
     ['services:', '  internal:', '    image: acme/internal'].join('\n')
@@ -39,37 +42,36 @@ async function seedCollisionRepo(): Promise<{ serviceFact: string; surfaceFact: 
 
   const indexer = new SqliteKbIndexer({ dbPath })
   try {
-    const serviceFact = indexer.upsertFact({
-      factText: 'The internal service validates payment auth tokens.',
-      triplet: { subject: 'internal', predicate: 'validates', object: 'payment auth tokens' },
-      sourceKind: 'import_doc',
-      sourceRef: 'payments-core/README.md#s1',
+    const serviceUnit = indexer.upsertCodeSymbol({
       gitRepo: 'payments-core',
+      relPath: 'src/internal.ts',
+      name: 'internal',
+      kind: 'function',
+      sourceText: 'export function internal() { return 1 }',
     }).id
-    const surfaceFact = indexer.upsertFact({
-      factText: 'Internal Services shows operational dashboards.',
-      triplet: { subject: 'Internal Services', predicate: 'shows', object: 'operational dashboards' },
-      sourceKind: 'import_doc',
-      sourceRef: 'payments-core/docs/ui.md#s1',
+    const surfaceUnit = indexer.upsertDocument({
       gitRepo: 'payments-core',
+      relPath: 'docs/ui.md',
+      title: 'Internal Services',
+      body: 'Operational dashboards for the payment surface.',
     }).id
-    // A fact about something the harvest knows nothing about — must stay unlinked.
-    const otherFact = indexer.upsertFact({
-      factText: 'The billing cron reconciles ledger entries nightly.',
-      triplet: { subject: 'billing cron', predicate: 'reconciles', object: 'ledger entries' },
-      sourceKind: 'import_doc',
-      sourceRef: 'payments-core/docs/billing.md#s1',
+    // Something the harvest knows nothing about — must stay unlinked.
+    const otherUnit = indexer.upsertCodeSymbol({
       gitRepo: 'payments-core',
+      relPath: 'src/billing-cron.ts',
+      name: 'billingCron',
+      kind: 'function',
+      sourceText: 'export function billingCron() {}',
     }).id
-    return { serviceFact, surfaceFact, otherFact }
+    return { serviceUnit, surfaceUnit, otherUnit }
   } finally {
     indexer.close()
   }
 }
 
 describe('runEntityIndexCycle', () => {
-  it('harvests manifest entities, links facts by exact subject/object, and records collisions', async () => {
-    const { serviceFact, surfaceFact, otherFact } = await seedCollisionRepo()
+  it('harvests manifest entities, links units by exact alias match, and records collisions', async () => {
+    const { serviceUnit, surfaceUnit, otherUnit } = await seedCollisionRepo()
 
     const stats = await runEntityIndexCycle({ baseDir, scanDir, gitRepo: 'payments-core' })
     // repo entity + compose service + backstage component
@@ -85,13 +87,10 @@ describe('runEntityIndexCycle', () => {
       expect(surface).toBeDefined()
       if (!service || !surface) return
 
-      // Facts partition by entity — each side owns its own fact.
-      expect(registry.linkedFactIds([service.id])).toContain(serviceFact)
-      expect(registry.linkedFactIds([surface.id])).toContain(surfaceFact)
-      // The un-harvested world stays unlinked.
-      expect(registry.linkedFactIds([service.id, surface.id])).not.toContain(otherFact)
+      expect(registry.linkedFactIds([service.id])).toContain(serviceUnit)
+      expect(registry.linkedFactIds([surface.id])).toContain(surfaceUnit)
+      expect(registry.linkedFactIds([service.id, surface.id])).not.toContain(otherUnit)
 
-      // The collision is recorded with a contrastive gloss for a future consumer.
       const collisions = registry.distinctFromSiblings(service.id)
       expect(collisions).toHaveLength(1)
       expect(collisions[0]?.gloss).toContain('different things')
@@ -114,7 +113,7 @@ describe('runEntityIndexCycle', () => {
       const service = registry.findEntityByName('internal').find(e => e.kind === 'service')
       expect(service).toBeDefined()
       if (service) {
-        // One link per (fact, entity, role) — no fan-out on repeat scans.
+        // One link per (unit, entity, role) — no fan-out on repeat scans.
         expect(registry.linkedFactIds([service.id])).toHaveLength(1)
       }
     } finally {

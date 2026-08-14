@@ -1,112 +1,98 @@
 ---
 type: "Subsystem"
-title: "Knowledge Graph"
-description: "The property graph KB maintains alongside its SQLite store for structural navigation and path finding."
+title: "Code Graph"
+description: "The document ↔ code-symbol map KB builds alongside its SQLite index for structural navigation."
 resource: ./src/tools
-tags: [graph, entities, relationships]
-timestamp: 2026-06-20T00:00:00Z
+tags: [graph, code-symbols, documents]
+timestamp: 2026-08-09T00:00:00Z
 ---
 
-# Knowledge Graph
+# Code graph
 
-KB maintains a property graph alongside its SQLite document store. The graph tracks concepts, systems, tools, decisions, and people as **entities**, connected by typed **relationships** (e.g. `uses`, `depends_on`, `implements`).
+KB's "graph" is the **document ↔ code-symbol map**: exported code symbols
+(`code_symbols`) and the whole documents that describe them (`documents`), joined by a
+flat **`doc_code_links`** table. It is not a property graph of entities and typed
+relationships — that model (and its `fact_edges` traversal) was removed in the indexing
+redesign. There is **no edge walk**: `doc_code_links` is a flat, depth-1 join.
 
 ## What it does for you
 
-As you build up your knowledge base, the graph gives you a structural view of how ideas connect — something the flat SQLite full-text index cannot express.
+**Navigation:** find an exported symbol by name and see the documents that describe it,
+or vice versa — the same depth-1 hop the hybrid retriever uses (see
+[`hybrid-retriever.ts`](hybrid-retriever.ts)).
 
-**Navigation:** You can ask "what does X depend on?" or "what implements Y?" by name, without writing a query.
+**Inspection & export:** `kb graph` summarizes the map (symbol/document/link counts);
+`kb graph --format dot|json` dumps it for visualization or analysis.
 
-**Path finding:** "How is A related to B?" runs a shortest-path traversal over the graph, surfacing non-obvious connections across documents.
-
-**Query expansion:** `expandQueryWithGraph()` (`src/tools/graph-query-expansion.ts`) appends related symbol and fact terms to the query string before **`read_facts`**. See § Graph-augmented query below.
-
-**Export:** The full graph can be dumped as Graphviz DOT (for visualisation tools like Gephi or Mermaid) or JSON (for your own analysis).
-
-**Manual curation:** You can add nodes, descriptions, and directed edges from the CLI (preview by default, `--apply` to commit). Automated extraction from `kb init` / `kb scan` merges with hand-authored graph data in the same SQLite database as the document index.
-
-**Session override:** Pass `--base <name>` on `kb graph` (same as other KB commands) to target a specific session without switching your active base.
+**Session override:** `--base <name>` on `kb graph` targets a specific base without
+switching your active one.
 
 ## Storage
 
-All graph data lives in **`<base-dir>/.kb-index.sqlite`** alongside documents and facts. There is one unified graph — no separate semantic entity tables.
+All of it lives in **`<base-dir>/.kb-index.sqlite`**:
 
-Graph mode is enabled by default. You can disable graph extraction and graph-augmented lookup with either:
-
-- `graph.enabled: false` via `KB_GRAPH=false`
-- `KB_GRAPH=false` as a one-off environment override
-
-The code-fact graph uses the shared **`facts`** table (`source_kind='import_code'`) and **`fact_edges`** for all structural edges.
+- **`code_symbols`** (+ `code_symbols_fts`) — one exported AST symbol per row, with its
+  source text, `kind`, and `git_repo` provenance.
+- **`documents`** (+ `documents_fts`) — whole markdown files indexed as units.
+- **`doc_code_links`** — flat `(doc_id, symbol_id, score, link_kind)` rows connecting a
+  document to the symbols it describes.
 
 ## How it stays up to date
 
 ```mermaid
 flowchart LR
-  I["kb init / kb scan"] --> AF["ast-facts deterministic indexing"]
-  AF --> SG["extract + upsert graph provenance"]
-  Q["kb query"] --> QG["graph expansion + rerank\nread-only"]
+  I["kb init / kb scan"] --> CI["code-index (tree-sitter AST)"]
+  CI --> S["code_symbols"]
+  I --> DI["document index"]
+  DI --> D["documents"]
+  S --> LK["doc_code_links"]
+  D --> LK
 ```
 
-| Trigger | What happens |
-|---|---|
-| `kb init` / `kb scan` — `ast-facts` cycle | Deterministic code graph indexing writes into `facts` + `fact_edges`; semantic graph is built incrementally from source |
+The `code-index` cycle runs during `kb init` and `kb scan` — deterministic, no LLM. It
+walks the AST, writes one `code_symbols` row per exported symbol, and links documents to
+symbols in `doc_code_links`. Per-file content hashes enable incremental skip on re-run.
 
 ## CLI
 
 ```
-kb graph                          # Summary: entity count, relationship count, top nodes by connections
-kb graph --entity <name>          # Outgoing + incoming edges for a named entity
-kb graph --path <from> <to>       # Shortest path between two entities (max 6 hops)
-kb graph --format dot             # Export as Graphviz DOT to stdout
-kb graph --format json            # Export full graph as JSON to stdout
-
-# Edits (dry-run until you add --apply — see TUI.md / AGENTS.md mutation safety)
-kb graph node add --name "..." [--id ...] [--type concept|system|tool|decision|person] [--description "..."] [--doc-id ...] [--apply]
-kb graph node set --entity <id-or-name> [--name "..."] [--description "..."] [--type ...] [--apply]
-kb graph edge add --from <id-or-name> --to <id-or-name> --verb "<label>" [--doc-id ...] [--apply]
-kb graph edge remove --from ... --to ... --verb ... [--apply]
+kb graph                       # Doc ↔ code map summary (counts + top-linked nodes)
+kb graph --entity <name>       # Links for a named document or symbol
+kb graph --format dot|json     # Export the map for visualization / analysis
+kb graph --base <name> …       # Inspect a specific base
 ```
 
-## Graph-augmented query
+## Agent tools
 
-`expandQueryWithGraph()` runs in `index.ts` and `chat-cli.ts` before the `query_truth` envelope reaches **`read_facts`**. It widens the query string (code-graph FTS + 1-hop `fact_edges`, then LIKE on `facts.subject`/`object`; capped at 26 appended terms). Post-retrieval, `rerankByGraphConnectivity()` may re-score results.
+The retrieval registry exposes the map to agents (`kb-tools-registry.ts`, backed by
+[`code-graph-store.ts`](code-graph-store.ts)):
 
-Separate from `query-expander.ts` (LLM paraphrases inside the deep **`FactsDocumentReader`** path).
+| Tool | Role |
+|---|---|
+| `search_code_symbols` | Full-text search over `code_symbols` by name / source text |
+| `get_code_neighbors` | The documents linked to a symbol (depth-1 over `doc_code_links`) |
+| `get_code_graph_summary` | Counts of symbols, documents, and links |
 
-## Surface ownership
+## Language support
 
-```mermaid
-flowchart TB
-  Intent["Intent commands"] --> Query["kb query / /query\nread-only retrieval"]
-  Docs["kb docs"] --> DocsView["explicit document inspection"]
-  Graph["kb graph"] --> GraphView["explicit graph inspection / manual graph edits"]
-```
-
-## Code graph
-
-The `code-graph` cycle runs during `kb init` and `kb scan` — no LLM. It indexes source files deterministically and writes into `facts` (`source_kind='import_code'`) and `fact_edges` (structural edge types: `IMPORTS_FILE`, `EXPORTS_SYMBOL`, `EXTENDS`, `IMPLEMENTS`). Per-file content hashes enable incremental skip on re-run.
-
-### Language support
-
-- **Tree-sitter AST (every language, including TS/JS)** — Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java, C/C++, C#, CSS, Bash, PHP, Scala, HTML (see `LANG_CONFIGS` in `src/tools/tree-sitter-indexer.ts`; each needs a `tree-sitter-<lang>` npm package that ships `.wasm`). TS/JS get extra enrichment — constant values, `defined_in` for non-exported constants, and `EXTENDS`/`IMPLEMENTS` edges — via the `jsFamily` path.
-- **Text / config files** (`.md`, `.yaml`, `.json`, `.toml`, etc.) — `TreeSitterIndexer` text fallback: file node only, no symbols
-- Adding a new language requires one entry in `LANG_CONFIGS` + `EXT_MAP` plus a WASM-shipping `tree-sitter-<lang>` package. See [`TREE_SITTER_INDEXER.md`](TREE_SITTER_INDEXER.md) for registry and query conventions.
-
-All WASM grammars ship as npm package assets — no native compilation, no platform-specific binaries.
+Tree-sitter AST for every wired language (Go, TS/TSX, JS/JSX, Python, Rust, Ruby, Java,
+C/C++, C#, CSS, Bash, PHP, Scala, HTML — see `LANG_CONFIGS` in
+[`tree-sitter-indexer.ts`](tree-sitter-indexer.ts)). Text/config files (`.md`, `.yaml`,
+`.json`, `.toml`, …) get a file node with no symbols. All WASM grammars ship as npm
+package assets — no native compilation. Adding a language needs one `LANG_CONFIGS` +
+`EXT_MAP` entry plus a WASM-shipping `tree-sitter-<lang>` package; see
+[`TREE_SITTER_INDEXER.md`](TREE_SITTER_INDEXER.md).
 
 ## Implementation
 
 | File | Role |
 |---|---|
-| `src/tools/graph-query-expansion.ts` | Pre-retrieval query widening |
-| `src/tools/graph-rag-reranker.ts` | Post-retrieval graph re-rank |
-| `src/tools/kb-graph-writer.ts` | Semantic graph schema in SQLite, upsert, soft-delete, traversal, export |
-| `src/tools/graph-entity-extractor.ts` | LLM-based entity + relationship extraction from text |
-| `src/cli/graph-cli.ts` | `kb graph` command parsing and output formatting |
-| `src/cli/init-cli.ts` | `ast-facts` cycle in `kb init` / `kb scan` |
-| `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — single-platform AST indexing for every language via web-tree-sitter |
-| `src/tools/code-graph-store.ts` | Read-only queries over `facts`/`fact_edges` including `expandWithCodeNeighbors` |
+| `src/tools/code-graph-store.ts` | Read-only queries over `code_symbols` / `doc_code_links` |
+| `src/tools/tree-sitter-indexer.ts` | `TreeSitterIndexer` — single-platform AST indexing for every language |
+| `src/tools/sqlite-kb-index.ts` | `code_symbols` / `documents` / `doc_code_links` storage + FTS |
+| `src/cli/graph-cli.ts` | `kb graph` parsing and output formatting |
 
 ## Related docs
 
-- Behavioral spec → [`GRAPH.spec.md`](GRAPH.spec.md)
+- AST indexing spec → [`TREE_SITTER_INDEXER.spec.md`](TREE_SITTER_INDEXER.spec.md)
+- Retrieval that uses the map → [`hybrid-retriever.ts`](hybrid-retriever.ts)

@@ -51,18 +51,16 @@ export interface QueryCurationTrace {
 
 export interface QueryRetrievalTrace {
   method?: string
-  /** Deep-loop passes executed. */
-  passes?: number
-  /** Global BFS levels walked across ponds. */
-  graphHops?: number
-  /** Exploration ponds spun up. */
-  ponds?: number
-  /** Why the loop stopped (e.g. `llm_judge_answerable`, `frontier_exhausted`). */
-  stopReason?: string
-  /** Facts returned to synthesis after ranking + curation. */
-  factsReturned?: number
-  /** Per-pass loop trace lines (frontier / merge / hop counts), in order. */
-  hops: string[]
+  /** Whole documents in the fused result. */
+  documents?: number
+  /** Exported code symbols in the fused result. */
+  symbols?: number
+  /** Curated facts in the fused result. */
+  facts?: number
+  /** Units pulled in by the depth-1 doc↔symbol hop. */
+  hops?: number
+  /** Sub-queries fanned out and re-fused (deep mode). */
+  expanded?: number
   /** Per-pass checkpoint decisions (status + evidence label). */
   checkpoints?: Array<{
     stage?: string
@@ -74,10 +72,22 @@ export interface QueryRetrievalTrace {
   curation?: QueryCurationTrace
 }
 
+/** One exchange line captured on a chat run report, so a session can be read back later. */
+export interface SessionTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 export interface RunReport {
   runId: string
   /** Chat session that spawned this run, if any. */
   sessionId?: string
+  /**
+   * Conversation turns captured for a chat run (one user + one assistant line per turn).
+   * Present only on `chat` reports; `kb session` concatenates these across a session's runs
+   * so the whole conversation is snoopable after `/clear`. Each line is length-capped.
+   */
+  turns?: SessionTurn[]
   /** KB base name used for this run, if known. */
   base?: string
   /** Server host:port the run executed against (e.g. localhost:38117). */
@@ -228,15 +238,13 @@ export class RunCollector {
  * {@link QueryRetrievalTrace} persisted on the run report. Pure and defensive: unknown shapes
  * degrade to empty/absent fields rather than throwing, so telemetry never blocks a query.
  *
- * `detail` carries the loop counters as a `;`-joined string
- * (`facts-loop;passes:3;graph_hops:5;ponds:2;stop:llm_judge_answerable;facts:24;...;curated:kept=18,dropped=6,...`),
- * `traceDetail` carries the per-pass lines as `trace:i1:...|i2:...`, and `curation` is the raw
- * curator audit. This re-lifts all three into structured fields.
+ * `detail` carries the hybrid retrieval counts as a `;`-joined string
+ * (`hybrid:docs=12,symbols=8,facts=0,hops=4;expanded:3;curated:kept=18,dropped=6,requeried=0,rounds=1`),
+ * and `curation` is the raw curator audit. This re-lifts both into structured fields.
  */
 export function summarizeQueryRetrievalTrace(retrieval: {
   method?: string
   detail?: string
-  traceDetail?: string
   checkpoints?: Array<{ stage?: string; status?: string; nextAction?: string; evidence?: EvidenceLabel }>
   curation?: {
     evaluated?: number
@@ -252,15 +260,8 @@ export function summarizeQueryRetrievalTrace(retrieval: {
     const m = re.exec(detail)
     return m ? Number(m[1]) : undefined
   }
-  const stopMatch = /(?:^|;)stop:([^;]+)/.exec(detail)
   const curatedMatch =
     /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
-
-  const traceDetail = typeof retrieval.traceDetail === 'string' ? retrieval.traceDetail : ''
-  const traceSegment = /(?:^|;)trace:(.+)$/.exec(traceDetail)
-  const hops = traceSegment
-    ? traceSegment[1].split('|').map(s => s.trim()).filter(Boolean)
-    : []
 
   const rawCuration = retrieval.curation
   let curation: QueryCurationTrace | undefined
@@ -298,16 +299,11 @@ export function summarizeQueryRetrievalTrace(retrieval: {
 
   return {
     ...(retrieval.method ? { method: retrieval.method } : {}),
-    ...(num(/(?:^|;)passes:(\d+)/) !== undefined ? { passes: num(/(?:^|;)passes:(\d+)/) } : {}),
-    ...(num(/(?:^|;)graph_hops:(\d+)/) !== undefined
-      ? { graphHops: num(/(?:^|;)graph_hops:(\d+)/) }
-      : {}),
-    ...(num(/(?:^|;)ponds:(\d+)/) !== undefined ? { ponds: num(/(?:^|;)ponds:(\d+)/) } : {}),
-    ...(stopMatch ? { stopReason: stopMatch[1].trim() } : {}),
-    ...(num(/(?:^|;)facts:(\d+)/) !== undefined
-      ? { factsReturned: num(/(?:^|;)facts:(\d+)/) }
-      : {}),
-    hops,
+    ...(num(/(?:^|[;:])docs=(\d+)/) !== undefined ? { documents: num(/(?:^|[;:])docs=(\d+)/) } : {}),
+    ...(num(/(?:^|,)symbols=(\d+)/) !== undefined ? { symbols: num(/(?:^|,)symbols=(\d+)/) } : {}),
+    ...(num(/(?:^|,)facts=(\d+)/) !== undefined ? { facts: num(/(?:^|,)facts=(\d+)/) } : {}),
+    ...(num(/(?:^|,)hops=(\d+)/) !== undefined ? { hops: num(/(?:^|,)hops=(\d+)/) } : {}),
+    ...(num(/(?:^|;)expanded:(\d+)/) !== undefined ? { expanded: num(/(?:^|;)expanded:(\d+)/) } : {}),
     ...(Array.isArray(retrieval.checkpoints) && retrieval.checkpoints.length > 0
       ? { checkpoints: retrieval.checkpoints }
       : {}),

@@ -32,7 +32,7 @@ import {
   readOptionalCliValue,
 } from '@kb/core/storage/base-selection.js'
 import { computeFileDigest } from '@kb/core/storage/snapshot.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import { resolveDaemonPort } from './daemon-cli.js'
 import type { ServerLogger } from './server-cli.js'
 import { adoptSnapshot, runExportCommand } from './snapshot-cli.js'

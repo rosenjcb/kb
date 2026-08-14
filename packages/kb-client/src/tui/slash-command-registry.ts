@@ -1,9 +1,10 @@
 import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
+import { catalogSlashSpecs, slashCommandOrder } from '@kb/core/commands/command-catalog.js'
 
 export type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 
 export interface SlashCommandSpec {
-  /** ['docs','generate'] → '/docs generate' */
+  /** ['facts','list'] → '/facts list' */
   path: string[]
   description: string
   /** Where eligible. 'always' = available in every context (e.g. /exit, /cancel). */
@@ -15,55 +16,23 @@ export interface SlashCommand {
   description: string
 }
 
+/**
+ * The slash registry is generated from the shared command catalog
+ * (`@kb/core/commands/command-catalog`) so the TUI can never drift from the CLI:
+ * a command added to the catalog appears here automatically, and the parity test
+ * (`tests/commands/command-parity.test.ts`) fails if the two disagree.
+ *
+ * Only genuinely flow-local commands — ones with no top-level catalog entry — are
+ * appended by hand. Today that is just `/cancel`, which `kb init` honors at its
+ * free-text prompts, so it is offered only in those input contexts (never at idle).
+ */
 export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
-  // Top-level
-  { path: ['query'], description: 'search the knowledge base', contexts: ['idle'] },
-  { path: ['base'], description: 'manage KB bases and their git repos', contexts: ['idle'] },
-  { path: ['docs'], description: 'browse or generate KB documents', contexts: ['idle'] },
-  { path: ['facts'], description: 'list, search, or show KB facts', contexts: ['idle'] },
-  { path: ['graph'], description: 'inspect or edit the knowledge graph', contexts: ['idle'] },
-  { path: ['entities'], description: 'inspect harvested entities and name collisions', contexts: ['idle'] },
-  { path: ['publish'], description: 'publish docs to the external sink', contexts: ['idle'] },
-  { path: ['sync'], description: 'install the latest published KB release', contexts: ['idle'] },
-  { path: ['uninstall'], description: 'remove the kb client binary and client runtime', contexts: ['idle'] },
-  { path: ['skills'], description: 'manage agent skills', contexts: ['idle'] },
-  { path: ['logs'], description: 'browse and compare run reports', contexts: ['idle'] },
-  { path: ['session'], description: 'show session stats (turns, tokens, facts, timing)', contexts: ['idle'] },
-  { path: ['help'], description: 'show available commands', contexts: ['idle'] },
-  { path: ['clear'], description: 'clear the visible session history', contexts: ['idle'] },
-  { path: ['exit'], description: 'quit kb', contexts: 'always' },
-
-  // docs subcommands
-  { path: ['docs', 'list'], description: 'list KB documents', contexts: ['idle'] },
-  { path: ['docs', 'view'], description: 'view a KB document by id', contexts: ['idle'] },
-  { path: ['docs', 'generate'], description: 'guided document draft (questionnaire + review)', contexts: ['idle'] },
-  { path: ['docs', 'rename'], description: 'rename a KB document', contexts: ['idle'] },
-  { path: ['docs', 'delete'], description: 'delete a KB document', contexts: ['idle'] },
-
-  // facts subcommands
-  { path: ['facts', 'list'], description: 'list KB facts', contexts: ['idle'] },
-  { path: ['facts', 'search'], description: 'search KB facts', contexts: ['idle'] },
-  { path: ['facts', 'show'], description: 'show a KB fact by id or text', contexts: ['idle'] },
-
-  // base subcommands
-  { path: ['base', 'use'], description: 'switch active KB base', contexts: ['idle'] },
-  { path: ['base', 'delete'], description: 'delete a KB base', contexts: ['idle'] },
-
-  // logs subcommands
-  { path: ['logs', 'list'], description: 'list run reports', contexts: ['idle'] },
-  { path: ['logs', 'show'], description: 'show a run report by id', contexts: ['idle'] },
-  { path: ['logs', 'compare'], description: 'compare run reports', contexts: ['idle'] },
-
-  // skills subcommands
-  { path: ['skills', 'install'], description: 'install an agent skill', contexts: ['idle'] },
-  { path: ['skills', 'uninstall'], description: 'uninstall an agent skill', contexts: ['idle'] },
-
-  // Flow-local commands
-  { path: ['skip'], description: 'skip the current question', contexts: ['docs-generate-question', 'init-question'] },
-  { path: ['complete'], description: 'finish adding items', contexts: ['docs-generate-question', 'init-question'] },
-  { path: ['cancel'], description: 'cancel the current flow', contexts: 'always' },
-  { path: ['accept'], description: 'accept list or draft', contexts: ['docs-generate-review', 'named-list-confirm'] },
-  { path: ['reject'], description: 'reject and start over', contexts: ['docs-generate-review', 'named-list-confirm'] },
+  ...catalogSlashSpecs(),
+  {
+    path: ['cancel'],
+    description: 'cancel the current flow',
+    contexts: ['init-free-text', 'scan-base-picker'],
+  },
 ]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {
@@ -110,11 +79,6 @@ function pathPrefixMatches(specPath: string[], typedSegments: string[]): boolean
   return true
 }
 
-function compareSpecs(a: SlashCommandSpec, b: SlashCommandSpec): number {
-  if (a.path.length !== b.path.length) return a.path.length - b.path.length
-  return a.path.join(' ').localeCompare(b.path.join(' '))
-}
-
 export function resolveSlashSuggestions(
   input: string,
   context: SlashInputContext = 'idle'
@@ -131,14 +95,15 @@ export function resolveSlashSuggestions(
     return matching
       .filter(spec => spec.path.length === 1)
       .map(specToSlashCommand)
-      .sort((a, b) => a.command.localeCompare(b.command))
+      .sort(byMenuOrder)
   }
 
+  // Top-level matches first (by menu group order), then subcommands under them.
   return matching.map(specToSlashCommand).sort((a, b) => {
-    const specA = eligible.find(spec => `/${spec.path.join(' ')}` === a.command)
-    const specB = eligible.find(spec => `/${spec.path.join(' ')}` === b.command)
-    if (!specA || !specB) return a.command.localeCompare(b.command)
-    return compareSpecs(specA, specB)
+    const depthA = a.command.split(' ').length
+    const depthB = b.command.split(' ').length
+    if (depthA !== depthB) return depthA - depthB
+    return byMenuOrder(a, b)
   })
 }
 
@@ -147,5 +112,18 @@ export function getSlashCommandsForContext(context: SlashInputContext = 'idle'):
     spec => spec.path.length === 1 && isEligible(spec, context)
   )
     .map(specToSlashCommand)
-    .sort((a, b) => a.command.localeCompare(b.command))
+    .sort(byMenuOrder)
+}
+
+/** Top-level command name a suggestion belongs to (`/facts list` → `facts`). */
+function topLevelName(command: string): string {
+  return command.replace(/^\//, '').split(' ')[0] ?? ''
+}
+
+/** Menu ordering: by the catalog's section/group order, then alphabetically as a tiebreak. */
+function byMenuOrder(a: SlashCommand, b: SlashCommand): number {
+  const orderA = slashCommandOrder(topLevelName(a.command))
+  const orderB = slashCommandOrder(topLevelName(b.command))
+  if (orderA !== orderB) return orderA - orderB
+  return a.command.localeCompare(b.command)
 }

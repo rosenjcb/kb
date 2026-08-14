@@ -27,7 +27,7 @@ import {
 } from '@kb/core/storage/base-selection.js'
 import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
-import { kbIndexDbPath } from '@kb/core/tools/graph-query-expansion.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import { streamChatTurn } from './chat-stream.js'
 import {
   removePidFile,
@@ -109,8 +109,8 @@ interface ResolvedBase {
  * Resolve which base to build + serve. The name comes from the bootstrap plan
  * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env); when none is
  * declared, prefer a base the operator already selected locally (`kb base use`),
- * and otherwise bind the golden default slug `base` — the cluster's well-known
- * default, à la Postgres's `postgres` maintenance DB. `kb-server start` never
+ * and otherwise bind the golden default slug `default` — the cluster's well-known
+ * base, à la Postgres's `postgres` maintenance DB. `kb-server start` never
  * requires naming a base to boot.
  */
 export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
@@ -183,8 +183,9 @@ async function planBootstrapTask(
   }
 
   log(
-    '⚠  No index and no repos configured. Declare repos via --git or KB_SERVER_BASE_GIT_REPOS ' +
-      '(or KB_GIT_REPOS) and restart to build the index.'
+    `Base "${base.baseRef}" is empty — no repos indexed yet. Add one to start archiving:
+    kb-server base add-repo --base ${base.baseRef} --git <url>
+  (CI/CD can instead pass --git / KB_SERVER_BASE_GIT_REPOS at start.) The server is up and will report an empty base until then.`
   )
   return null
 }
@@ -572,6 +573,11 @@ Commands:
   restart       Stop then start -d.
   status        Report whether kb-server is running (pid + /healthz).
   init          Bootstrap KB_HOME and server config, then print next steps.
+  base <list | create | add-repo | delete> --base <name> [--git <url>…] [--yes]
+        Operator base management. \`create\`/\`add-repo\` build or extend a base from
+        \`--git\` repos; \`list\` shows initialized bases; \`delete\` removes one base and
+        all its data (prompts unless --yes). The target base is always the explicit
+        --base flag. Run \`kb-server base --help\` for details.
   service <install|uninstall|status> [--no-start]
         Register/manage kb-server as a launchd (macOS) / systemd --user (Linux)
         service that starts on login. (install is an alias for service install.)
@@ -681,6 +687,11 @@ export async function runServerMain(argv: string[]): Promise<void> {
     case 'refresh': {
       const { runServerRefreshCommand } = await import('./refresh-cli.js')
       await runServerRefreshCommand(rest, out)
+      return
+    }
+    case 'base': {
+      const { runServerBaseCommand } = await import('./base-cli.js')
+      await runServerBaseCommand(rest, out)
       return
     }
     default:
