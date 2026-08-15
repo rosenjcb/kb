@@ -1058,7 +1058,7 @@ describe('multi-suite parallel batch', () => {
     expect(buildChildArgv('raylib', { autoScore: true })).not.toContain('--from-snapshot')
   })
 
-  it('[TC-238] buildMultiSuiteChildEnv keeps shared multi-base attach URL by default', () => {
+  it('[TC-238] buildMultiSuiteChildEnv keeps the shared multi-base attach URL and unpins the port', () => {
     const env = buildMultiSuiteChildEnv({
       PATH: '/usr/bin',
       KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
@@ -1070,22 +1070,6 @@ describe('multi-suite parallel batch', () => {
     expect(env.GEMINI_API_KEY).toBe('x')
     expect(env.KB_EVAL_SERVER_URL).toBe('http://127.0.0.1:38117')
     expect(env.KB_EVAL_ATTACH_URL).toBe('http://127.0.0.1:38117')
-    expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
-  })
-
-  it('[TC-239] buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode', () => {
-    const env = buildMultiSuiteChildEnv(
-      {
-        PATH: '/usr/bin',
-        KB_EVAL_SERVER_URL: 'http://127.0.0.1:38117',
-        KB_EVAL_ATTACH_URL: 'http://127.0.0.1:38117',
-        KB_EVAL_SERVER_PORT: '38117',
-        GEMINI_API_KEY: 'x',
-      },
-      { sharedServer: false }
-    )
-    expect(env.KB_EVAL_SERVER_URL).toBeUndefined()
-    expect(env.KB_EVAL_ATTACH_URL).toBeUndefined()
     expect(env.KB_EVAL_SERVER_PORT).toBeUndefined()
   })
 

@@ -193,8 +193,7 @@ flowchart LR
 | Mode | Server | Base selection |
 |------|--------|----------------|
 | Single-suite | Spawn (or attach) one server | Boot `--base eval-{suite}`; probes `/healthz?base=` |
-| Multi-suite (default) | Parent spawns **one** shared server; children attach | Each child `--base eval-{suite}` → `X-KB-Base` |
-| `--per-suite-server` | Legacy: one ephemeral port per child | Same as pre-multi-base |
+| Multi-suite | Parent spawns **one** shared server that stays up for the whole batch; children attach | Each child `--base eval-{suite}` → `X-KB-Base` |
 | `--skip-scan` | n/a | Skip eval-index scan when reusing built indexes (fresh init still scans) |
 
 1. **Init/scan** — offline via `scripts/eval-index.ts` (`@kb/core` directly) before attach, so SQLite writes do not race the shared server. Subprocess env from `buildEvalOfflineEnv()` clears remote connection vars.
@@ -216,7 +215,7 @@ pnpm run eval -- --suite kb --auto-score --skip-control
 |----------|------|
 | `KB_EVAL_SERVER_URL` | Attach (no spawn/stop); multi-suite parent sets this for children |
 | `KB_EVAL_SERVER_BIN` | Override built `kb-server.js` |
-| `KB_EVAL_SERVER_PORT` | Pin port when **spawning** (single-suite / `--per-suite-server` only) |
+| `KB_EVAL_SERVER_PORT` | Pin port when **spawning** (single-suite only) |
 | `KB_EVAL_SERVER_API_KEY` | Bearer for spawned server (default `eval-local-key`) |
 | `KB_QUERY_TIMEOUT` | Client + server query timeout (e.g. `180s`) |
 
@@ -228,7 +227,7 @@ Readiness: two consecutive `/healthz?base=<slug>` responses with `ok: true` + `i
 - `initAstLossParser()` must be called once per process before any `computeAstLoss` call.
 - The query harvest pipeline and the MOEL pipeline are independent — neither replaces the other.
 - Do not hardcode question text; always load from `eval/suites/<suite>.yaml`.
-- Multi-suite default: **one** shared multi-base server whose default base is the placeholder `_eval-batch` (not an `eval-{suite}`); children must not strip `KB_EVAL_SERVER_URL`.
+- Multi-suite: **one** shared multi-base server that stays up for the whole batch, whose default base is the placeholder `_eval-batch` (not an `eval-{suite}`); children must not strip `KB_EVAL_SERVER_URL`.
 - Non-default bases are serve-only — missing `.kb-index.sqlite` ⇒ `404 unknown_base` (build via init/scan first).
 - Never run offline SQLite writes (eval-index init/scan) against a base the shared server already holds open.
 - `--force-init` wipes `~/.kb/sessions/<base>` on disk (not `kb base delete`); multi-suite parents wipe suite bases before starting the shared server.

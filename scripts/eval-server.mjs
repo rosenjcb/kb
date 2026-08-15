@@ -250,9 +250,8 @@ export async function startEvalServer({
     )
   }
 
-  // Default to an ephemeral free port. Hard-coding 38117 makes parallel
-  // --all-suites children collide when --per-suite-server is used.
-  // Pin with `port` or KB_EVAL_SERVER_PORT only for single-suite attach/debug.
+  // Default to an ephemeral free port. Hard-coding a port makes concurrent single-suite
+  // servers collide. Pin with `port` or KB_EVAL_SERVER_PORT only for single-suite attach/debug.
   let resolvedPort =
     port ??
     (process.env.KB_EVAL_SERVER_PORT

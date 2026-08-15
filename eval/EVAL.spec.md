@@ -8,7 +8,7 @@ tests:
   - ../tests/eval-server.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-08-05T19:30:00Z
+timestamp: 2026-08-15T00:00:00Z
 ---
 
 ### Intro
@@ -46,7 +46,7 @@ See companion doc for full vocabulary where applicable.
 | FR-13 | Behaviors in eval-run.test.ts; `--force-init` wipes `~/.kb/sessions/<base>` on disk (not via `kb base delete`) before offline `eval-index` init |
 | FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
-| FR-16 | Multi-suite harvest shares one multi-base kb-server by default: parent boots placeholder default base `_eval-batch` (not an `eval-{suite}`), children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; eval server env scrubs operator `KB_GIT_REPOS` / `KB_BASE`; `--per-suite-server` restores ephemeral per-child servers; `--skip-scan` is forwarded to children |
+| FR-16 | Multi-suite harvest shares one long-lived multi-base kb-server: the parent boots placeholder default base `_eval-batch` (not an `eval-{suite}`), children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; the server stays up for the whole batch and is never restarted per suite; the eval server env scrubs operator `KB_GIT_REPOS` / `KB_BASE`; `--skip-scan` is forwarded to children |
 | FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
 
 ### QA Test Cases
@@ -290,8 +290,7 @@ See companion doc for full vocabulary where applicable.
 | TC-235 | FR-13 | buildQuestionTimeline joins stages with the trace and derives retrieval_ms | pass |
 | TC-236 | FR-13 | buildQuestionTimeline falls back to the detail string when report.retrieval is absent | pass |
 | TC-237 | FR-13 | buildTimelineSummary aggregates shares and flags a thinking-dominant run | pass |
-| TC-238 | FR-16 | buildMultiSuiteChildEnv keeps shared multi-base attach URL by default | pass |
-| TC-239 | FR-16 | buildMultiSuiteChildEnv strips attach pins in --per-suite-server mode | pass |
+| TC-238 | FR-16 | buildMultiSuiteChildEnv keeps the shared multi-base attach URL and unpins the port | pass |
 | TC-240 | FR-16 | buildChildArgv forwards --skip-scan | pass |
 | TC-241 | FR-16 | healthzUrl appends ?base= for multi-base probes | pass |
 | TC-242 | FR-16 | buildKbRemoteEnv carries KB_BASE for X-KB-Base | pass |

@@ -193,7 +193,7 @@ pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.
 pnpm run eval -- --all-suites --skip-control --skip-scan   # reuse indexes, kb-only
 pnpm run eval -- --all-suites --sequential     # one at a time
 pnpm run eval -- --all-suites --parallel 4     # cap concurrency
-pnpm run eval -- --all-suites --per-suite-server  # legacy: one kb-server per suite
+pnpm run eval -- --all-suites --keep-going     # run every suite even if one fails (default: fast-fail)
 
 # Control baseline (Condition N) runs side-by-side with kb BY DEFAULT.
 pnpm run eval -- --suite raylib --skip-control   # opt out → kb-only artifact
@@ -207,11 +207,11 @@ pnpm run eval:chat -- --base <name> --cwd <repo-path>
 
 **Agent rule:** when the user asks for multiple suites (or "all suites"), use `--suites …` or `--all-suites`. Do **not** write OS-specific bash/`xargs` loops — the runner parallelizes in Node. Only pass `--sequential` if the user asks for serial runs.
 
-**Multi-base server:** default multi-suite path shares one `kb-server` process (PR #172 registry). Do **not** restart a server per suite unless the user asks for `--per-suite-server`. Prefer `--skip-scan` when `~/.kb/sessions/eval-*` indexes already exist and the user does not want a rebuild.
+**Multi-base server:** the multi-suite path shares one long-lived `kb-server` process (PR #172 registry) that stays up for the whole batch — it is never restarted per suite. The batch fast-fails on the first suite failure; pass `--keep-going` to run every suite regardless. Prefer `--skip-scan` when `~/.kb/sessions/eval-*` indexes already exist and the user does not want a rebuild.
 
 Implementation: `scripts/eval-run.mjs` + `scripts/eval-server.mjs`. Repo URL resolves from suite YAML `repo_url`, with `--repo` as explicit override (single-suite only).
 
-Flags: `--suite`, `--suites`, `--all-suites`, `--parallel`, `--sequential`, `--per-suite-server`, `--skip-scan`, `--skip-control`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`, `--control-agent`, `--control-model`. See `EVALUATION.md` § Automated harvest.
+Flags: `--suite`, `--suites`, `--all-suites`, `--parallel`, `--sequential`, `--keep-going`, `--skip-scan`, `--skip-control`, `--repo`, `--clone-branch`, `--clone-depth`, `--questions-file`, `--base`, `--run-dir`, `--out`, `--scores-file`, `--auto-score`, `--hypothesis`, `--label`, `--control-agent`, `--control-model`. See `EVALUATION.md` § Automated harvest.
 
 Artifacts default under `~/.kb/evaluations/<run-name>/`.
 
