@@ -13,11 +13,9 @@ questions:
   - "Step by step, how does fish_config's web UI change a theme in a live shell session — from browser action through the local HTTP server to shell stdin/state updates?"
   - "How can developers add and register a new built-in shell command in the Rust-based codebase?"
   - "How does fish-shell implement its signature autocomplete suggestions and command history lookups?"
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions, not kb internals.
   - What is the role of the event handler struct when fish reacts to signals, variable changes, or process exits?
-  - "For a long, vague question about how the fish-config HTTP request handler fits into the web_config theme UI, local HTTP server, and live shell variable updates end-to-end, what does that handler own — and can entity fan-out run without a query-length gate?"
+  - How does the fish-config HTTP request handler fit into the web_config theme UI, local HTTP server, and live shell variable updates end-to-end, and what does that handler own?
 answers:
   - >
     The complete rewrite of fish-shell from C++ to Rust (a project spanning two years and involving
@@ -82,5 +80,5 @@ answers:
   - >
     `FishConfigHTTPRequestHandler` in `share/tools/web_config/webconfig.py` serves the
     fish_config web UI (themes/colors) and drives live shell updates. A correct answer ties it
-    to web_config ↔ session updates (not the core Rust reader loop) and allows ontology fan-out
-    on a long vague question once the entity resolves.
+    to web_config ↔ session updates (not the core Rust reader loop) without kb length-gate
+    language.

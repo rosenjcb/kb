@@ -4,7 +4,7 @@ schema_version: 1
 id: raylib
 display_name: raylib
 repo_url: https://github.com/raysan5/raylib.git
-rubric_focus: the **raylib** C library knowledge base (facts + docs in SQLite)
+rubric_focus: the **raylib** C library knowledge base (documents + symbols in SQLite)
 questions:
   - What is raylib for, and what are its main capabilities?
   - How does raylib's architecture work, including modules and platform support?
@@ -17,11 +17,9 @@ questions:
   - Step by step, what happens inside InitWindow() to open a window and set up the graphics context?
   - Trace raylib's standard render loop in order — what do BeginDrawing, the drawing calls, and EndDrawing each do, and in what sequence?
   - How do I add a new example program to raylib and get it built, step by step?
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions, not kb internals.
   - What is the role of raylib when an application needs a minimal C API for windowing, input, and OpenGL drawing?
-  - "For a long, vague question about how raylib fits into rcore, rlgl, optional modules, and the InitWindow/BeginDrawing/EndDrawing loop end-to-end — once the raylib library entity resolves, does ontology fan-out still issue targeted probes with no length gate?"
+  - How does raylib fit together end-to-end: rcore, rlgl, optional modules, and the InitWindow / BeginDrawing / EndDrawing loop?
 answers:
   - >
     raylib is a simple, C99 library "to enjoy videogames programming," inspired by Borland BGI

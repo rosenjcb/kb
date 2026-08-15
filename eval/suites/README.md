@@ -37,21 +37,22 @@ Disposable KB base names are **not** configured here — `eval-run.mjs` defaults
 | `duckdb` | duckdb/duckdb | optional — large; not in `--all-suites` |
 | `generic` | `--repo` required | repo-neutral questions |
 
-## Alias / inquiry-lane landing probes
+## Alias / landing probes
 
-Every suite appends two follow-ups that target the **entity-resolved** retrieval
-category (not general product FAQ):
+Every suite appends two follow-ups that are still **about the target repo**, not
+about kb internals:
 
 1. **Prose landing** — spaced/hyphenated wording for a harvested CamelCase module
    (or the best landable cli/library/repo name on thin registries), often
    “What is the role of the …”, so common-word aliases cannot steal the hit.
-2. **Long vague + no length gate** — once stage-0 resolves that entity, ontology
-   fan-out should still run; the short-question LLM expander is only the
-   unresolved fallback.
+2. **Long end-to-end** — a verbose question about how that component fits into
+   neighboring subsystems. That exercises entity-resolved fan-out in the
+   retriever without asking the *judge* to grade kb’s length-gate policy on a
+   brew/fzf/raylib index that has no such concept.
 
-Thin registries (`fzf`, `raylib`, `shellcheck`) mostly land the product name
-itself — they still exercise fan-out-without-length-gate, not CamelCase alias
-splitting. Re-run with a fresh index when measuring this category.
+Only the **kb** suite may ask kb-mechanism questions (hybrid retrieval, inquiry
+lanes, curator). Other packs must not put “ontology fan-out” or “query-length
+gate” in the question or in the gold answer.
 
 ## Headline grade (ΔS)
 

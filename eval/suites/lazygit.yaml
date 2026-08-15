@@ -13,11 +13,9 @@ questions:
   - "Explain the architecture of the lazygit integration test framework and how tests simulate a multi-step interactive rebase without a real terminal."
   - "How are worktrees managed inside lazygit and what files govern their state?"
   - "How are custom shell commands and keybindings declared and executed dynamically inside the lazygit YAML configuration?"
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions, not kb internals.
   - What is the role of the confirmation controller when lazygit shows a confirm/cancel modal?
-  - "For a long, vague question about how the staging controller fits into patch explorer contexts, keybindings, and refreshing the files panel after Git index changes end-to-end, what does it own — and can entity-scoped fan-out run with no length gate?"
+  - How does the staging controller fit into patch explorer contexts, keybindings, and refreshing the files panel after Git index changes end-to-end, and what does it own?
 answers:
   - >
     Lazygit operates as a terminal user interface wrapper for Git command execution. Its terminal
@@ -82,5 +80,4 @@ answers:
   - >
     `StagingController` drives patch-explorer staging/discard/select keybindings for staged vs
     unstaged contexts and ties UI actions to the Git index. A correct answer should cover that
-    controller locus (not a one-line "press space to stage"), and allow ontology fan-out on a
-    long vague question once the entity resolves.
+    controller locus (not a one-line "press space to stage") without kb length-gate language.

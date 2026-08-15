@@ -13,11 +13,9 @@ questions:
   - "Explain the core differences between a Formula and a Cask within the Homebrew framework."
   - "Step by step, what changed in Homebrew 4.0's API-first install path versus cloning homebrew-core, and how does that alter the formula lookup sequence?"
   - "Detail how formula dependency trees are evaluated and resolved during installations."
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions about a harvested module, not kb internals.
   - What is the role of the system command helper when Homebrew runs an external executable during install or cask work?
-  - "For a long, vague question about how the never-sudo system command test helper relates to ordinary system-command execution, sandboxing, and cask fixtures end-to-end, what does that helper own — and can kb fan out from a resolved entity without a query-length gate?"
+  - How does the never-sudo system command test helper relate to ordinary system-command execution, sandboxing, and cask fixtures end-to-end, and what does that helper own?
 answers:
   - >
     Homebrew Formulae are package definitions written in a custom Ruby Domain-Specific Language
@@ -85,6 +83,5 @@ answers:
   - >
     `NeverSudoSystemCommand` is a test/cask helper subclass of `SystemCommand` that forces
     `sudo: false` / `sudo_as_root: false` so fixtures never escalate. A correct answer keeps it
-    distinct from ordinary `SystemCommand`, mentions test/cask use, and — when stage-0 resolves
-    the entity — allows ontology-typed fan-out with **no query-length gate** (LLM short-question
-    expansion is only the unresolved fallback).
+    distinct from ordinary `SystemCommand` and mentions test/cask fixture use — not kb
+    inquiry-lane or query-length-gate behavior.

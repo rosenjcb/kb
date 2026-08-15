@@ -13,11 +13,9 @@ questions:
   - "How are tests organized and executed inside the ShellCheck repository to verify parsing correctness?"
   - "Walk through the disable-comment path: how does an inline shellcheck disable=SCxxxx annotation get associated with an AST node and suppress a matching warning during analysis?"
   - "Detail the structural compilation process of ShellCheck from source utilizing the Cabal build utility."
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions, not kb internals.
   - What is the role of shellcheck when a developer wants static analysis feedback on a Bash or POSIX shell script?
-  - "For a long, vague question about how shellcheck fits into Parser.hs, AST.hs, AnalyzerLib variable tracing, and Analytics/Checks rule evaluation end-to-end — if only the repo entity is available to resolve, what should still happen for ontology fan-out versus the short-question LLM expander fallback?"
+  - How do Parser.hs, AST.hs, AnalyzerLib, and Analytics/Checks share the work of turning a script into SC warnings end-to-end?
 answers:
   - >
     ShellCheck is a static analysis tool designed to inspect shell scripts and provide linting
@@ -77,7 +75,8 @@ answers:
     registry is extremely thin (often only a repo entity), so do not invent a harvested
     CamelCase `ShellCheck` class, and do not pivot "role" into an unrelated schema.
   - >
-    With a thin registry, if the repo/tool entity resolves, entity-grounded fan-out can still
-    run with no length gate; if resolve fails, the short-question LLM expander is fallback only.
-    Substance should still describe Parser→AST→AnalyzerLib→Checks. A correct answer must not
-    claim CamelCase module landing the index does not have.
+    Raw script text is tokenized in Parser.hs, assembled into AST.hs nodes, annotated by
+    AnalyzerLib.hs scope/assignment maps, then walked by Analytics.hs and Checks/* to emit
+    SC codes. A correct answer should name those modules in pipeline order. Do not invent a
+    harvested CamelCase `ShellCheck` class this thin registry does not have, and do not grade
+    kb inquiry-lane or length-gate policy.
