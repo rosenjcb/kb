@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   allocateFreePort,
   buildEvalOfflineEnv,
+  buildEvalServerChildEnv,
   buildKbRemoteEnv,
   defaultEvalApiKey,
   healthzUrl,
@@ -68,6 +69,37 @@ describe('eval-server helpers', () => {
       else process.env.KB_CONNECTION_STRING = prevConnectionString
       if (prevKey === undefined) delete process.env.KB_SERVER_API_KEY
       else process.env.KB_SERVER_API_KEY = prevKey
+    }
+  })
+
+  it('[TC-GEM1] buildEvalOfflineEnv defaults KB_EMBEDDER=gemini when GEMINI_API_KEY is set', () => {
+    const prevEmbedder = process.env.KB_EMBEDDER
+    const prevGemini = process.env.GEMINI_API_KEY
+    delete process.env.KB_EMBEDDER
+    process.env.GEMINI_API_KEY = 'test-key'
+    try {
+      expect(buildEvalOfflineEnv().KB_EMBEDDER).toBe('gemini')
+      expect(buildEvalServerChildEnv().KB_EMBEDDER).toBe('gemini')
+    } finally {
+      if (prevEmbedder === undefined) delete process.env.KB_EMBEDDER
+      else process.env.KB_EMBEDDER = prevEmbedder
+      if (prevGemini === undefined) delete process.env.GEMINI_API_KEY
+      else process.env.GEMINI_API_KEY = prevGemini
+    }
+  })
+
+  it('[TC-GEM2] buildEvalOfflineEnv keeps an explicit KB_EMBEDDER pin', () => {
+    const prevEmbedder = process.env.KB_EMBEDDER
+    const prevGemini = process.env.GEMINI_API_KEY
+    process.env.KB_EMBEDDER = 'local'
+    process.env.GEMINI_API_KEY = 'test-key'
+    try {
+      expect(buildEvalOfflineEnv().KB_EMBEDDER).toBe('local')
+    } finally {
+      if (prevEmbedder === undefined) delete process.env.KB_EMBEDDER
+      else process.env.KB_EMBEDDER = prevEmbedder
+      if (prevGemini === undefined) delete process.env.GEMINI_API_KEY
+      else process.env.GEMINI_API_KEY = prevGemini
     }
   })
 

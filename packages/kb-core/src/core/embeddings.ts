@@ -208,20 +208,19 @@ export class LocalEmbedder implements Embedder {
 }
 
 /**
- * Select the embedding backend. Local (on-device, no API) is the default; set
- * `KB_EMBEDDER=gemini` to opt into hosted Gemini embeddings. Returns `undefined` when the chosen
- * backend is unavailable (no local dependency and no Gemini key), so every caller degrades
- * gracefully to the deterministic vector.
+ * Select the embedding backend. `KB_EMBEDDER` pin wins (`local`/`onnx`/`gemini`/`none`).
+ * When unset, a present `GEMINI_API_KEY` selects Gemini so Darwin hosts without
+ * `onnxruntime-node` do not load MiniLM. Otherwise Local ONNX. Returns `undefined` when
+ * the chosen backend is unavailable, so callers can degrade to the deterministic vector.
  */
 export function createEmbedder(): Embedder | undefined {
-  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase()
-  if (backend === 'gemini') {
-    const geminiKey = process.env.GEMINI_API_KEY?.trim()
+  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase() ?? ''
+  if (backend === 'none') return undefined
+  const geminiKey = process.env.GEMINI_API_KEY?.trim()
+  if (backend === 'gemini' || (backend === '' && geminiKey)) {
     if (geminiKey) return new GeminiEmbedder(geminiKey)
     return undefined
   }
-  if (backend === 'none') return undefined
-  // Default: local, on-device weights.
   return new LocalEmbedder()
 }
 

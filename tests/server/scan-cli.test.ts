@@ -3,11 +3,30 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// scanBaseRepos embeds after reindex; refuse real ONNX/Gemini so CI stays offline.
+vi.mock('@kb/core/core/embeddings.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@kb/core/core/embeddings.js')>()
+  const fake = {
+    modelId: 'test:fake:3',
+    dimensions: 3,
+    async embed(texts: string[]) {
+      return texts.map(() => [1, 0, 0])
+    },
+  }
+  return {
+    ...actual,
+    createEmbedder: () => fake,
+    requireEmbedderForInit: () => fake,
+    createEmbedderFromEnv: () => fake,
+  }
+})
+
 import { readSnapshotManifest } from '@kb/core/storage/snapshot.js'
 import { runServerScanCommand } from '@kb/server/scan-cli.js'
 import type { ServerLogger } from '@kb/server/server-cli.js'
 import { runExportCommand } from '@kb/server/snapshot-cli.js'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 function capturingLogger(): {
   logger: ServerLogger

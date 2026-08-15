@@ -3,7 +3,26 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Init/rescan requires embeddings; keep tests offline without ONNX native bindings.
+vi.mock('@kb/core/core/embeddings.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@kb/core/core/embeddings.js')>()
+  const fake = {
+    modelId: 'test:fake:3',
+    dimensions: 3,
+    async embed(texts: string[]) {
+      return texts.map(() => [1, 0, 0])
+    },
+  }
+  return {
+    ...actual,
+    createEmbedder: () => fake,
+    requireEmbedderForInit: () => fake,
+    createEmbedderFromEnv: () => fake,
+  }
+})
+
 import type { LLMCallParams, LLMProvider, LLMResponse } from '@kb/core/core/types.js'
 import { collectSourceFiles, runKbInit } from '@kb/core/ops/init-cli.js'
 import { diffChangedSourceFiles, readSourceFilesManifest } from '@kb/core/ops/init-source-files-manifest.js'

@@ -64,6 +64,20 @@ export function allocateFreePort(host = '127.0.0.1') {
 }
 
 /**
+ * Prefer Gemini embeddings for eval when a key is present and the caller did not
+ * pin `KB_EMBEDDER`. Local ONNX (`Xenova/all-MiniLM-L6-v2`) often fails on Darwin
+ * (missing `onnxruntime-node` binding); Fly/demo already use gemini. Explicit
+ * `KB_EMBEDDER=local|onnx|gemini` always wins.
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function applyEvalEmbedderDefault(env) {
+  const pinned = env.KB_EMBEDDER?.trim()
+  if (pinned) return env
+  if (env.GEMINI_API_KEY?.trim()) env.KB_EMBEDDER = 'gemini'
+  return env
+}
+
+/**
  * Build subprocess env for offline eval indexing children (eval-index init/scan).
  * Clears remote connection vars so children index via `@kb/core` without hitting a
  * live server (avoids SQLite contention during eval capture).
@@ -79,7 +93,7 @@ export function buildEvalOfflineEnv({ kbHome } = {}) {
   env.NODE_PATH = undefined
   if (kbHome) env.KB_HOME = kbHome
   else env.KB_HOME = undefined
-  return env
+  return applyEvalEmbedderDefault(env)
 }
 
 /**
@@ -100,7 +114,7 @@ export function buildEvalServerChildEnv({ apiKey = defaultEvalApiKey(), kbHome }
   env.KB_SERVER_BASE_NAME = undefined
   env.NODE_PATH = undefined
   if (kbHome) env.KB_HOME = kbHome
-  return env
+  return applyEvalEmbedderDefault(env)
 }
 
 /**

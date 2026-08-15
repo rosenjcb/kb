@@ -101,5 +101,6 @@ jobs:
             --region "$builder_region" \
             --vm-size performance-4x --vm-memory 8192 \
             -e COLD_BUILD_TIMEOUT=5400 \
+            -e KB_EMBEDDER=gemini \
             --schedule daily --restart no \
             bash /app/scripts/fly/refresh.sh

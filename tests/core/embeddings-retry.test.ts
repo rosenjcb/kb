@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GeminiEmbedder } from '@kb/core/core/embeddings.js'
+import { GeminiEmbedder, createEmbedder } from '@kb/core/core/embeddings.js'
 
 /**
  * The embedder must absorb transient provider errors (429 rate limits, 5xx, network blips)
@@ -63,6 +63,21 @@ describe('GeminiEmbedder retry/backoff', () => {
     const embedder = new GeminiEmbedder('test-key', 'gemini-embedding-001', 2)
     await expect(embedder.embed(['hello'])).rejects.toThrow(/401/)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('[smoke] createEmbedder uses Gemini when GEMINI_API_KEY is set and KB_EMBEDDER is unset', () => {
+    const prevEmbedder = process.env.KB_EMBEDDER
+    const prevKey = process.env.GEMINI_API_KEY
+    delete process.env.KB_EMBEDDER
+    process.env.GEMINI_API_KEY = 'test-key'
+    try {
+      expect(createEmbedder()?.modelId.startsWith('gemini:')).toBe(true)
+    } finally {
+      if (prevEmbedder === undefined) delete process.env.KB_EMBEDDER
+      else process.env.KB_EMBEDDER = prevEmbedder
+      if (prevKey === undefined) delete process.env.GEMINI_API_KEY
+      else process.env.GEMINI_API_KEY = prevKey
+    }
   })
 
   it('[TC-EMB-4] retries a network error then succeeds', async () => {

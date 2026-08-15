@@ -908,11 +908,33 @@ async function timedAsync(label, timings, fn) {
 
 /**
  * Returns true if the KB session already has an on-disk index.
- * Do not probe via `kb docs list` here — that needs a live server and, under the
- * offline init/scan env, only produces noisy connection errors to localhost:38117.
+ * Do not probe via `kb docs list` here — that command was removed; under the
+ * offline init/scan env it also only produced noisy connection errors to localhost:38117.
  */
 function sessionHasDocs(_targetCwd, base) {
   return fs.existsSync(path.join(evalSessionDir(base), '.kb-index.sqlite'))
+}
+
+/**
+ * Document count for artifact `docs_list` — `kb docs list` no longer exists
+ * (removed with the shared command catalog). Read the session SQLite directly
+ * in query-only mode so a live kb-server WAL lock does not block the count.
+ */
+function countIndexedDocuments(base) {
+  const dbPath = path.join(evalSessionDir(base), '.kb-index.sqlite')
+  if (!fs.existsSync(dbPath)) return { count: null, text: 'Count: (no index)\n' }
+  try {
+    const uri = `file:${dbPath}?mode=ro`
+    const raw = execSync(`sqlite3 ${JSON.stringify(uri)} "SELECT COUNT(*) FROM documents;"`, {
+      encoding: 'utf8',
+    }).trim()
+    const count = Number(raw)
+    if (!Number.isFinite(count)) return { count: null, text: `Count: (unparsed: ${raw})\n` }
+    return { count, text: `Count: ${count}\n` }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { count: null, text: `Count: (sqlite error: ${msg})\n` }
+  }
 }
 
 /** Decide whether eval should wipe/init vs reuse an existing session. */
@@ -1381,11 +1403,11 @@ async function main() {
       )
       await evalServer.waitReady({ base })
 
-      // docs/graph/logs after server attach so they hit the same multi-base process via --base
-      // (avoids opening SQLite locally while the shared server holds the index).
-      console.error('[eval] docs list')
-      const docsOut = timed('docs_list', runTiming, () => kb(targetCwd, `docs list --base ${base}`))
-      fs.writeFileSync(path.join(workdir, 'docs.txt'), docsOut, 'utf8')
+      // Document count from session SQLite (`kb docs list` was removed). Graph/logs still
+      // go through the live multi-base server via --base.
+      console.error('[eval] docs count (sqlite)')
+      const docsHarvest = timed('docs_list', runTiming, () => countIndexedDocuments(base))
+      fs.writeFileSync(path.join(workdir, 'docs.txt'), docsHarvest.text, 'utf8')
 
       console.error('[eval] graph')
       const graphOut = timed('graph', runTiming, () => kb(targetCwd, `graph --base ${base}`))
@@ -1724,7 +1746,7 @@ async function main() {
           : null,
         `kb scan --base ${base} --debug (cwd: ${targetCwd})`,
         `kb base use --default ${base}`,
-        `kb docs list --base ${base} --output json`,
+        `sqlite3 ~/.kb/sessions/${base}/.kb-index.sqlite "SELECT COUNT(*) FROM documents;"`,
         `kb graph --base ${base}`,
         `kb ${logsCmd(base)}`,
         `kb query "<${questions.length} questions>" --base ${base} --output json`,

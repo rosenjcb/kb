@@ -3,6 +3,26 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Init now requires embeddings (requireEmbedderForInit). Refuse real ONNX/Gemini
+// so CI and darwin/x64 hosts without onnxruntime bindings can still run.
+vi.mock('@kb/core/core/embeddings.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@kb/core/core/embeddings.js')>()
+  const fake = {
+    modelId: 'test:fake:3',
+    dimensions: 3,
+    async embed(texts: string[]) {
+      return texts.map(() => [1, 0, 0])
+    },
+  }
+  return {
+    ...actual,
+    createEmbedder: () => fake,
+    requireEmbedderForInit: () => fake,
+    createEmbedderFromEnv: () => fake,
+  }
+})
+
 import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { resolveBaseToDir, writeSessionBase } from '@kb/core/storage/base-selection.js'

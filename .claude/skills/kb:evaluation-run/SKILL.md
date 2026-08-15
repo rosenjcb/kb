@@ -11,6 +11,32 @@ Canonical spec: `EVALUATION.md`
 
 Do not invent a new scenario or JSON shape. Follow `EVALUATION.md` as the source of truth.
 
+## Embeddings (eval default = Gemini when keyed)
+
+Product default embedder is still local ONNX (`KB_EMBEDDER` unset). **Eval** defaults to
+`KB_EMBEDDER=gemini` whenever `GEMINI_API_KEY` is set (init/scan + the shared eval
+kb-server), because Darwin often lacks the `onnxruntime-node` native binding and an
+index without embeddings aborts. Override with an explicit `KB_EMBEDDER=local` if needed.
+
+## KB 2.0 — do not use removed / pre-2.0 surfaces
+
+Eval must match the **document + symbol** index (hybrid FTS + embeddings). The sentence-level
+**fact graph** and the **`kb docs`** CLI are gone.
+
+| Do | Do not |
+|----|--------|
+| Let `pnpm run eval` harvest metrics | Call `kb docs list` / `docs view` / `docs generate` (removed) |
+| Document count = `SELECT COUNT(*) FROM documents` on `~/.kb/sessions/<base>/.kb-index.sqlite` (eval-run already does this into artifact `docs_list.count`) | Invent a `docs list` step or parse old `Count:` CLI text from a live `kb` invocation |
+| `kb graph` / `kb graph --entity` = flat **document ↔ symbol** map | Expect triplet / edge-traversal graph dumps (`IMPORTS_FILE`, `EXPORTS_SYMBOL`, relationship walks) |
+| Retrieval detail like `hybrid:docs=…,symbols=…,facts=…` | Treat “facts” as the primary indexed unit for 2.0 scoring narratives |
+| `pnpm run eval:entities` for ontology kinds | Assume published-snapshot fact totals from older skill tables still describe a fresh 2.0 index |
+
+`scripts/eval-run.mjs` already counts documents via SQLite (not `kb docs list`). If you see
+`Unknown command: docs`, the runner or an agent step is still on a pre-2.0 path — fix that; do not
+reintroduce the CLI.
+
+Indexing for eval stays on `scripts/eval-index.ts` (`@kb/core` init/scan), not the thin client CLI.
+
 ## Preflight — run this before promising a run
 
 Four things have burned agent sessions before. Check them in order; each is one
@@ -54,40 +80,34 @@ timeout 25 ./packages/kb-server/dist/bin/kb-server start --base eval-kb 2>&1 \
 **4. Check ontology coverage before running anything entity-dependent.** See below —
 this is the one most likely to waste an entire run.
 
-## Ontology coverage gate (entity / scope / expansion work)
+## Ontology / index coverage gate (entity / scope / expansion work)
 
-Published snapshots carry facts in bulk but **very little ontology**. If the change
-under evaluation touches the entity registry, scope inference, or query expansion,
-measure coverage *first* — otherwise the run produces null movement and you cannot
-tell "the feature does nothing" from "the data cannot exercise the feature."
+If the change under evaluation touches the entity registry, scope inference, or query
+expansion, measure coverage *first* — otherwise the run produces null movement and you
+cannot tell "the feature does nothing" from "the data cannot exercise the feature."
 
-Observed across all 10 published bases (Aug 2026):
-
-| suite | facts | entities | edges | usable edges (non-`distinct_from`) |
-|---|---|---|---|---|
-| kestra | 20943 | 300 | 1213 | 23 |
-| kb | 9250 | 121 | 83 | 3 |
-| lazygit | 5035 | 51 | 1 | 0 |
-| mitmproxy | 4477 | 31 | 1 | 0 |
-| brew | 20048 | 19 | 5 | 0 |
-| raylib | 4751 | 2 | 1 | 0 |
-| datasette / fish-shell / fzf / shellcheck | 1977–3129 | **0** | 0 | 0 |
-
-Two facts that follow from this, and that any entity-side eval has to respect:
-
-- **`part_of` is the only relationship edge the harvest emits.** Every other edge in
-  the fleet is `distinct_from`, which the deterministic collision detector writes —
-  not a harvested relationship. There are zero `owned_by`, `belongs_to`, and
-  `depends_on` edges anywhere. Anything keyed on those is untestable on this data.
-- **`raylib`, the canonical benchmark, has 2 entities.** It is the wrong suite for
-  entity work regardless of its status elsewhere. Use `kb` and `kestra`; treat the
-  rest as regression-only.
-
-Check it directly (works on a local base, or remotely — see the SSH fallback):
+For **2.0 indexes**, check documents + symbols + entities (not legacy fact-graph size):
 
 ```bash
+# Ontology kinds / samples
+pnpm run eval:entities -- --suite kb --samples 8
 pnpm run eval:entities -- --all-suites
+
+# Structural units (readonly SQLite)
+sqlite3 "file:$HOME/.kb/sessions/eval-kb/.kb-index.sqlite?mode=ro" \
+  "SELECT 'documents', COUNT(*) FROM documents UNION ALL SELECT 'symbols', COUNT(*) FROM code_symbols UNION ALL SELECT 'entities', COUNT(*) FROM entities;"
 ```
+
+Historical published-base tables that quoted tens of thousands of **facts** describe the
+pre-2.0 sentence graph. Do not use those numbers as a 2.0 success criterion. Re-measure
+on the session you are about to score.
+
+Entity-side notes that still matter:
+
+- **`raylib` stays a weak ontology suite** even when document/symbol coverage is rich —
+  prefer `kb` / `kestra` when the hypothesis is entity landing or expansion.
+- Collision / alias edges (`distinct_from`, etc.) are not a substitute for harvested
+  relationship richness — do not treat them as proof the feature is exercised.
 
 ## Snapshot credentials — what actually works
 
@@ -254,21 +274,33 @@ kb-vs-control comparison (that requires ΔS from one artifact).
 
 Columns: `date | run | docs | ent | rels | res | success | pass | corr | use`
 
+In 2.0, **`docs`** is the `documents` table count (SQLite harvest). **`ent` / `rels`** still
+come from `kb graph` summary parsing (document↔symbol map counts — not the old triplet
+graph). Prefer reading `artifact.json` over re-deriving from removed CLIs.
+
 After every eval run, leave the artifact at `~/.kb/evaluations/<run-name>/artifact.json`. Do **not** copy into the git checkout — trends and `results.tex` already read the home workspace.
 
 ## Question sets
 
-Questions are defined in `eval/suites/<suite>.yaml`. The kb and raylib suites include a mix of conceptual and code-structure questions:
+Questions are defined in `eval/suites/<suite>.yaml`. Always load from the YAML — never hardcode.
 
-**kb suite** — includes questions that specifically test code-graph traversal (IMPORTS_FILE, EXPORTS_SYMBOL edges) e.g. "Which source files import TsMorphIndexer?" These require the `code-graph` cycle to have run and the semantic bridge to be populated.
+**kb suite** — dogfood questions over the kb repo (setup, scan vs bootstrap, indexing,
+query/chat, skills, eval runner, ambiguity / entity-landing probes). Suite answers may
+still mention older “import_doc facts” wording; score against what the **running 2.0
+code** does (document/symbol index + hybrid retrieval), and flag suite drift rather than
+forcing a pre-2.0 narrative.
 
-**raylib suite** — includes structural questions about module dependencies and file relationships that test what the semantic graph captured about the C codebase.
+**raylib suite** — external C codebase benchmark (conceptual + structural). Do not require
+AST edge types like `IMPORTS_FILE` / `EXPORTS_SYMBOL` for a valid 2.0 run.
 
-Do not hardcode question text in prompts or scripts — always load from the YAML.
+## Index harvest report (after index)
 
-## Entity harvest report (after index)
+After index/scan (or a full eval), report **what was harvested** — not only query scores:
 
-After index/scan (or a full eval), report **what entities were harvested** — ontology kinds, counts, and sample names — not only query scores. The session store is `~/.kb/sessions/<base>/.kb-index.sqlite` (`entities` / `entity_aliases`).
+1. **Documents / symbols** — counts from SQLite (`documents`, `code_symbols`).
+2. **Entities** — ontology kinds, counts, and sample names via `eval:entities`.
+
+Session store: `~/.kb/sessions/<base>/.kb-index.sqlite`.
 
 ```bash
 # One base or suite (base = eval-{suiteId})

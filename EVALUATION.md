@@ -545,8 +545,8 @@ The `init_result` object should contain:
 - `written_doc_ids`
 - `init_run_id`
 - `init_run_id_note`
-- `docs_list`
-- `graph_summary`
+- `docs_list` — in 2.0 this is `{ count }` from `SELECT COUNT(*) FROM documents` on the session SQLite (the `kb docs` CLI was removed); not a live `kb docs list` dump
+- `graph_summary` — document↔symbol map counts from `kb graph` (flat links; not the retired fact-graph triplets)
 
 If a field is unavailable, include it with `null` and explain why in a sibling `*_note` field when appropriate.
 
