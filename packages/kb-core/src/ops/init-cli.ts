@@ -1098,7 +1098,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           embedder,
         })
         options.progressSink?.(
-          `[kb init] Embedding documents, code symbols, and facts with ${embedder.modelId}…`
+          `[init] Embedding documents, code symbols, and facts with ${embedder.modelId}…`
         )
         try {
           const documents = await embedIndexer.embedAllDocuments()
@@ -1106,7 +1106,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           const facts = await embedIndexer.embedAllFacts()
           if (documents + symbols + facts > 0) {
             options.progressSink?.(
-              `[kb init] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s) with ${embedder.modelId}.`
+              `[init] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s) with ${embedder.modelId}.`
             )
           }
         } catch (error) {
@@ -1118,7 +1118,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
               `kb init embedding failed (${embedder.modelId}): ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
             )
           }
-          options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
+          options.progressSink?.(`[init] Embedding skipped (${message.slice(0, 80)}).`)
         } finally {
           embedIndexer.close()
         }
