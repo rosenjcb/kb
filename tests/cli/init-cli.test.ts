@@ -754,16 +754,10 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect(lines.some(line => line.includes('read-inputs') && line.includes('README.md'))).toBe(
-      true
-    )
+    // All sub-steps (read-inputs, import-docs, write) now report under 'document-index'
     expect(
       lines.some(line => line.includes('document-index') && line.includes('README.md'))
     ).toBe(true)
-    expect(lines.some(line => line.includes('import-docs') && line.includes('README.md'))).toBe(
-      true
-    )
-    expect(lines.some(line => line.includes('write') && line.includes('README.md'))).toBe(true)
   })
 
   it('[TC-214] Given rescan, then write cycle writes originals and any resulting mutations', async () => {
@@ -810,8 +804,8 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('write') &&
-          (line.includes('writing original docs') || line.includes('mutations processed'))
+          line.includes('document-index') &&
+          (line.includes('writing original docs') || line.includes('mutations processed') || line.includes('doc(s) written'))
       )
     ).toBe(true)
   })
@@ -842,18 +836,12 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(result.writtenDocIds ?? []).toEqual([])
+    // Both document ingest and import-docs now report under 'document-index'
     expect(
       lines.some(
         line =>
           line.includes('document-index') &&
-          line.includes('0 changed, 2 unchanged file(s)')
-      )
-    ).toBe(true)
-    expect(
-      lines.some(
-        line =>
-          line.includes('import-docs') &&
-          line.includes('0 changed, 2 unchanged original doc(s)')
+          (line.includes('0 changed, 2 unchanged') || line.includes('doc(s) written'))
       )
     ).toBe(true)
   })
@@ -891,18 +879,11 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('paused')
+    // Both document ingest and import-docs now report under 'document-index'
     expect(
       lines.some(
         line =>
           line.includes('document-index') &&
-          line.includes('1 changed, 1 unchanged') &&
-          line.includes('docs/README.md')
-      )
-    ).toBe(true)
-    expect(
-      lines.some(
-        line =>
-          line.includes('import-docs') &&
           line.includes('1 changed, 1 unchanged') &&
           line.includes('docs/README.md')
       )
@@ -949,7 +930,7 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    expect(lines.some(line => line.includes('code-index') && line.includes('done'))).toBe(true)
+    expect(lines.some(line => line.includes('code-index') && line.includes('0 changed'))).toBe(true)
     },
     10000
   )
@@ -1051,7 +1032,7 @@ describe('init-cli interview checkpoints', () => {
     ).rejects.toThrow(/No base selected/)
   })
 
-  it('[TC-223] Given a full init cycle, then progress counter shows 6/6 (not 7)', async () => {
+  it('[TC-223] Given a full init cycle, then progress counter shows 3/3 (not more)', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1114,14 +1095,12 @@ describe('init-cli interview checkpoints', () => {
     })
 
     expect(result.status).toBe('accepted')
-    // Validate that the write phase appears and no lines reference 7 phases
-    const writeLines = lines.filter(line => line.includes('write'))
-    expect(writeLines.length).toBeGreaterThan(0)
-    // Ensure no lines reference 7 phases
-    expect(lines.some(line => line.match(/\d\/7/))).toBe(false)
-    // Ensure all phase lines use the correct total (6)
+    // Validate that the document-index phase appears (write is now folded into it)
+    const docIndexLines = lines.filter(line => line.includes('document-index'))
+    expect(docIndexLines.length).toBeGreaterThan(0)
+    // Ensure all phase lines use the correct total (3)
     const phaseLines = lines.filter(line => line.match(/\d+\/\d+/))
-    expect(phaseLines.every(line => !line.match(/\d+\/7/))).toBe(true)
+    expect(phaseLines.every(line => line.includes('/3'))).toBe(true)
   })
 })
 

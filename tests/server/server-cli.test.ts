@@ -21,7 +21,7 @@ vi.mock('@kb/server/server-bootstrap.js', () => ({
 vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(async (options: { progressSink?: (line: string) => void }) => {
     options.progressSink?.(
-      '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
+      '[init] @ fintary-fintary │ [====--------------------] 1/3 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
     )
     return { status: 'accepted', base: 'demo', completedCycles: [] }
   }),
@@ -132,7 +132,7 @@ describe('runServerCommand bootstrap progress', () => {
 
     await vi.waitFor(() => {
       expect(out.log).toHaveBeenCalledWith(
-        '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
+        '[init] @ fintary-fintary │ [====--------------------] 1/3 code-index ts/js 1/10 changed, 0 unchanged | 27 symbols, 0 edges'
       )
     })
 
@@ -147,7 +147,7 @@ describe('runServerCommand bootstrap progress', () => {
         await new Promise(resolve => {
           resolveInit = () => {
             options.progressSink?.(
-              '[init] @ fintary-fintary │ [====--------------------] 1/6 code-index ts/js 10/10 changed, 0 unchanged | 270 symbols, 9 edges'
+              '[init] @ fintary-fintary │ [====--------------------] 1/3 code-index ts/js 10/10 changed, 0 unchanged | 270 symbols, 9 edges'
             )
             resolve({ status: 'accepted', base: 'demo', completedCycles: [] })
           }

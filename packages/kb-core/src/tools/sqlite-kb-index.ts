@@ -88,6 +88,22 @@ export interface SessionEntryInput {
   metadata?: Record<string, unknown>
 }
 
+export interface EmbedAllBatchProgress {
+  table: 'documents' | 'code_symbols' | 'facts'
+  batchIndex: number
+  totalBatches: number
+  batchSize: number
+  itemsDone: number
+  totalItems: number
+  remaining: number
+  modelId: string
+  status: 'start' | 'success' | 'retry' | 'error'
+  retryAttempt?: number
+  maxRetries?: number
+  retryReason?: string
+  retryWaitMs?: number
+}
+
 export interface SqliteDocumentRow {
   id: string
   title: string
@@ -369,6 +385,210 @@ export class SqliteKbIndexer {
       if (vector && vector.length === this.embedder.dimensions) this.queryVectorCache.set(q, vector)
     } catch {
       // Embedding is best-effort; fall back to the deterministic vector on any failure.
+    }
+  }
+
+  /**
+   * Count unembedded rows across documents, code_symbols, and live facts for the active model.
+   */
+  countUnembeddedRows(modelId?: string): {
+    documents: number
+    symbols: number
+    facts: number
+    total: number
+  } {
+    const targetModelId = modelId ?? this.embedder?.modelId
+    if (!targetModelId) return { documents: 0, symbols: 0, facts: 0, total: 0 }
+    const docCount = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS c
+           FROM documents t
+           LEFT JOIN doc_embeddings e ON e.doc_id = t.id
+           WHERE e.model_id IS NULL OR e.model_id != ?`
+        )
+        .get(targetModelId) as { c: number }
+    ).c
+    const symCount = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS c
+           FROM code_symbols t
+           LEFT JOIN code_embeddings e ON e.symbol_id = t.id
+           WHERE e.model_id IS NULL OR e.model_id != ?`
+        )
+        .get(targetModelId) as { c: number }
+    ).c
+    const factCount = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS c
+           FROM facts t
+           LEFT JOIN fact_embeddings e ON e.fact_id = t.id
+           WHERE t.tombstoned_at IS NULL AND (e.model_id IS NULL OR e.model_id != ?)`
+        )
+        .get(targetModelId) as { c: number }
+    ).c
+    return {
+      documents: docCount,
+      symbols: symCount,
+      facts: factCount,
+      total: docCount + symCount + factCount,
+    }
+  }
+
+  /**
+   * Embed all unembedded rows across documents, code_symbols, and facts with per-batch progress.
+   */
+  async embedAll(options?: {
+    onProgress?: (progress: EmbedAllBatchProgress) => void
+    batchSize?: number
+    fetchPageSize?: number
+  }): Promise<{ documents: number; symbols: number; facts: number; total: number }> {
+    if (!this.embedder) return { documents: 0, symbols: 0, facts: 0, total: 0 }
+    const embedder = this.embedder
+    const batchSize = options?.batchSize ?? 100
+    const fetchPageSize = options?.fetchPageSize ?? resolveEmbedFetchPageSize()
+
+    const counts = this.countUnembeddedRows(embedder.modelId)
+    const totalItems = counts.total
+    if (totalItems === 0) {
+      return { documents: 0, symbols: 0, facts: 0, total: 0 }
+    }
+
+    const docBatches = Math.ceil(counts.documents / batchSize)
+    const symBatches = Math.ceil(counts.symbols / batchSize)
+    const factBatches = Math.ceil(counts.facts / batchSize)
+    const totalBatches = docBatches + symBatches + factBatches
+
+    let itemsDone = 0
+    let currentBatchIndex = 0
+
+    const prevOnRetry = embedder.onRetry
+    let currentTable: 'documents' | 'code_symbols' | 'facts' = 'documents'
+    embedder.onRetry = (attempt, maxRetries, reason, waitMs) => {
+      prevOnRetry?.(attempt, maxRetries, reason, waitMs)
+      options?.onProgress?.({
+        table: currentTable,
+        batchIndex: Math.min(currentBatchIndex + 1, totalBatches),
+        totalBatches,
+        batchSize,
+        itemsDone,
+        totalItems,
+        remaining: totalItems - itemsDone,
+        modelId: embedder.modelId,
+        status: 'retry',
+        retryAttempt: attempt,
+        maxRetries,
+        retryReason: reason,
+        retryWaitMs: waitMs,
+      })
+    }
+
+    const embedTableDirect = async (spec: {
+      table: 'documents' | 'code_symbols' | 'facts'
+      embeddingTable: string
+      idColumn: string
+      textSql: string
+      liveFilter?: string
+    }): Promise<number> => {
+      currentTable = spec.table
+      const live = spec.liveFilter ? `${spec.liveFilter} AND ` : ''
+      const selectPage = this.db.prepare(
+        `SELECT t.id AS id, ${spec.textSql} AS text
+         FROM ${spec.table} t
+         LEFT JOIN ${spec.embeddingTable} e ON e.${spec.idColumn} = t.id
+         WHERE ${live}(e.model_id IS NULL OR e.model_id != ?) AND t.id > ?
+         ORDER BY t.id
+         LIMIT ?`
+      )
+      const now = dayjs().toISOString()
+      const upsert = this.db.prepare(
+        `INSERT INTO ${spec.embeddingTable} (${spec.idColumn}, model_id, dimensions, vector_json, embedded_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(${spec.idColumn}) DO UPDATE SET
+           model_id = excluded.model_id, dimensions = excluded.dimensions,
+           vector_json = excluded.vector_json, embedded_at = excluded.embedded_at`
+      )
+      let tableDone = 0
+      let cursor = ''
+      while (true) {
+        const page = selectPage.all(embedder.modelId, cursor, fetchPageSize) as Array<{
+          id: string
+          text: string | null
+        }>
+        if (page.length === 0) break
+        for (let i = 0; i < page.length; i += batchSize) {
+          const batch = page.slice(i, i + batchSize)
+          currentBatchIndex++
+          options?.onProgress?.({
+            table: spec.table,
+            batchIndex: currentBatchIndex,
+            totalBatches,
+            batchSize: batch.length,
+            itemsDone,
+            totalItems,
+            remaining: totalItems - itemsDone,
+            modelId: embedder.modelId,
+            status: 'start',
+          })
+          const vectors = await embedder.embed(batch.map(r => r.text ?? ''))
+          for (let j = 0; j < batch.length; j++) {
+            const vec = vectors[j]
+            if (!vec || vec.length !== embedder.dimensions) continue
+            upsert.run(batch[j].id, embedder.modelId, embedder.dimensions, JSON.stringify(vec), now)
+          }
+          itemsDone += batch.length
+          tableDone += batch.length
+          options?.onProgress?.({
+            table: spec.table,
+            batchIndex: currentBatchIndex,
+            totalBatches,
+            batchSize: batch.length,
+            itemsDone,
+            totalItems,
+            remaining: totalItems - itemsDone,
+            modelId: embedder.modelId,
+            status: 'success',
+          })
+        }
+        cursor = page[page.length - 1].id
+      }
+      return tableDone
+    }
+
+    try {
+      const documents =
+        counts.documents > 0
+          ? await embedTableDirect({
+              table: 'documents',
+              embeddingTable: 'doc_embeddings',
+              idColumn: 'doc_id',
+              textSql: `t.title || char(10) || substr(t.body, 1, ${DOCUMENT_EMBED_MAX_CHARS})`,
+            })
+          : 0
+      const symbols =
+        counts.symbols > 0
+          ? await embedTableDirect({
+              table: 'code_symbols',
+              embeddingTable: 'code_embeddings',
+              idColumn: 'symbol_id',
+              textSql: `t.name || ' ' || t.kind || ' ' || t.rel_path || char(10) || substr(COALESCE(t.source_text, ''), 1, ${SYMBOL_EMBED_MAX_CHARS})`,
+            })
+          : 0
+      const facts =
+        counts.facts > 0
+          ? await embedTableDirect({
+              table: 'facts',
+              embeddingTable: 'fact_embeddings',
+              idColumn: 'fact_id',
+              textSql: 't.text',
+              liveFilter: 't.tombstoned_at IS NULL',
+            })
+          : 0
+      return { documents, symbols, facts, total: itemsDone }
+    } finally {
+      embedder.onRetry = prevOnRetry
     }
   }
 

@@ -18,6 +18,8 @@ export interface Embedder {
   readonly dimensions: number
   /** Embed a batch of texts; returns one unit-normalized vector per input, in order. */
   embed(texts: string[]): Promise<number[][]>
+  /** Optional callback invoked on transient retry backoff attempts. */
+  onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
 }
 
 /** Max texts per Gemini batchEmbedContents request. */
@@ -69,6 +71,7 @@ export class GeminiEmbedder implements Embedder {
   readonly modelId: string
   readonly dimensions: number
   private readonly model: string
+  onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
 
   constructor(
     private readonly apiKey: string,
@@ -159,9 +162,11 @@ export class GeminiEmbedder implements Embedder {
    * exponential backoff (1s, 2s, 4s, …) with jitter, capped so a single wait stays bounded.
    */
   private async backoff(attempt: number, retryAfter: number | undefined, reason: string): Promise<void> {
+    const maxRetries = embedMaxRetries()
     const exponential = 1000 * 2 ** attempt
     const jitter = Math.floor(Math.random() * 250)
     const waitMs = Math.min(retryAfter ?? exponential + jitter, embedMaxBackoffMs())
+    this.onRetry?.(attempt + 1, maxRetries, reason, waitMs)
     console.warn(
       `[gemini-embed] transient error (${reason.slice(0, 120)}); retrying in ${Math.round(waitMs)}ms`
     )
