@@ -120,6 +120,14 @@ export interface InitOptions {
    * (see `readIgnorePatternsFromEnv`).
    */
   ignorePatterns?: string[]
+  /**
+   * Treat embedding as mandatory rather than best-effort. When `true`, an embedder failure
+   * (rate limit, offline, model unavailable) aborts init instead of silently degrading to the
+   * lexical lane. The eval harness sets this: an index without embeddings scores nothing
+   * meaningful, so a half-built index must fail loudly rather than be published. Interactive
+   * `kb init` leaves this `false` so a missing key never blocks a local index.
+   */
+  requireEmbeddings?: boolean
 }
 
 /** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
@@ -1089,6 +1097,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           dbPath: path.join(baseDir, '.kb-index.sqlite'),
           embedder,
         })
+        options.progressSink?.(
+          `[kb init] Embedding documents, code symbols, and facts with ${embedder.modelId}…`
+        )
         try {
           const documents = await embedIndexer.embedAllDocuments()
           const symbols = await embedIndexer.embedAllCodeSymbols()
@@ -1100,6 +1111,13 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
+          if (options.requireEmbeddings) {
+            // The lexical lane alone makes an index that scores nothing meaningful — fail the
+            // whole init so the caller (eval harness) stops instead of publishing a broken base.
+            throw new Error(
+              `kb init embedding failed (${embedder.modelId}): ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
+            )
+          }
           options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
         } finally {
           embedIndexer.close()

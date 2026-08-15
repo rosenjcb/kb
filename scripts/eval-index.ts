@@ -19,6 +19,9 @@ async function main(): Promise<void> {
     const result = await runKbInit({
       ...parsed,
       nonInteractive: true,
+      // Eval indexes are only useful with embeddings — a rate-limited/offline embedder must
+      // fail the reindex loudly rather than publish a lexical-only base that scores nothing.
+      requireEmbeddings: true,
       progressSink: line => process.stderr.write(`${line}\n`),
     })
     process.stdout.write(

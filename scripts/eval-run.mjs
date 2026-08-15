@@ -371,13 +371,23 @@ export function buildMultiSuiteChildEnv(env = process.env, { sharedServer = true
   return out
 }
 
-/** Spawn one single-suite eval child; resolve `{ suite, code, signal }`. */
+/**
+ * Spawn one single-suite eval child; resolve `{ suite, code, signal }`.
+ * When an `AbortSignal` is passed and fires (fast-fail after a sibling suite failed), the
+ * in-flight child is killed and resolves as `{ aborted: true }` so the batch stops promptly
+ * instead of running to completion.
+ */
 export function spawnSuiteChild(
   suite,
   args,
-  { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env, sharedServer = true } = {}
+  { scriptPath = THIS_SCRIPT, cwd = KB_REPO, env = process.env, sharedServer = true, signal } = {}
 ) {
   return new Promise(resolve => {
+    if (signal?.aborted) {
+      console.error(`[eval] multi-suite · skip ${suite} (batch already aborted)`)
+      resolve({ suite, code: null, signal: null, skipped: true })
+      return
+    }
     const childArgv = buildChildArgv(suite, args)
     console.error(`[eval] multi-suite · starting ${suite}`)
     const child = spawn(process.execPath, [scriptPath, ...childArgv], {
@@ -385,20 +395,34 @@ export function spawnSuiteChild(
       env: buildMultiSuiteChildEnv(env, { sharedServer }),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+    let aborted = false
+    const onAbort = () => {
+      aborted = true
+      console.error(`[eval] multi-suite · aborting ${suite} (a prior suite failed)`)
+      child.kill('SIGTERM')
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
     prefixChildStream(child.stdout, suite, s => process.stdout.write(s))
     prefixChildStream(child.stderr, suite, s => process.stderr.write(s))
     child.on('error', err => {
+      signal?.removeEventListener('abort', onAbort)
       console.error(`[eval] multi-suite · ${suite} spawn failed: ${err.message}`)
       resolve({ suite, code: 1, signal: null, error: err.message })
     })
-    child.on('close', (code, signal) => {
-      const ok = code === 0 && !signal
+    child.on('close', (code, sig) => {
+      signal?.removeEventListener('abort', onAbort)
+      if (aborted) {
+        console.error(`[eval] multi-suite · ABORTED ${suite}`)
+        resolve({ suite, code: null, signal: null, skipped: true })
+        return
+      }
+      const ok = code === 0 && !sig
       console.error(
         ok
           ? `[eval] multi-suite · OK ${suite}`
-          : `[eval] multi-suite · FAIL ${suite} exit=${code}${signal ? ` signal=${signal}` : ''}`
+          : `[eval] multi-suite · FAIL ${suite} exit=${code}${sig ? ` signal=${sig}` : ''}`
       )
-      resolve({ suite, code: code ?? 1, signal })
+      resolve({ suite, code: code ?? 1, signal: sig })
     })
   })
 }
@@ -472,17 +496,37 @@ export async function runSuiteBatch(args, opts = {}) {
     console.error(`[eval] shared server ready at ${shared.url}`)
   }
 
+  // Fast-fail by default: the moment one suite fails, abort the rest. A reindex failure is
+  // almost always a shared-cause problem (embedder rate limit, provider outage) that will hit
+  // every remaining suite too, so grinding through all ten wastes time and there's no per-suite
+  // retry under --all-suites. Pass --keep-going to run every suite regardless.
+  const failFast = !args.keepGoing
+  const controller = new AbortController()
   try {
-    const results = await mapWithConcurrency(suites, parallel, suite =>
-      spawnSuiteChild(suite, args, { ...opts, env: childEnv, sharedServer })
-    )
-    const failed = results.filter(r => r.code !== 0 || r.signal).map(r => r.suite)
+    const results = await mapWithConcurrency(suites, parallel, async suite => {
+      const result = await spawnSuiteChild(suite, args, {
+        ...opts,
+        env: childEnv,
+        sharedServer,
+        signal: controller.signal,
+      })
+      const didFail = !result.skipped && (result.code !== 0 || result.signal)
+      if (failFast && didFail && !controller.signal.aborted) {
+        console.error(
+          `[eval] multi-suite · fail-fast: ${suite} failed — aborting remaining suites (pass --keep-going to run them all)`
+        )
+        controller.abort()
+      }
+      return result
+    })
+    const failed = results.filter(r => !r.skipped && (r.code !== 0 || r.signal)).map(r => r.suite)
+    const skipped = results.filter(r => r.skipped).map(r => r.suite)
     console.error(
-      `[eval] multi-suite done · ok=${suites.length - failed.length} fail=${failed.length}${
+      `[eval] multi-suite done · ok=${suites.length - failed.length - skipped.length} fail=${failed.length}${
         failed.length ? ` (${failed.join(', ')})` : ''
-      }`
+      }${skipped.length ? ` · skipped=${skipped.length} (${skipped.join(', ')})` : ''}`
     )
-    return { suites, parallel, results, failed, sharedServer }
+    return { suites, parallel, results, failed, skipped, sharedServer }
   } finally {
     if (shared) {
       console.error('[eval] stopping shared multi-base kb-server')
@@ -505,6 +549,8 @@ function parseArgs(argv) {
     /** null = auto; 0 = all suites; >0 = cap */
     parallel: null,
     sequential: false,
+    // Multi-suite batches abort on the first failure by default; --keep-going runs them all.
+    keepGoing: false,
     suiteYaml: null,
     repo: null,
     cloneBranch: null,
@@ -552,6 +598,7 @@ function parseArgs(argv) {
       out.suites.push(...parseSuiteListToken(next))
     } else if (a === '--all-suites') out.allSuites = true
     else if (a === '--sequential') out.sequential = true
+    else if (a === '--keep-going' || a === '--no-fail-fast') out.keepGoing = true
     else if (a === '--parallel') {
       const next = argv[i + 1]
       if (next && !next.startsWith('--') && /^\d+$/.test(next)) {
@@ -641,6 +688,8 @@ Suite / questions:
                           Default: one shared multi-base kb-server; each child selects
                           eval-{suite} via --base / X-KB-Base.
   --sequential            Multi-suite: run one suite at a time (overrides --parallel)
+  --keep-going            Multi-suite: run every suite even if one fails (default: fast-fail —
+                          the first failure aborts the remaining suites)
   --per-suite-server      Legacy: one ephemeral kb-server process per suite child
   --suite-yaml PATH       Load pack from arbitrary YAML path (single-suite only)
   --questions-file F.json Override: JSON array of non-empty question strings (single-suite only)

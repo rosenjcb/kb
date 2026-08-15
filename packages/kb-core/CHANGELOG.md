@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.1
+
+### Patch Changes
+
+- Absorb transient embedding-provider errors (429 rate limits, 5xx, network blips) in the Gemini embedder with bounded exponential backoff that honors `Retry-After`, so a busy provider slows a run instead of crashing it — while still failing fast once the retry budget is spent. Eval reindexing now treats embedding as mandatory (`requireEmbeddings`), failing the init loudly rather than publishing a lexical-only index that scores nothing.
+
 ## 2.0.0
 
 ### Major Changes
