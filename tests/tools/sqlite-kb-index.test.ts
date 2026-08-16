@@ -406,4 +406,109 @@ describe('SQLite KB index integration', () => {
 
     indexer.close()
   })
+
+  it('[TC-74] countUnembeddedRows and embedAll emit per-batch progress that drains to zero', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const embedder = {
+      modelId: 'fake-embed-1',
+      dimensions: 3,
+      embed: async (texts: string[]) => texts.map(() => [1, 0, 0]),
+    }
+    const indexer = new SqliteKbIndexer({ dbPath, embedder })
+
+    for (const name of ['a', 'b', 'c']) {
+      indexer.upsertDocument({
+        gitRepo: 'demo',
+        relPath: `${name}.md`,
+        title: name.toUpperCase(),
+        body: `body ${name}`,
+      })
+    }
+
+    // Three unembedded documents and nothing else pending.
+    expect(indexer.countUnembeddedRows()).toEqual({ documents: 3, symbols: 0, facts: 0, total: 3 })
+
+    const events: Array<{
+      status: string
+      batchIndex: number
+      totalBatches: number
+      itemsDone: number
+      remaining: number
+    }> = []
+    // batchSize 1 forces one batch per document so the batch counter is observable.
+    const result = await indexer.embedAll({
+      batchSize: 1,
+      onProgress: p =>
+        events.push({
+          status: p.status,
+          batchIndex: p.batchIndex,
+          totalBatches: p.totalBatches,
+          itemsDone: p.itemsDone,
+          remaining: p.remaining,
+        }),
+    })
+
+    expect(result).toEqual({ documents: 3, symbols: 0, facts: 0, total: 3 })
+
+    const successes = events.filter(e => e.status === 'success')
+    expect(events.filter(e => e.status === 'start')).toHaveLength(3)
+    expect(successes).toHaveLength(3)
+    // Every event agrees on the total batch count, and successes count down "remaining" to zero.
+    expect(new Set(events.map(e => e.totalBatches))).toEqual(new Set([3]))
+    expect(successes.map(e => e.batchIndex)).toEqual([1, 2, 3])
+    expect(successes.map(e => e.remaining)).toEqual([2, 1, 0])
+    expect(successes.at(-1)?.itemsDone).toBe(3)
+
+    // Everything is embedded now, so a second pass is a clean no-op.
+    expect(indexer.countUnembeddedRows().total).toBe(0)
+    expect((await indexer.embedAll()).total).toBe(0)
+
+    indexer.close()
+  })
+
+  it('[TC-75] embedAll surfaces a retry progress event when the embedder backs off', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const embedder: {
+      modelId: string
+      dimensions: number
+      onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
+      embed: (texts: string[]) => Promise<number[][]>
+    } = {
+      modelId: 'fake-embed-1',
+      dimensions: 3,
+      embed(texts: string[]) {
+        // Simulate one transient backoff (as GeminiEmbedder does on a 429) before succeeding.
+        this.onRetry?.(1, 5, '429: rate limited', 5)
+        return Promise.resolve(texts.map(() => [1, 0, 0]))
+      },
+    }
+    const indexer = new SqliteKbIndexer({ dbPath, embedder })
+    indexer.upsertDocument({ gitRepo: 'demo', relPath: 'a.md', title: 'A', body: 'body a' })
+
+    const retries: Array<{ retryAttempt?: number; maxRetries?: number; retryReason?: string }> = []
+    await indexer.embedAll({
+      onProgress: p => {
+        if (p.status === 'retry') {
+          retries.push({
+            retryAttempt: p.retryAttempt,
+            maxRetries: p.maxRetries,
+            retryReason: p.retryReason,
+          })
+        }
+      },
+    })
+
+    expect(retries).toHaveLength(1)
+    expect(retries[0]).toMatchObject({
+      retryAttempt: 1,
+      maxRetries: 5,
+      retryReason: '429: rate limited',
+    })
+    // The retry hook is restored (to undefined) after embedAll so it never leaks onto the embedder.
+    expect(embedder.onRetry).toBeUndefined()
+
+    indexer.close()
+  })
 })
