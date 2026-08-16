@@ -6,7 +6,7 @@ tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-08T22:45:00Z
+timestamp: 2026-08-16T21:41:00Z
 ---
 
 ### Intro
@@ -57,6 +57,8 @@ See companion doc for full vocabulary where applicable.
 | TC-20 | FR-1 | indexes only the files passed as candidateFiles | pass |
 | TC-21 | FR-1 | finds exported symbols matching query terms via FTS (CodeGraphStore) | pass |
 | TC-22 | FR-1 | getSummary returns symbol and file counts (CodeGraphStore) | pass |
+| TC-23 | FR-1 | indexes exported functions from .jsx files | pass |
+| TC-24 | FR-1 | indexes .vue/.svelte/.svlete/.astro as text-state entries | pass |
 
 ### Related docs
 

@@ -442,6 +442,13 @@ export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
   '.sql',
   '.tf',
   '.hcl',
+  // Frontend single-file/component formats without a wired tree-sitter grammar:
+  // index as plain files so retrieval can cite them even without AST symbols.
+  '.vue',
+  '.svelte',
+  // Keep the common typo to avoid silent misses in mixed repos.
+  '.svlete',
+  '.astro',
   '', // extensionless files (Makefile, Dockerfile, etc.)
 ])
 

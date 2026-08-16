@@ -369,6 +369,26 @@ describe('TreeSitterIndexer — TSX', () => {
     expect(querySymbol(db, 'Button', 'src/Button.tsx')).toBe(true)
     db.close()
   })
+
+  it('[TC-23] indexes exported functions from .jsx files', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'Widget.jsx'),
+      "export function Widget() { return null }\nlet hidden = 1\n"
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'Widget', 'src/Widget.jsx')).toBe(true)
+    expect(querySymbol(db, 'hidden', 'src/Widget.jsx')).toBe(false)
+    db.close()
+  })
 })
 
 describe('TreeSitterIndexer — Python', () => {
@@ -520,5 +540,29 @@ describe('TreeSitterIndexer — text fallback', () => {
     expect(stats.files).toBe(2)
     expect(stats.symbols).toBe(1) // only Run() from Go
     expect(stats.errors).toBe(0)
+  })
+
+  it('[TC-24] indexes Vue/Svelte frontend files as text-state entries', async () => {
+    await writeFile(join(repoRoot, 'src', 'FlowCreate.vue'), '<template><div>flow</div></template>')
+    await writeFile(join(repoRoot, 'src', 'App.svelte'), '<script>let n = 1;</script>')
+    await writeFile(join(repoRoot, 'src', 'Legacy.svlete'), '<script>let bad = true;</script>')
+    await writeFile(join(repoRoot, 'src', 'Page.astro'), '---\nconst title = "Hello";\n---\n<h1>{title}</h1>')
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(4)
+    expect(stats.symbols).toBe(0)
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(queryCodeFileState(db, 'src/FlowCreate.vue')).toBe(true)
+    expect(queryCodeFileState(db, 'src/App.svelte')).toBe(true)
+    expect(queryCodeFileState(db, 'src/Legacy.svlete')).toBe(true)
+    expect(queryCodeFileState(db, 'src/Page.astro')).toBe(true)
+    db.close()
   })
 })
