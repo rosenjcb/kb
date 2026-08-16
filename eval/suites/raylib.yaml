@@ -19,7 +19,7 @@ questions:
   - How do I add a new example program to raylib and get it built, step by step?
   # Alias / landing probes — product questions, not kb internals.
   - What is the role of raylib when an application needs a minimal C API for windowing, input, and OpenGL drawing?
-  - How does raylib fit together end-to-end: rcore, rlgl, optional modules, and the InitWindow / BeginDrawing / EndDrawing loop?
+  - "How does raylib fit together end-to-end: rcore, rlgl, optional modules, and the InitWindow / BeginDrawing / EndDrawing loop?"
 answers:
   - >
     raylib is a simple, C99 library "to enjoy videogames programming," inspired by Borland BGI
@@ -160,6 +160,8 @@ answers:
     registry is thin (library/repo aliases only — no CamelCase modules); do not invent harvested
     classes or treat "role" as a DB enum.
   - >
-    After resolving **raylib**, ontology fan-out should still run with **no length gate**;
-    substance should cover rcore/rlgl/optional modules and the standard draw loop. A correct
-    answer must not claim only short questions expand when the library entity resolved.
+    End-to-end raylib is: rcore (window/input + platform backends), rlgl (GL abstraction),
+    optional modules (rtextures, rmodels, raudio, …), InitWindow() to open the context, then
+    BeginDrawing → draw calls → EndDrawing each frame. A correct answer covers that loop as
+    one product and must not discuss kb inquiry lanes or length gates. This suite's registry
+    is thin (library/repo aliases only); do not invent harvested classes.

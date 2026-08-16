@@ -80,4 +80,4 @@ answers:
     `ProxyConnectionHandler` in `mitmproxy/proxy/mode_servers.py` (extends live connection
     handling) dispatches addon lifecycle hooks and waits for flow resume in mode servers. A
     correct answer places it in proxy connection handling (not the web `FlowHandler`) and
-    must not discuss kb inquiry lanes or query-length gates.
+    must not discuss kb retrieval internals.

@@ -16,7 +16,7 @@ questions:
   - What does the changelog say about recent version history and notable changes?
   # Alias / landing probes — product questions about fzf, not kb internals.
   - What is the role of fzf when a shell widget or pipeline needs interactive fuzzy selection?
-  - How does fzf fit together end-to-end: fuzzy matching, TUI rendering, shell key-bindings, and editor integration?
+  - "How does fzf fit together end-to-end: fuzzy matching, TUI rendering, shell key-bindings, and editor integration?"
 answers:
   - >
     fzf is a general-purpose command-line fuzzy finder and interactive terminal toolkit, distributed

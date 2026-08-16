@@ -4,7 +4,7 @@ title: "Eval Question Suites"
 description: "YAML schema and conventions for the question packs loaded by --suite."
 resource: ./eval/suites
 tags: [eval, suites, yaml]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-08-15T00:00:00Z
 ---
 
 # Eval question suites (YAML)
