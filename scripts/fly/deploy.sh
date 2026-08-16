@@ -70,16 +70,21 @@ if [[ -n "$scheduler_id" ]]; then
 else
   echo "    no existing scheduler found; creating one"
 fi
-# -e COLD_BUILD_TIMEOUT: same non-inheritance problem as [[vm]] above —
-# `fly machine run -c fly.builder.toml` does NOT apply fly.builder.toml's
-# [env] block either. Without this, refresh.sh silently falls back to its
-# own 1800s default instead of the 5400s the toml declares, and the biggest
-# cold builds (brew, kestra) get killed as a false "timeout" well before
-# they'd actually finish.
+# -e COLD_BUILD_TIMEOUT / -e KB_EMBEDDER: same non-inheritance problem as
+# [[vm]] above — `fly machine run -c fly.builder.toml` does NOT apply
+# fly.builder.toml's [env] block either. Without COLD_BUILD_TIMEOUT,
+# refresh.sh silently falls back to its own 1800s default instead of the
+# 5400s the toml declares, and the biggest cold builds (brew, kestra) get
+# killed as a false "timeout" well before they'd actually finish. Without
+# KB_EMBEDDER, createEmbedder() falls back to Local ONNX, which OOMs a
+# performance-4x builder mid cold-build (see fly.builder.toml's [[vm]] note) —
+# the builder and serving node must also share a backend so query vectors
+# match stored model_id rows.
 fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
     --region "$BUILDER_REGION" \
     --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
     -e COLD_BUILD_TIMEOUT=5400 \
+    -e KB_EMBEDDER=gemini \
     --schedule daily --restart no \
     bash /app/scripts/fly/refresh.sh
 
@@ -95,6 +100,7 @@ if [[ "$SEED" -eq 1 ]]; then
       --region "$BUILDER_REGION" \
       --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
       -e COLD_BUILD_TIMEOUT=5400 \
+    -e KB_EMBEDDER=gemini \
       bash /app/scripts/fly/refresh.sh
   fly logs -a "$BUILDER_APP"
 else

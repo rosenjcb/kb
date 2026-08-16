@@ -76,4 +76,36 @@ describe('hybrid-retriever', () => {
     expect(names).toMatch(/AuthService/)
     expect(result.counts.hops + result.counts.symbol).toBeGreaterThan(0)
   })
+
+  it('[TC-76] KB_HYBRID_KIND_WEIGHT lets a narrow symbol outrank a broad document tied on rank (#216)', () => {
+    indexer.upsertDocument({
+      gitRepo: 'demo',
+      relPath: 'docs/gizmo-guide.md',
+      title: 'Gizmo platform guide',
+      body: 'This guide covers the gizmo platform end to end, including setup, configuration, and troubleshooting for every gizmo subsystem.',
+    })
+    indexer.upsertCodeSymbol({
+      gitRepo: 'demo',
+      relPath: 'src/gizmo.ts',
+      name: 'renderGizmo',
+      kind: 'function',
+      sourceText: 'export function renderGizmo() { /* gizmo */ }',
+    })
+
+    const rankOf = (units: ReturnType<typeof retrieveHybrid>['units'], tag: 'document' | 'symbol') =>
+      units.findIndex(u => u.metadata.tags?.includes(tag))
+
+    delete process.env.KB_HYBRID_KIND_WEIGHT
+    const unweighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
+    // Both lanes match at rank 0, so plain RRF ties them — the doc (fused first) wins the tie.
+    expect(rankOf(unweighted.units, 'document')).toBeLessThan(rankOf(unweighted.units, 'symbol'))
+
+    process.env.KB_HYBRID_KIND_WEIGHT = 'true'
+    try {
+      const weighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
+      expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
+    } finally {
+      delete process.env.KB_HYBRID_KIND_WEIGHT
+    }
+  })
 })

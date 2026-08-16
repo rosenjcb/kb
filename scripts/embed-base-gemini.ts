@@ -13,10 +13,6 @@ async function main() {
   const dbPath = path.join(os.homedir(), '.kb', 'sessions', base, '.kb-index.sqlite')
 
   const embedder = createEmbedder()
-  if (!embedder) {
-    console.error('createEmbedder() is undefined — need GEMINI_API_KEY and KB_EMBEDDER=gemini')
-    process.exit(1)
-  }
 
   console.log(`[embed] base=${base}`)
   console.log(`[embed] backend=${embedder.modelId} dims=${embedder.dimensions}`)

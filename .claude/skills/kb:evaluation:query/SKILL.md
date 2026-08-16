@@ -1,11 +1,15 @@
 ---
-name: kb:evaluation-run
-description: "Is the user asking me to run a KB evaluation — the canonical raylib benchmark, the kb dogfood self-check, all/multiple suites (parallel by default), or a custom repo? Should I score kb query results or write evaluation artifacts under ~/.kb/evaluations/ following EVALUATION.md?"
+name: kb:evaluation:query
+description: "Is the user asking me to run a KB query/answer-quality evaluation — the canonical raylib benchmark, the kb dogfood self-check, all/multiple suites (parallel by default), or a custom repo? Should I score kb query results or write evaluation artifacts under ~/.kb/evaluations/ following EVALUATION.md? (Formerly kb:evaluation-run. For full task-execution evals — solving a real GitHub issue with vs without kb — use kb:evaluation:task instead.)"
 ---
 
-# KB Evaluation Run
+# KB Evaluation: Query
 
-Use this skill when the user wants a repeatable evaluation run of the `kb` system.
+Formerly `kb:evaluation-run`. Use this skill when the user wants a repeatable **query/answer
+quality** evaluation run of the `kb` system against a fixed question set. For evaluating whether
+kb helps an agent **complete a real coding task** end to end (explore, edit, commit a fix to a
+real issue), use the sibling skill `kb:evaluation:task` instead — different scenario, different
+artifact shape, see `TASK_EVALUATION.md`.
 
 Canonical spec: `EVALUATION.md`
 

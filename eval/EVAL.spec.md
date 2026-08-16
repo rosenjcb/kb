@@ -6,9 +6,10 @@ tests:
   - ../tests/eval
   - ../tests/eval-run.test.ts
   - ../tests/eval-server.test.ts
+  - ../tests/eval-task.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-08-15T00:00:00Z
+timestamp: 2026-08-16T00:35:00Z
 ---
 
 ### Intro
@@ -48,6 +49,7 @@ See companion doc for full vocabulary where applicable.
 | FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-16 | Multi-suite harvest shares one long-lived multi-base kb-server: the parent boots placeholder default base `_eval-batch` (not an `eval-{suite}`), children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; the server stays up for the whole batch and is never restarted per suite; the eval server env scrubs operator `KB_GIT_REPOS` / `KB_BASE`; `--skip-scan` is forwarded to children |
 | FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
+| FR-18 | `scripts/eval-task.mjs` (`pnpm run eval:task`) runs a real coding task twice in isolated clones pinned to the same commit — kb arm (MCP + kb:dev-workflow skill inlined, base forced) vs control arm (no MCP/kb tools, full Edit/Write/commit access) — with the identical verbatim task prompt (from `eval/tasks/<id>.yaml` or `--issue`/`--prompt-file`), then inspects each clone's git state for whether it committed and writes a `TASK_EVALUATION.md`-schema artifact; no correctness judging, cost/completion only |
 
 ### QA Test Cases
 
@@ -311,6 +313,27 @@ See companion doc for full vocabulary where applicable.
 | TC-257 | FR-13 | wipeEvalBaseSession is a no-op when the session dir is missing | pass |
 | TC-258 | FR-16 | SHARED_EVAL_BATCH_BASE is the placeholder `_eval-batch` | pass |
 | TC-259 | FR-16 | buildEvalServerChildEnv scrubs operator git/base bootstrap env | pass |
+| TC-260 | FR-18 | lists the kestra-18144 example task | pass |
+| TC-261 | FR-18 | loadTaskYaml reads the required fields from a real task file | pass |
+| TC-262 | FR-18 | loadTaskYaml throws a clear error for an unknown task id | pass |
+| TC-263 | FR-18 | loadTaskYaml accepts a direct path to a YAML file | pass |
+| TC-264 | FR-18 | loadTaskYaml requires one of issue or prompt | pass |
+| TC-265 | FR-18 | buildTaskPrompt returns the literal prompt field trimmed, without touching gh, when prompt is set | pass |
+| TC-266 | FR-18 | kb arm argv is headless JSON output with the base forced into --mcp-config headers | pass |
+| TC-267 | FR-18 | kb arm argv includes an Authorization header only when an apiKey is given | pass |
+| TC-268 | FR-18 | kb arm argv inlines the kb:dev-workflow skill body into --append-system-prompt | pass |
+| TC-269 | FR-18 | control arm argv blocks kb's MCP tools, Skill, and kb Bash commands | pass |
+| TC-270 | FR-18 | control arm argv strips MCP entirely via --strict-mcp-config + empty mcpServers | pass |
+| TC-271 | FR-18 | both arms omit --max-turns when maxTurns is falsy | pass |
+| TC-272 | FR-18 | DEFAULT_MAX_TURNS matches control-core.mjs's control default (30) | pass |
+| TC-273 | FR-18 | cloneAtCommit clones a local repo and checks out the given commit, returning that sha | pass |
+| TC-274 | FR-18 | cloneAtCommit with no commit given resolves to the cloned default-branch tip | pass |
+| TC-275 | FR-18 | inspectArmOutcome reports committed:false and the uncommitted diff when nothing was committed | pass |
+| TC-276 | FR-18 | inspectArmOutcome reports committed:true and a committed diff stat after a real commit | pass |
+| TC-277 | FR-18 | buildArtifact schema_version and evaluation_plan point at TASK_EVALUATION.md | pass |
+| TC-278 | FR-18 | buildArtifact status is partial when only one arm ran, complete when at least one did | pass |
+| TC-279 | FR-18 | buildArtifact comparison is null unless both arms ran, computed correctly when both did | pass |
+| TC-280 | FR-18 | buildArtifact task block carries the resolved prompt, not just the task id | pass |
 
 ### Related docs
 

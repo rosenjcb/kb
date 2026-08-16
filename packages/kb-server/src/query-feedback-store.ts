@@ -2,7 +2,7 @@
  * Durable store for agent feedback submitted via the `submit_feedback` MCP tool.
  *
  * Named "query feedback" to stay distinct from the doc-generation feedback flow
- * in `@kb/core` (doc-feedback-classifier): this file is about whether kb_query
+ * in `@kb/core` (doc-feedback-classifier): this file is about whether query
  * answers actually held up for the calling agent.
  *
  * Records are NDJSON, one line per submission, date-partitioned like the
@@ -35,9 +35,9 @@ export interface QueryFeedbackRecord {
   feedbackRequestId?: string
   helped: FeedbackHelped
   notes?: string
-  /** The kb_query question this feedback is about, as echoed by the agent. */
+  /** The query question this feedback is about, as echoed by the agent. */
   query?: string
-  /** requestId of the specific kb_query response this feedback answers, if any (joins its RunReport line). */
+  /** requestId of the specific query response this feedback answers, if any (joins its RunReport line). */
   requestId?: string
   scores?: FeedbackScores
 }

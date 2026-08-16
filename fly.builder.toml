@@ -47,6 +47,10 @@ primary_region = "iad"
 [env]
   KB_HOME = "/data"
   KB_BASE = "kb"
+  # Gemini avoids the OOM Local ONNX causes on large cold builds (see [[vm]]'s
+  # note below) — must match fly.toml's KB_EMBEDDER so builder and serving
+  # share a backend and query vectors match stored model_id rows.
+  KB_EMBEDDER = "gemini"
   # Which bases to build is driven by scripts/fly/bases.json (the golden default
   # `demo` = this repo, plus one base per eval suite repo). Each base's cold build
   # clones its own repo; there is no single KB_GIT_REPOS anymore.

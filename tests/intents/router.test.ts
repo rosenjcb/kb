@@ -102,4 +102,33 @@ describe('DefaultIntentRouter', () => {
 
     expect(decision.operationInput.collector).toBe(collector)
   })
+
+  it('[TC-5] Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong', async () => {
+    const executor = createExecutorMock()
+    const router = new DefaultIntentRouter(executor)
+
+    // The mock's read_facts result has exactly 1 result and no retrieval.checkpoints.
+    const result = await router.execute({
+      intent: 'query_truth',
+      payload: { query: 'how does hybrid retrieval work in kb' },
+    })
+
+    expect(result.evidence).toBe('weak')
+  })
+
+  it('[TC-6] Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong', async () => {
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({ results: [], total: 0, retrieval: { method: 'hybrid' } })),
+    }
+    const router = new DefaultIntentRouter(executor)
+
+    const result = await router.execute({
+      intent: 'query_truth',
+      payload: { query: 'anything' },
+    })
+
+    expect(result.evidence).toBe('none')
+  })
 })

@@ -84,7 +84,12 @@ function seedBaseWithClone(kbHome: string, name: string, origin: string, marker:
   return baseDir
 }
 
-/** Configure the spawn mock to fake a bootstrap child that settles after producing `sideEffect`. */
+/**
+ * Configure the spawn mock to fake a bootstrap child that settles after producing `sideEffect`.
+ * The tests pin `KB_EMBEDDER=gemini` (see beforeEach) so the embed step never touches Local
+ * ONNX's native binding; this also fakes Gemini's batchEmbedContents so that path succeeds
+ * instead of exercising a real provider call.
+ */
 function fakeBootstrapChild(
   fetchMock: ReturnType<typeof vi.fn>,
   sideEffect: () => void,
@@ -94,13 +99,31 @@ function fakeBootstrapChild(
     sideEffect()
     return { pid: DEAD_PID }
   })
-  fetchMock.mockResolvedValue({ json: async () => health })
+  fetchMock.mockImplementation(async (url: unknown, init?: { body?: unknown }) => {
+    if (typeof url === 'string' && url.includes('batchEmbedContents')) {
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : { requests: [] }
+      const count = Array.isArray(body.requests) ? body.requests.length : 0
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          embeddings: Array.from({ length: count }, () => ({
+            values: Array.from({ length: 768 }, () => 0.01),
+          })),
+        }),
+      }
+    }
+    return { json: async () => health }
+  })
 }
 
 describe('kb-server refresh (builder orchestration)', () => {
   let root: string
   let kbHome: string
   const prevHome = process.env.KB_HOME
+  const prevEmbedder = process.env.KB_EMBEDDER
+  const prevGeminiKey = process.env.GEMINI_API_KEY
   let fetchMock: ReturnType<typeof vi.fn>
   let killSpy: ReturnType<typeof vi.spyOn>
 
@@ -109,6 +132,12 @@ describe('kb-server refresh (builder orchestration)', () => {
     kbHome = path.join(root, 'home')
     mkdirSync(kbHome, { recursive: true })
     process.env.KB_HOME = kbHome
+    // createEmbedder() is strict now (throws on misconfig, never falls back silently) and a
+    // rescan's embed step really runs it — pin gemini + a key so these tests exercise a fake
+    // HTTP call (see fakeBootstrapChild) rather than Local ONNX's native binding, which isn't
+    // built for every dev/CI platform.
+    process.env.KB_EMBEDDER = 'gemini'
+    process.env.GEMINI_API_KEY = 'test-key'
     spawnMock.mockReset()
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -125,6 +154,10 @@ describe('kb-server refresh (builder orchestration)', () => {
   afterEach(() => {
     if (prevHome === undefined) delete process.env.KB_HOME
     else process.env.KB_HOME = prevHome
+    if (prevEmbedder === undefined) delete process.env.KB_EMBEDDER
+    else process.env.KB_EMBEDDER = prevEmbedder
+    if (prevGeminiKey === undefined) delete process.env.GEMINI_API_KEY
+    else process.env.GEMINI_API_KEY = prevGeminiKey
     vi.unstubAllGlobals()
     killSpy.mockRestore()
     rmSync(root, { recursive: true, force: true })

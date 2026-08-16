@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-08T19:40:00Z
+timestamp: 2026-08-16T00:15:00Z
 ---
 
 ### Intro
@@ -14,10 +14,10 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 
 ### Definitions
 
-- **requestId** — singular server-assigned id on a `kb_query` payload / `x-request-id`; `submit_feedback` accepts one string `requestId` (never a `requestIds` array)
-- **AGENT_INSTRUCTION** — top-level sampled feedback nudge on a trimmed `kb_query` payload (not inside `notes`)
+- **requestId** — singular server-assigned id on a `query` payload / `x-request-id`; `submit_feedback` accepts one string `requestId` (never a `requestIds` array)
+- **AGENT_INSTRUCTION** — top-level sampled feedback nudge on a trimmed `query` payload (not inside `notes`)
 - **KB_MCP_ELICITATION** — env flag; default `true` enables form elicitation + SSE POST; `false` opts out to JSON-only
-- **KB_FEEDBACK_SAMPLE_RATE** — float 0–1; gates *whether* a trimmed `kb_query` asks for feedback (default `0` = off)
+- **KB_FEEDBACK_SAMPLE_RATE** — float 0–1; gates *whether* a trimmed `query` asks for feedback (default `0` = off)
 
 ### Scope
 
@@ -34,9 +34,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
-| FR-4 | [UPDATED] Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true` |
+| FR-4 | [UPDATED] Expose an answer-first MCP tool (`query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true`; an optional `base` argument overrides the MCP session's default base for that one call, the same per-call override FR-14's body `base` already offers over REST — an unresolvable slug is an error result (not a 404, MCP has no status codes) and a single-base server (no registry) ignores it |
 | FR-5 | Parse and run periodic reindex scheduler |
-| FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`) |
+| FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`); an answer that cites a file not among the retrieved sources downgrades `evidence` (not just a note), matching a path-qualified citation against the full source path (or a path suffix) and a bare filename against basename only |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
@@ -49,9 +49,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
 | FR-18 | One-shot `kb-server refresh` builds a fresh local snapshot dir for one base, from either a previous local snapshot (`--from`: adopt, re-clone/hydrate repos from `--repos`/`--branch`, incremental reindex) or bare repos with no previous snapshot (`--repos` only: full clone + index); `--from`/`--out` are local paths only (never object storage — no `gs://`/`s3://` awareness, no bucket credentials — matching the existing invariant `scan`/`export`/`import` already hold), while `--repos` is a plain `url[#branch]` list (the `KB_GIT_REPOS` convention). It manages its own throwaway bootstrap child process (spawn, health-poll, SIGTERM-then-SIGKILL on completion or timeout) internally so callers no longer hand-roll that in shell. The child's stdout/stderr are routed into this process's own stderr (fd 2) rather than discarded, so a long-running cold index of a large repo stays observable live in `docker logs`/the container's own log stream instead of silently vanishing; `--json` emits an ok/error summary on stdout, same contract style as `scan`, and is unaffected since the child's output never touches this process's own stdout (fd 1) |
-| FR-19 | [UPDATED] Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one string `requestId` per call, no `requestIds` array; omit it for general feedback) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback back for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in kb_query MCP payloads for correlation; and on a sampled fraction of trimmed kb_query responses (`KB_FEEDBACK_SAMPLE_RATE`, float 0–1, default 0 = off) prefer MCP form elicitation when FR-21 applies, else set a top-level `AGENT_INSTRUCTION` key (never buried inside `notes`) |
+| FR-19 | [UPDATED] Expose a `submit_feedback` MCP tool that records agent feedback (`helped` = yes/partial/no plus optional notes/answer/query/requestId/0–4 axis scores — one string `requestId` per call, no `requestIds` array; omit it for general feedback) as NDJSON under `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` without ever failing the response, echoing the full recorded feedback back for confirmation and resolving any matching pending-feedback entry (FR-20); echo the server `requestId` in query MCP payloads for correlation; and on a sampled fraction of trimmed query responses (`KB_FEEDBACK_SAMPLE_RATE`, float 0–1, default 0 = off) prefer MCP form elicitation when FR-21 applies, else set a top-level `AGENT_INSTRUCTION` key (never buried inside `notes`) |
 | FR-20 | [UPDATED] Queue each sampled `AGENT_INSTRUCTION` nudge's `requestId`/`query` as a pending-feedback entry (in-memory, TTL-capped, process-local) and expose it read-only via `get_feedback_requests`; an entry is removed once `submit_feedback` reports on its `requestId`; successful elicitation (FR-21 accept) records feedback immediately and does not enqueue |
-| FR-21 | [NEW] When a sampled kb_query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
+| FR-21 | [NEW] When a sampled query has an `elicitFeedback` hook (wired when `KB_MCP_ELICITATION` is on — default `true`, opt out with `false`): accept records durable feedback and sets `feedback.via=elicitation` without `AGENT_INSTRUCTION`/pending; decline/cancel sets `feedback.status` without recording or nudging; `unavailable` falls back to FR-19's `AGENT_INSTRUCTION` + FR-20 queue |
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 | FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
@@ -86,9 +86,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-18 | FR-3 | health reports the base name and a present index mtime | pass |
 | TC-19 | FR-3 | serializes concurrent reindex calls via the in-process guard | pass |
 | TC-20 | FR-3 | health reports indexing while background bootstrap is still running | pass |
-| TC-21 | FR-4 | exposes exactly kb_query, submit_feedback, and get_feedback_requests, never the former registry tools or upsert_fact | pass |
+| TC-21 | FR-4 | exposes exactly query, submit_feedback, and get_feedback_requests, never the former registry tools or upsert_fact | pass |
 | TC-22 | FR-4 | always synthesizes an answer (answer-first, no synthesize flag) | pass |
-| TC-23 | FR-4 | errors when kb_query is missing q | pass |
+| TC-23 | FR-4 | errors when query is missing q | pass |
 | TC-24 | FR-4 | refuses former registry tools like kb_read_facts | pass |
 | TC-25 | FR-4 | refuses tools outside the allowlist | pass |
 | TC-26 | FR-5 | parses unit suffixes | pass |
@@ -198,18 +198,18 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-129 | FR-18 | routes the bootstrap child's stdout/stderr into this process's own stderr (fd 2) instead of `stdio: 'ignore'` | pass |
 | TC-130 | FR-19 | submit_feedback records helped/notes/query/requestId/scores as an NDJSON feedback record and returns ok | pass |
 | TC-131 | FR-19 | submit_feedback errors when helped is missing or not yes/partial/no | pass |
-| TC-132 | FR-19 | kb_query MCP payload echoes the server requestId for feedback correlation | pass |
+| TC-132 | FR-19 | query MCP payload echoes the server requestId for feedback correlation | pass |
 | TC-133 | FR-19 | sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes | pass |
 | TC-134 | FR-19 | sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off) | pass |
-| TC-135 | FR-4 | kb_query response echoes back the original query text | pass |
+| TC-135 | FR-4 | query response echoes back the original query text | pass |
 | TC-136 | FR-19 | submit_feedback response echoes back the submitted query when provided, omits it when absent | pass |
 | TC-137 | FR-19 | submit_feedback response echoes the full recorded feedback (helped/notes/requestId/scores), not just query | pass |
 | TC-138 | FR-19 | submit_feedback rejects a non-string requestId (no array batching) | pass |
 | TC-139 | FR-20 | get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it | pass |
 | TC-140 | FR-20 | submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched | pass |
-| TC-141 | FR-21 | sampled kb_query with elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending | pass |
-| TC-142 | FR-21 | sampled kb_query with elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending | pass |
-| TC-143 | FR-21 | sampled kb_query with elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending | pass |
+| TC-141 | FR-21 | sampled query with elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending | pass |
+| TC-142 | FR-21 | sampled query with elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending | pass |
+| TC-143 | FR-21 | sampled query with elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending | pass |
 | TC-144 | FR-21 | KB_MCP_ELICITATION defaults to true (unset/empty/`true`); only `false` opts out | pass |
 | TC-145 | FR-22 | MCP POST without session (non-initialize) or GET without `mcp-session-id` returns 400 | pass |
 | TC-146 | FR-23 | no elicitation capability declared: resolves unavailable without calling elicitInput or request | pass |
@@ -226,7 +226,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-157 | FR-24 | MCP notes for a failed synthesis | leads with the outage, never "No synthesized answer was produced" |
 | TC-158 | FR-24 | a best-effort stage degraded by an LLM error | note names the stage and kind; answer still returned |
 | TC-159 | FR-24 | no answer and no failure | original evidence note unchanged, no answerError |
-| TC-160 | FR-24 | kb_query when synthesis failed | answerError in payload, sources still cited |
+| TC-160 | FR-24 | query when synthesis failed | answerError in payload, sources still cited |
 | TC-161 | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
 | TC-163 | FR-6 | [NEW] REST `/v1/query` with `verbose: true` returns full evidence dump (`results`, `retrieval.detail`, GroupedSource facts) | pass |
 | TC-164 | FR-25 | base create refuses the reserved `default` slug | pass |
@@ -242,6 +242,14 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-174 | FR-25 | base delete removes a base with --yes | pass |
 | TC-175 | FR-25 | base help lists the subcommands | pass |
 | TC-176 | FR-26 | a /v1/chat turn writes a report whose turns hold the user message and assistant answer | pass |
+| TC-177 | FR-4 | query base argument resolves the named base via the registry instead of the session default | pass |
+| TC-178 | FR-4 | query errors (not a 404) when base names a slug the registry can't resolve | pass |
+| TC-179 | FR-4 | query ignores a base argument when no registry is configured (single-base server) | pass |
+| TC-180 | FR-6 | answer cites a file not in the sources | evidence downgrades from strong to weak, not just a note |
+| TC-181 | FR-6 | every citation in the answer is grounded | evidence is left unchanged |
+| TC-182 | FR-6 | path-qualified citation's directory does not match a source with the same basename | reported as ungrounded |
+| TC-183 | FR-6 | path-qualified citation matches a source path suffix | not reported as ungrounded |
+| TC-184 | FR-6 | bare filename citation with no directory component | still grounds by basename alone |
 
 ### Related docs
 

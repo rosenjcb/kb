@@ -7,12 +7,12 @@
 # daily --restart no) the machine then stops until the next tick, so the big
 # node only costs money for the few minutes it actually builds.
 #
-# It builds EVERY base listed in scripts/fly/bases.json (the golden default
-# `demo` = this repo, plus one base per eval suite repo — see gen-bases.mjs).
-# Each base is independent: its own snapshot prefix, its own immutable versions,
-# its own atomic pointer. A base that fails to build leaves its previous snapshot
-# untouched (the others still publish), so one flaky clone never takes the demo
-# down.
+# It builds every base listed in scripts/fly/bases.json (the golden default
+# `demo` = this repo, plus one base per eval suite repo — see gen-bases.mjs),
+# fail-fast: each base has its own snapshot prefix, its own immutable versions,
+# and its own atomic pointer, but the first base to fail aborts the run — later
+# bases do not build and the serving roll is skipped, so a bad run never
+# partially rolls the fleet onto a mixed fresh/stale (or worse, broken) set.
 #
 # Per-base flow:
 #   1. Warm path (a latest.json pointer exists): download the current snapshot,
@@ -65,8 +65,8 @@ VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 
-# Build, snapshot, and publish one base. Runs in a subshell (see the loop) so a
-# failure is isolated to that base. Args: <name> <repo-url> <branch>.
+# Build, snapshot, and publish one base. Runs in a subshell (see the loop);
+# a failure aborts the rest of the run. Args: <name> <repo-url> <branch>.
 build_base() {
   local base="$1" repo="$2" branch="$3"
   local prefix cur new pointer prev digest kb_home repos_arg
@@ -78,6 +78,12 @@ build_base() {
 
   echo "▶ building base=$base repo=${repo:-<none>} version=$VERSION repos_flag=${REPOS_FLAG:-<full>}"
   pointer="$(s3_read_pointer "$prefix")"
+  # FORCE_COLD=true bypasses the warm path even when a pointer exists — e.g. to
+  # rebuild a base from scratch after a suspected bad incremental reindex.
+  if [[ "${FORCE_COLD:-false}" == "true" && -n "$pointer" ]]; then
+    echo "  · FORCE_COLD=true: ignoring existing pointer, forcing a cold rebuild"
+    pointer=""
+  fi
   repos_arg="${repo}${branch:+#$branch}"
 
   # `kb-server refresh` owns the adopt/rehydrate/reindex-or-clone/export
@@ -153,9 +159,13 @@ JSON
   rm -rf "$WORK/$base"
 }
 
-# ---- Build every base (isolated; one failure doesn't sink the others) -------
+# ---- Build every base, fail-fast on the first failure -----------------------
+# A base that fails aborts the whole run rather than being skipped: rolling the
+# serving node onto a set where one base's rebuild is suspect (rather than
+# just stale) risks serving a broken index instead of the previous good one,
+# so later bases do not build and the roll is skipped entirely.
 built=()
-failures=()
+failed_base=""
 while IFS=$'\t' read -r name repo branch _is_default; do
   [[ -z "${name:-}" ]] && continue
   # ONLY_BASES: comma-separated allowlist for scoping a run to specific bases
@@ -167,10 +177,10 @@ while IFS=$'\t' read -r name repo branch _is_default; do
       *) continue ;;
     esac
   fi
-  # Isolate each base in its own subshell. `set +e` around it keeps a base
-  # failure from aborting the whole run; the explicit `set -e` INSIDE the
-  # subshell (honored because the subshell is not an if/&&/|| operand) makes
-  # build_base stop at its first failing step.
+  # Run each base in its own subshell. `set +e` around it keeps this failure
+  # from aborting the outer loop before it can log and break cleanly; the
+  # explicit `set -e` INSIDE the subshell (honored because the subshell is not
+  # an if/&&/|| operand) makes build_base stop at its first failing step.
   # `< /dev/null`: the outer loop's stdin is the `each_base` process-
   # substitution pipe (`done < <(each_base)`). `kb-server refresh` spawns its
   # own bootstrap child, which inherits stdio by default — if it (or anything
@@ -186,12 +196,18 @@ while IFS=$'\t' read -r name repo branch _is_default; do
   if (( rc == 0 )); then
     built+=("$name")
   else
-    echo "  ✗ base '$name' failed — its previous snapshot stays live" >&2
-    failures+=("$name")
+    echo "  ✗ base '$name' failed — aborting builder, not building further bases." >&2
+    failed_base="$name"
+    break
   fi
 done < <(each_base)
 
-echo "── build summary: ${#built[@]} published [${built[*]:-}] · ${#failures[@]} failed [${failures[*]:-}]"
+echo "── build summary: ${#built[@]} published [${built[*]:-}]${failed_base:+ · aborted at '$failed_base'}"
+
+if [[ -n "$failed_base" ]]; then
+  echo "error: base '$failed_base' failed — not rolling the serving node." >&2
+  exit 1
+fi
 
 if (( ${#built[@]} == 0 )); then
   echo "error: no base built successfully — not rolling the serving node." >&2
@@ -207,8 +223,4 @@ else
   echo "  the serving node will pick up the fresh snapshots on its next restart."
 fi
 
-if (( ${#failures[@]} > 0 )); then
-  echo "⚠ builder run complete WITH FAILURES: [${failures[*]}] kept their previous snapshots." >&2
-  exit 1
-fi
 echo "✅ builder run complete: published + swapped ${#built[@]} base(s)."

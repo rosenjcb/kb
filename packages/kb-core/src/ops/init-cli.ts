@@ -37,7 +37,7 @@ import {
   runRescanApplyOrchestrator,
 } from '@kb/core/tools/rescan-apply-orchestrator.js'
 import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
-import { createEmbedder } from '@kb/core/core/embeddings.js'
+import { requireEmbedderForInit } from '@kb/core/core/embeddings.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 import {
   type CodeIndexStats,
@@ -1095,20 +1095,19 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     // Step 3/3: create-embeddings (Real neural embeddings with batch progress)
     // ─────────────────────────────────────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('create-embeddings')) {
-      const embedder = createEmbedder()
-      if (!embedder) {
-        progress.start('create-embeddings', 'skipped (no embedder configured)')
-        progress.finish('create-embeddings', 'skipped (no embedder configured)')
-        await persist({ completedCycles: ['create-embeddings'] })
-      } else {
-        const embedIndexer = new SqliteKbIndexer({
+      progress.start('create-embeddings', 'resolving embedder…')
+      let embedIndexer: SqliteKbIndexer | undefined
+      let modelId = ''
+      try {
+        const embedder = requireEmbedderForInit()
+        modelId = embedder.modelId
+        embedIndexer = new SqliteKbIndexer({
           dbPath: path.join(baseDir, '.kb-index.sqlite'),
           embedder,
         })
-        progress.start('create-embeddings', `embedding with ${embedder.modelId}…`)
-        try {
-          const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
-          if (counts.total === 0) {
+        progress.update('create-embeddings', `embedding with ${embedder.modelId}…`)
+        const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
+        if (counts.total === 0) {
             progress.finish(
               'create-embeddings',
               `up to date (0 items to embed) with ${embedder.modelId}`
@@ -1151,18 +1150,17 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             )
           }
           await persist({ completedCycles: ['create-embeddings'] })
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          if (options.requireEmbeddings) {
-            throw new Error(
-              `kb init embedding failed (${embedder.modelId}): ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
-            )
-          }
-          progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
-          await persist({ completedCycles: ['create-embeddings'] })
-        } finally {
-          embedIndexer.close()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (options.requireEmbeddings) {
+          throw new Error(
+            `kb init embedding failed${modelId ? ` (${modelId})` : ''}: ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
+          )
         }
+        progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
+        await persist({ completedCycles: ['create-embeddings'] })
+      } finally {
+        embedIndexer?.close()
       }
       if (options.stopAfter === 'create-embeddings') throw new InitPausedError('create-embeddings')
     } else {

@@ -1,0 +1,12 @@
+# Real-issue task for scripts/eval-task.mjs. Use: --task kestra-18144
+# Originated as a manual kb-vs-no-kb experiment; folded into a repeatable task definition.
+schema_version: 1
+id: kestra-18144
+display_name: "Kestra #18144 — flow not saved on import"
+repo_url: https://github.com/kestra-io/kestra.git
+commit: 562ebcb1552d3e6ecda32f7f3df88663c25460c1
+kb_base: eval-kestra
+issue:
+  repo: kestra-io/kestra
+  number: 18144
+max_turns: 30

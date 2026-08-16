@@ -68,7 +68,7 @@ Modelled on the libpq URI: the credential lives in userinfo (not `host:port`), T
 
 ## MCP client config install
 
-**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill teaches real NL `kb_query` + source verification and deliberately never mentions the human CLI/TUI surface.
+**Humans** use the `kb` CLI/TUI (REST). **Agents** (Cursor / Claude Code) use Streamable HTTP MCP at `POST /mcp` only — the **kb:dev-workflow** skill teaches real NL `query` + source verification and deliberately never mentions the human CLI/TUI surface.
 The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerConnection`): `--host` / env / `config.server.host`, defaulting to `localhost:38117`.
 
 `syncKbMcpConfigs()` in `mcp-config-sync.ts` (used by `kb mcp install` / `kb skills install`):

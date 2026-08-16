@@ -113,7 +113,7 @@ That writes/updates the `kb` entry in:
 | Cursor | `~/.cursor/mcp.json` | `{ "url": "<server>/mcp", "headers": { "Authorization": "Bearer …" } }` |
 | Claude Code | `~/.claude.json` (`mcpServers`) | `{ "type": "http", "url": "<server>/mcp", "headers": { … } }` |
 
-URL follows the same host resolution as the CLI/TUI (`--host` / `KB_CONNECTION_STRING` / `KB_HOST` / localhost default). Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `kb_query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
+URL follows the same host resolution as the CLI/TUI (`--host` / `KB_CONNECTION_STRING` / `KB_HOST` / localhost default). Other MCP servers in those files are left alone. Reload MCP in the agent after sync, then use `query` (agents: MCP connection only; humans: CLI/TUI). Verify with `claude mcp list` / `agent mcp list-tools kb` / `kb mcp status`.
 
 **Manual fallback** (only if you cannot run the client):
 
@@ -122,8 +122,8 @@ claude mcp add --transport http -s user kb http://localhost:38117/mcp \
   --header "Authorization: Bearer ${KB_SERVER_API_KEY}"
 ```
 
-**Tools exposed:** `kb_query`, its feedback channel `submit_feedback`, and the
-pending-feedback queue `get_feedback_requests` (nothing else). `kb_query` is an
+**Tools exposed:** `query`, its feedback channel `submit_feedback`, and the
+pending-feedback queue `get_feedback_requests` (nothing else). `query` is an
 **agent-to-agent** channel: the client asks a direct natural-language question
 and always gets an answer-first response. The **default payload is lean**:
 `query` (echoed back) + `answer` + `sources` (`{ path, symbols? }` objects,
@@ -141,13 +141,13 @@ optional `notes`, `answer`, `query`, `requestId`, and 0–4 `scores` on the
 evaluation axes) appends one NDJSON line per call to
 `$KB_HOME/feedback/<YYYY-MM-DD>.jsonl` (`~/.kb/feedback/` by default) and
 echoes the full recorded feedback back in its response for confirmation;
-writes never fail the response. `requestId` answers one specific `kb_query`
+writes never fail the response. `requestId` answers one specific `query`
 response — no array batching, one call per `requestId` — or is omitted
 entirely for general feedback not tied to a query. To sample feedback asks, set
 `KB_FEEDBACK_SAMPLE_RATE` (float `0`–`1`, default `0` = off).
 
 Sampling still decides *whether* to ask (`KB_FEEDBACK_SAMPLE_RATE`); elicitation
-only changes *how*. On a sampled trimmed `kb_query`, if the client declared
+only changes *how*. On a sampled trimmed `query`, if the client declared
 `elicitation` and `KB_MCP_ELICITATION` is on (default `true`; set `false` to
 opt out), prefer MCP
 [form elicitation](https://modelcontextprotocol.io/specification/draft/client/elicitation)
@@ -217,6 +217,13 @@ on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
 - Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
   reindex write-guard is per-base.
 
+`/mcp` is stateful (one `X-KB-Base` fixed for the whole session at `initialize`,
+since an agent's MCP client sends headers once, not per tool call), so `query`
+also takes an optional **`base`** tool argument — the wire-level override applied
+one call at a time, same semantics as `/v1/query`'s body `base` (unresolvable slug
+⇒ an error result, not a `404`; no registry ⇒ ignored). This is what lets one MCP
+connection reach more than the base it happened to be installed against.
+
 This lets one server back parallel `kb eval` suites (`scripts/eval-run.mjs` multi-suite
 batch): the parent starts one process; each child attaches with its own `--base` /
 `X-KB-Base` instead of spawning a server per port. See [`eval/EVAL.md`](../../../eval/EVAL.md).
@@ -255,7 +262,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 - **503 on query/chat/MCP only when `health.indexing` (bootstrap)** — never solely because `reindexing` is true.
 - Empty `apiKeys` ⇒ authorize all protected routes; non-empty ⇒ Bearer / `X-Api-Key` required.
 - **A failed answer is never served as an empty one.** When synthesis errors or returns
-  nothing, `/v1/query` and `kb_query` still return 200 with the retrieval results, plus
+  nothing, `/v1/query` and `query` still return 200 with the retrieval results, plus
   `answerError` (`{ stage, kind, message, provider, status, retryable }`) and a leading note
   naming the failure; the RunReport records `error`, and the sampled feedback ask is skipped.
   `/v1/chat` emits an `error` event instead of an `answer`.
@@ -270,7 +277,7 @@ Bot-posted events (`bot_id` or `subtype`) are silently ignored to prevent reply 
 ## Gotchas
 
 - Chat SSE may fall back from Gemini stream to non-streaming.
-- REST `synthesize` defaults true; both REST and MCP `kb_query` return the lean agent payload by default (`{path, symbols?}` sources, no fact dump); `verbose: true` opts into the full evidence dump.
+- REST `synthesize` defaults true; both REST and MCP `query` return the lean agent payload by default (`{path, symbols?}` sources, no fact dump); `verbose: true` opts into the full evidence dump.
 - `answer: null` is not a retrieval verdict. Check `answerError` before concluding the base is
   thin — a spent credit balance and "nothing indexed" used to look identical on the wire.
 - Fly `kb-demo` is **Pages chatbot only** — no Slack secrets on that app; see [`../FLY.md`](../FLY.md).

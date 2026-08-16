@@ -16,6 +16,15 @@ import type { InquiryLane } from '../query/inquiry-lanes.js'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 
+/** Query-time embedder selection is best-effort: a misconfigured backend falls back to no embedder. */
+function tryCreateEmbedder(): Embedder | undefined {
+  try {
+    return createEmbedder()
+  } catch {
+    return undefined
+  }
+}
+
 export interface QueryDocumentsInput {
   query?: string
   mode?: 'id' | 'title' | 'tags' | 'content'
@@ -96,8 +105,11 @@ export class FactsDocumentReader {
   ) {
     // Default to the configured embedder (local on-device weights unless KB_EMBEDDER=gemini).
     // It is lazy: attaching it costs nothing until a real embed is requested, and every use is
-    // best-effort — any failure falls back to the deterministic hash vector.
-    this.indexer = new SqliteKbIndexer({ dbPath, embedder: embedder ?? createEmbedder() })
+    // best-effort — any failure (including backend misconfiguration) falls back to the
+    // deterministic hash vector rather than failing a live query. Index builds use
+    // requireEmbedderForInit/createEmbedder directly so they still hard-fail; only this
+    // query-time path swallows the throw.
+    this.indexer = new SqliteKbIndexer({ dbPath, embedder: embedder ?? tryCreateEmbedder() })
   }
 
   async queryDocuments(input: QueryDocumentsInput): Promise<QueryResponse> {

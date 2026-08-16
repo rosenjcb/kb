@@ -34,7 +34,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 | FR-3 | Query rejects missing or invalid API keys |
 | FR-4 | Chat endpoint streams multi-turn SSE sessions |
 | FR-5 | Index stays fresh via `KB_REINDEX_INTERVAL` and/or offline `kb-server scan` |
-| FR-6 | [UPDATED] MCP Streamable HTTP exposes initialize, tools/list, and tools/call for `kb_query` / `submit_feedback` / `get_feedback_requests` over stateful sessions (`mcp-session-id` after initialize); `submit_feedback` takes a single string `requestId` (not `requestIds[]`); responses may be JSON or SSE depending on `KB_MCP_ELICITATION` (default on → SSE) |
+| FR-6 | [UPDATED] MCP Streamable HTTP exposes initialize, tools/list, and tools/call for `query` / `submit_feedback` / `get_feedback_requests` over stateful sessions (`mcp-session-id` after initialize); `submit_feedback` takes a single string `requestId` (not `requestIds[]`); responses may be JSON or SSE depending on `KB_MCP_ELICITATION` (default on → SSE) |
 | FR-7 | Slack webhook verifies signatures and acks events |
 
 ### QA Test Cases
@@ -50,7 +50,7 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 | TC-7 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
 | TC-8 | FR-4 | answered | pass (packages/kb-server/http/server.http) |
 | TC-9 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
-| TC-10 | FR-6 | tools include kb_query | pass (packages/kb-server/http/server.http) |
+| TC-10 | FR-6 | tools include query | pass (packages/kb-server/http/server.http) |
 | TC-11 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
 | TC-12 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
 | TC-13 | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |

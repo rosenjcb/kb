@@ -445,7 +445,7 @@ export class SqliteKbIndexer {
     batchSize?: number
     fetchPageSize?: number
   }): Promise<{ documents: number; symbols: number; facts: number; total: number }> {
-    if (!this.embedder) return { documents: 0, symbols: 0, facts: 0, total: 0 }
+    if (!this.embedder) throw new Error('embedAll: no embedder attached')
     const embedder = this.embedder
     const batchSize = options?.batchSize ?? 100
     const fetchPageSize = options?.fetchPageSize ?? resolveEmbedFetchPageSize()
@@ -612,7 +612,7 @@ export class SqliteKbIndexer {
     batchSize = 100,
     fetchPageSize: number = resolveEmbedFetchPageSize()
   ): Promise<number> {
-    if (!this.embedder) return 0
+    if (!this.embedder) throw new Error('no embedder attached')
     const embedder = this.embedder
     const live = spec.liveFilter ? `${spec.liveFilter} AND ` : ''
     const total = (
@@ -668,7 +668,7 @@ export class SqliteKbIndexer {
     return done
   }
 
-  /** (Re-)embed every curated fact. No-op when no embedder is attached. */
+  /** (Re-)embed every curated fact. Throws when no embedder is attached. */
   async embedAllFacts(
     onProgress?: (done: number, total: number) => void,
     batchSize = 100,
@@ -688,7 +688,7 @@ export class SqliteKbIndexer {
     )
   }
 
-  /** (Re-)embed every indexed document (title + body). No-op when no embedder is attached. */
+  /** (Re-)embed every indexed document (title + body). Throws when no embedder is attached. */
   async embedAllDocuments(
     onProgress?: (done: number, total: number) => void,
     batchSize = 100,
@@ -709,7 +709,7 @@ export class SqliteKbIndexer {
     )
   }
 
-  /** (Re-)embed every code symbol (name + source text). No-op when no embedder is attached. */
+  /** (Re-)embed every code symbol (name + source text). Throws when no embedder is attached. */
   async embedAllCodeSymbols(
     onProgress?: (done: number, total: number) => void,
     batchSize = 100,

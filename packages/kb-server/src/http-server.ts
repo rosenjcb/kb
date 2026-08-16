@@ -512,7 +512,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
         return
       }
       try {
-        await handleMcpRequest(svc, req, res, body, ctx)
+        await handleMcpRequest(svc, registry, req, res, body, ctx)
         buildAndWriteReport('mcp', ctx, 'success', svc, { sessionId: ctx.requestId })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -848,6 +848,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
 
 async function handleMcpRequest(
   service: KbService,
+  registry: KbServiceRegistry | undefined,
   req: IncomingMessage,
   res: ServerResponse,
   body: unknown,
@@ -864,8 +865,9 @@ async function handleMcpRequest(
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })
   try {
-    // requestId rides into kb_query payloads so submit_feedback can reference this call.
-    await handleMcpHttpRequest(service, req, res, body, { requestId: ctx.requestId })
+    // requestId rides into query payloads so submit_feedback can reference this call;
+    // registry lets query's optional `base` argument override the session's default.
+    await handleMcpHttpRequest(service, req, res, body, { requestId: ctx.requestId, registry })
     log.info('mcp complete', {
       requestId: ctx.requestId,
       rpcMethod,

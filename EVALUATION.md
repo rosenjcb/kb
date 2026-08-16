@@ -9,6 +9,11 @@ timestamp: 2026-06-20T00:00:00Z
 
 # KB Evaluation Plan
 
+This document covers **answer-quality** evaluation (`kb query`/`kb chat` against a fixed
+question set). For **task-execution** evaluation — does kb help a real coding agent complete a
+real GitHub issue end to end — see the sibling document [`TASK_EVALUATION.md`](TASK_EVALUATION.md)
+and `scripts/eval-task.mjs` instead.
+
 ## Goal
 
 Evaluate whether building and maintaining a `kb` knowledge base is materially useful for real development work, and whether a split workflow works better:

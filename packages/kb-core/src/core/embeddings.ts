@@ -8,8 +8,13 @@
  * vocabulary gaps (e.g. a question about "directories/paths" matching docs about
  * "basename / dir-only / repo root").
  *
- * The embedder is optional everywhere: when none is configured (no API key, offline), callers
- * fall back to the deterministic vector and behave exactly as before.
+ * Backend selection ({@link createEmbedder}) is strict: an unset/`local`/`onnx` `KB_EMBEDDER`
+ * always selects Local ONNX, `gemini` requires `GEMINI_API_KEY` or throws, and any other value
+ * throws — there is no silent no-op backend. Index builds need real vectors to match the
+ * serving node's `model_id`, so misconfiguration must fail loudly rather than degrade quietly.
+ * Query-time embedding is a separate, deliberately best-effort path (see
+ * `cacheQueryEmbedding`): a single failed query embed falls back to the hash vector instead of
+ * 503ing chat, since index builds and live queries have very different failure budgets.
  */
 
 export interface Embedder {
@@ -30,6 +35,15 @@ const GEMINI_BATCH_SIZE = 100
  * 5xx family. Everything else (auth, bad request) is a hard failure — retrying can't fix it.
  */
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
+
+/**
+ * Distinguishes exhausted-quota/billing errors from plain rate-limiting. Both surface as
+ * HTTP 429, but only the latter is worth a backoff retry — a quota/billing failure will not
+ * resolve itself within a request's retry budget.
+ */
+function isQuotaExhaustedError(detail: string): boolean {
+  return /quota|billing/i.test(detail)
+}
 
 /** Retry budget for a single embed request. `0` disables retries. Env-overridable for tests/tuning. */
 function embedMaxRetries(): number {
@@ -147,7 +161,10 @@ export class GeminiEmbedder implements Embedder {
 
       const detail = await response.text().catch(() => response.statusText)
       lastError = `${response.status}: ${detail.slice(0, 200)}`
-      const retryable = RETRYABLE_STATUS.has(response.status)
+      // A 429 is retryable rate-limiting by default, but exhausted-quota/billing bodies mean
+      // more attempts can't succeed — retrying just burns the backoff budget on a guaranteed
+      // failure, so fail on the first response instead of storming the same dead request.
+      const retryable = RETRYABLE_STATUS.has(response.status) && !isQuotaExhaustedError(detail)
       if (!retryable || attempt >= maxRetries) {
         throw new Error(`[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`)
       }
@@ -213,23 +230,30 @@ export class LocalEmbedder implements Embedder {
 }
 
 /**
- * Select the embedding backend. `KB_EMBEDDER` pin wins (`local`/`onnx`/`gemini`/`none`).
- * When unset, a present `GEMINI_API_KEY` selects Gemini so Darwin hosts without
- * `onnxruntime-node` do not load MiniLM. Otherwise Local ONNX. Returns `undefined` when
- * the chosen backend is unavailable, so callers can degrade to the deterministic vector.
+ * Select the embedding backend. `KB_EMBEDDER` pin wins: unset/empty, `local`, or `onnx`
+ * selects Local ONNX; `gemini` selects Gemini and requires a non-empty `GEMINI_API_KEY`
+ * (thrown before any network call otherwise); any other value throws — there is no `none`
+ * backend and a present `GEMINI_API_KEY` alone no longer auto-selects Gemini, so the pin is
+ * always explicit and index builds never silently pick a different backend than intended.
  */
-export function createEmbedder(): Embedder | undefined {
-  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase() ?? ''
-  if (backend === 'none') return undefined
-  const geminiKey = process.env.GEMINI_API_KEY?.trim()
-  if (backend === 'gemini' || (backend === '' && geminiKey)) {
-    if (geminiKey) return new GeminiEmbedder(geminiKey)
-    return undefined
+export function createEmbedder(): Embedder {
+  const raw = process.env.KB_EMBEDDER
+  const backend = raw?.trim().toLowerCase() ?? ''
+  if (backend === '' || backend === 'local' || backend === 'onnx') return new LocalEmbedder()
+  if (backend === 'gemini') {
+    const geminiKey = process.env.GEMINI_API_KEY?.trim()
+    if (!geminiKey) throw new Error('KB_EMBEDDER=gemini requires GEMINI_API_KEY to be set')
+    return new GeminiEmbedder(geminiKey)
   }
-  return new LocalEmbedder()
+  throw new Error(`Unknown KB_EMBEDDER: "${raw}"`)
+}
+
+/** Same selection as {@link createEmbedder}, named for init call sites that must hard-fail. */
+export function requireEmbedderForInit(): Embedder {
+  return createEmbedder()
 }
 
 /** @deprecated use {@link createEmbedder}; kept for callers still keying off the env directly. */
-export function createEmbedderFromEnv(): Embedder | undefined {
+export function createEmbedderFromEnv(): Embedder {
   return createEmbedder()
 }

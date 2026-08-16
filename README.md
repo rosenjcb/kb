@@ -38,7 +38,7 @@ KB earns those numbers by doing the reading up front. **kb-server** clones your 
 
 **If you don't:** you still get the whole knowledge base. Product, QA, design, and leadership chat with `kb` directly. No IDE, no checkout, no per-seat agent subscription. "Does the mobile app cache credentials?" becomes a question you ask a tool, not a ticket you file.
 
-**If you run agents:** point Claude Code or Cursor at a **team kb-server** (often remote) via MCP — agents use `kb_query`, not the `kb` CLI. Setup: [Connect agents (Claude / Cursor)](#connect-agents-claude--cursor).
+**If you run agents:** point Claude Code or Cursor at a **team kb-server** (often remote) via MCP — agents use `query`, not the `kb` CLI. Setup: [Connect agents (Claude / Cursor)](#connect-agents-claude--cursor).
 
 One server indexes many repos into shared bases, so "follow a login from the web app through auth-svc" is one question, not three checkouts. KB also ingests [spec.md](https://github.com/rosenjcb/spec.md) OKF companions and behavioral `*.spec.md` specs, keeping intent, tests, and code linked.
 
@@ -241,7 +241,7 @@ kb sync
 | Who | How |
 |-----|-----|
 | **Humans** | `kb` CLI / TUI → REST (`/v1/query`, chat) |
-| **Agents** | MCP only (`kb_query` + `submit_feedback` + `get_feedback_requests`) → `POST /mcp` |
+| **Agents** | MCP only (`query` + `submit_feedback` + `get_feedback_requests`) → `POST /mcp` |
 
 **`kb mcp install` configures MCP for:**
 
@@ -252,7 +252,7 @@ kb sync
 
 (Codex / Gemini / Copilot are **not** wired by `mcp install`. `kb skills install` still installs the skill text / hooks where those agents look.)
 
-> **The server must expose MCP.** Start it with `kb-server start --with-mcp` (the Docker image already does) so `POST /mcp` is live — otherwise `kb_query` won't connect. Agents always hit the server's **default base** (`base`); MCP connections don't carry a per-base selector yet.
+> **The server must expose MCP.** Start it with `kb-server start --with-mcp` (the Docker image already does) so `POST /mcp` is live — otherwise `query` won't connect. Agents hit the server's **default base** unless a call passes an optional `base` argument to reach another one for that call only (a kb-server process can serve many bases).
 
 **Team remote (typical):**
 
@@ -268,7 +268,7 @@ kb mcp status
 
 **Local laptop server:** same commands with `--host localhost:38117`.
 
-After sync, reload MCP so `kb_query` appears. If the agent shells out to Grep/`kb query`, the Claude PreToolUse hook reminds it to use MCP. A second Claude hook closes the quality loop at the *end* of the session: once `kb_query` was used, it asks the agent one time — at the first `git push`, or when the session stops — to call `get_feedback_requests` and resolve what it returns via `submit_feedback` on how the answers held up.
+After sync, reload MCP so `query` appears. If the agent shells out to Grep/`kb query`, the Claude PreToolUse hook reminds it to use MCP. A second Claude hook closes the quality loop at the *end* of the session: once `query` was used, it asks the agent one time — at the first `git push`, or when the session stops — to call `get_feedback_requests` and resolve what it returns via `submit_feedback` on how the answers held up.
 
 Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md) · [`packages/kb-client/src/api/CONNECTION.md`](packages/kb-client/src/api/CONNECTION.md) · [`packages/kb-core/src/skills/SKILLS.md`](packages/kb-core/src/skills/SKILLS.md).
 
