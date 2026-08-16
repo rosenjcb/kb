@@ -1,5 +1,13 @@
 # @kb/client
 
+## 2.0.4
+
+### Patch Changes
+
+- Unify query payload semantics across REST, MCP, CLI, TUI, and chat surfaces.
+- Updated dependencies
+  - @kb/core@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes

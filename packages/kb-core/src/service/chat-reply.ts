@@ -14,7 +14,7 @@
 
 import { isOpenableSourcePath } from '@kb/core/core/fact-uri.js'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
-import type { BaseRepo } from '@kb/core/storage/base-repos.js'
+import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import type { QuerySource } from './serialize.js'
 
 export type ChatReplyFlavor = 'plain' | 'slack'
@@ -44,6 +44,16 @@ export interface ChatSourceDisplay {
   /** Optional deep link (GitHub/GitLab blob URL, etc.). */
   href?: string
   symbol?: string
+}
+
+/**
+ * Canonical one-call resolver every surface uses to get the blob-link registry
+ * for a base: discover the base's tracked clones, then map them to browsable
+ * entries. Surfaces (REST, MCP, CLI, demo, Slack) all call this so grouped
+ * sources carry identical `href`s.
+ */
+export async function resolveSourceRepos(baseDir: string): Promise<ChatSourceRepo[]> {
+  return chatSourceReposFromBaseRepos(await discoverBaseRepos(baseDir))
 }
 
 /** Build browsable source-repo entries from the base volume registry. */

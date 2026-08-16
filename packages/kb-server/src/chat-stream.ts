@@ -11,7 +11,7 @@
 import { describeLLMFailure } from '@kb/core/core/llm-error.js'
 import { runChatSynthesis } from '@kb/core/query/chat-synthesis.js'
 import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
-import { chatSourceReposFromBaseRepos } from '@kb/core/service/chat-reply.js'
+import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
 import type {
   ChatEvent,
   ChatStreamDeps,
@@ -19,8 +19,7 @@ import type {
   ChatTrace,
 } from '@kb/core/service/chat-types.js'
 import { serializeQueryResult } from '@kb/core/service/serialize.js'
-import { type GroupedSource, groupSources } from '@kb/core/service/source-grouping.js'
-import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import type { GroupedSource } from '@kb/core/service/source-grouping.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '@kb/core/ui/printer.js'
 import { log } from './logger.js'
@@ -86,12 +85,11 @@ export async function* streamChatTurn(
       // failure handling working, instead of shipping a blank `answer` event.
       if (result.failure) failure = new Error(describeLLMFailure(result.failure))
       if (result.lastIntentResult && isReadFactsResult(result.lastIntentResult)) {
-        // Group the ranked facts into a source-centric list once, with blob hrefs
-        // resolved from the base's repo registry — so Slack, the HTTP demo, and
-        // the CLI all render the same files, symbols, and links.
-        const querySources = serializeQueryResult(result.lastIntentResult).results
-        const sourceRepos = chatSourceReposFromBaseRepos(await discoverBaseRepos(deps.baseDir))
-        sources = groupSources(querySources, { sourceRepos })
+        // One canonical payload: the shared serializer groups the ranked facts into
+        // source-centric files with blob hrefs resolved from the base's repo
+        // registry — the same `sources` REST, MCP, Slack, and the CLI render.
+        const sourceRepos = await resolveSourceRepos(deps.baseDir)
+        sources = serializeQueryResult(result.lastIntentResult, { sourceRepos }).sources
       }
     })
     .catch((error: unknown) => {
