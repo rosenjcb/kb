@@ -32,6 +32,8 @@ import {
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
 import { inferQueryScope, type ScopeVerdict } from '@kb/core/query/scope-inference.js'
 import { buildInquiryLanes } from '@kb/core/query/inquiry-lanes.js'
+import { shouldVerifyClaims, verifyAnswerClaims } from '@kb/core/query/claim-verification.js'
+import { isEvidenceLabel } from '@kb/core/core/evidence-label.js'
 
 export interface QueryPipelineDeps {
   toolExecutor: ToolExecutor
@@ -52,6 +54,13 @@ export interface QueryPipelineParams {
   synthesize?: boolean
   /** Opt-in deep query trace (`kb query --trace`). */
   trace?: boolean
+  /**
+   * Opt-in prose-claim grounding (issue #223): after synthesis, a second LLM pass
+   * re-reads the answer against the evidence and flags claims the sources don't
+   * support, downgrading the evidence label. Default off — it adds a whole
+   * round-trip per query. When unset, falls back to `KB_QUERY_VERIFY_CLAIMS`.
+   */
+  verifyClaims?: boolean
   /** When set, LLM token usage is recorded on the collector (server / telemetry paths). */
   collector?: RunCollector
 }
@@ -278,13 +287,26 @@ export async function runQueryPipeline(
       synthesisQuestion,
     })
     recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
-    if (params.collector && isReadFactsResult(enriched)) {
-      const retrievalData = (enriched.data as ReadDocumentsResultData | undefined)?.retrieval
+
+    // Opt-in prose-claim grounding (#223): re-read the answer against the evidence and
+    // flag unsupported claims. Attached to retrieval data; serialize turns it into a
+    // caveat note and downgrades the evidence label. Best-effort — a verify outage is
+    // recorded as degraded, never allowed to sink the answer we already have.
+    const verified = await maybeVerifyAnswerClaims({
+      result: enriched,
+      question: synthesisQuestion,
+      llmProvider,
+      verifyClaims: params.verifyClaims,
+      recordLlmStage,
+    })
+
+    if (params.collector && isReadFactsResult(verified)) {
+      const retrievalData = (verified.data as ReadDocumentsResultData | undefined)?.retrieval
       if (retrievalData) {
         params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
       }
     }
-    return enriched
+    return verified
   }
 
   if (params.collector && isReadFactsResult(aligned)) {
@@ -299,6 +321,66 @@ export async function runQueryPipeline(
     if (params.trace) {
       if (prevTraceEnv === undefined) process.env.KB_QUERY_TRACE = undefined
       else process.env.KB_QUERY_TRACE = prevTraceEnv
+    }
+  }
+}
+
+/**
+ * Run the opt-in claim-verification pass over a synthesized answer and, if it
+ * flags unsupported claims, attach them to the result's retrieval data (#223).
+ *
+ * Every skip path returns the result untouched: not a facts result, no answer to
+ * check, opted out, or the evidence is below the verify floor. The verify call
+ * itself is best-effort — a provider failure is recorded as a degraded stage so
+ * ranking/quality stays legible, and never blocks the answer already produced.
+ */
+async function maybeVerifyAnswerClaims(input: {
+  result: IntentResult
+  question: string
+  llmProvider: LLMProvider
+  verifyClaims?: boolean
+  recordLlmStage: (stage: string, durationMs: number, startedAt: string) => void
+}): Promise<IntentResult> {
+  const { result, question, llmProvider, verifyClaims, recordLlmStage } = input
+  if (!isReadFactsResult(result)) return result
+
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const answer = data.answer?.trim()
+  if (!answer) return result
+
+  const results = Array.isArray(data.results) ? data.results : []
+  if (results.length === 0) return result
+
+  const evidence = isEvidenceLabel(result.evidence) ? result.evidence : undefined
+  if (!shouldVerifyClaims({ verifyClaims, evidence })) return result
+
+  const startedAt = new Date().toISOString()
+  const started = Date.now()
+  try {
+    const outcome = await verifyAnswerClaims({ question, answer, results, llmProvider })
+    recordLlmStage('query_truth:claim-verification', Date.now() - started, startedAt)
+    if (outcome.unsupportedClaims.length === 0) return result
+    return {
+      ...result,
+      data: {
+        ...data,
+        retrieval: {
+          ...data.retrieval,
+          unsupportedClaims: outcome.unsupportedClaims,
+        },
+      },
+    }
+  } catch (error) {
+    const failure = toLLMFailure('claim-verification', error, llmProvider.name)
+    return {
+      ...result,
+      data: {
+        ...data,
+        retrieval: {
+          ...data.retrieval,
+          degraded: [...(data.retrieval?.degraded ?? []), failure],
+        },
+      },
     }
   }
 }

@@ -49,6 +49,8 @@ export interface QueryResponseBody {
     detail?: string
     /** Best-effort LLM stages that failed and were skipped; retrieval still succeeded. */
     degraded?: LLMFailure[]
+    /** Prose claims the opt-in verification pass judged unsupported by the evidence (#223). */
+    unsupportedClaims?: string[]
   }
   evidence?: EvidenceLabel
   /**
@@ -296,6 +298,18 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
       // let a note-only warning coexist with an unchanged top-level label.
       if (evidence) evidence = weakestEvidence([evidence, 'weak'])
     }
+
+    // Prose claims the opt-in verification pass judged unsupported by the evidence
+    // (#223). Same posture as the ungrounded-file check above: a confidently-wrong
+    // prose claim ("import POSTs to the backend") must not sail through with a
+    // `strong` label just because its cited file names were real.
+    const unsupportedClaims = full.retrieval.unsupportedClaims ?? []
+    if (unsupportedClaims.length > 0) {
+      notes.push(
+        `The answer makes claim(s) the cited sources do not directly support: ${unsupportedClaims.join('; ')} — verify against the sources before relying on this.`
+      )
+      if (evidence) evidence = weakestEvidence([evidence, 'weak'])
+    }
   } else if (full.answerError) {
     // Lead with the failure. "Open the cited sources directly" reads as a retrieval
     // verdict; an agent acting on it would wrongly conclude the KB is thin, when in
@@ -328,6 +342,7 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
   const results = Array.isArray(data.results) ? data.results : []
 
   const degraded = data.retrieval?.degraded
+  const unsupportedClaims = data.retrieval?.unsupportedClaims
   const querySources = results.map(toSource)
   return {
     status: result.status,
@@ -338,6 +353,7 @@ export function serializeQueryResult(result: IntentResult): QueryResponseBody {
       method: data.retrieval?.method,
       detail: data.retrieval?.detail,
       ...(degraded && degraded.length > 0 ? { degraded } : {}),
+      ...(unsupportedClaims && unsupportedClaims.length > 0 ? { unsupportedClaims } : {}),
     },
     ...(result.evidence ? { evidence: result.evidence } : {}),
     ...(data.answerError ? { answerError: data.answerError } : {}),

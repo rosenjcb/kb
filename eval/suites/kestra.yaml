@@ -17,6 +17,10 @@ questions:
   # Alias / landing probes — product questions, not kb internals.
   - What is the role of the execution controller in the Kestra webserver API?
   - How does the concurrency-limit controller relate to executions, queues, workers, and the UI run console end-to-end, and what does that API own?
+  # Import-YAML-doesn't-save regression probes (issue #216/#220/#223 root-cause session)
+  - "When a user creates a new flow and imports YAML via the \"Import\" action in the flow editor, what code path handles the import, and why might the flow not actually be persisted/saved to the backend after import?"
+  - "Where in the Vue UI is the flow \"Import\" feature implemented (the button/dialog that lets a user paste or upload YAML for a new flow), and what does it do with the parsed YAML — does it call the create/save flow API or just set the editor content?"
+  - "In MultiPanelFlowEditorView.vue and the flow store, how does clicking Save behave when flowStore.isCreating is true, and could the YAML import path (FlowCreate.vue handleImportSubmit / setupFlow) leave the flow store in a state where the Save button is missing, disabled, or a no-op?"
 answers:
   - >
     Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure
@@ -73,3 +77,27 @@ answers:
     `ConcurrencyLimitController` is the webserver API around concurrency limits (adjacent to
     execution lifecycle). A correct answer distinguishes that API controller from
     executor/worker behavior and must not discuss kb inquiry lanes or length gates.
+  - >
+    The "Import" action in the new-flow editor (`FlowCreate.vue`) is entirely client-side:
+    `handleImportSubmit` calls `initialize(undefined, undefined, yaml)`, which runs
+    `setupFlow`, which sets `flowYaml = importYaml` directly into local component/editor
+    state. No API call is made — the flow is not created or persisted on the backend at
+    import time. It's only saved when the user separately triggers Save. A correct answer
+    must not describe import as calling a create/save/bulk-import backend endpoint (that's
+    the unrelated `ImportFlowsData` `/api/v1/{tenant}/flows/import` bulk feature, not this
+    path).
+  - >
+    Same mechanism as above, from the UI-location angle: the Import button/dialog in the
+    new-flow editor (`ImportYaml.vue`, wired into `FlowCreate.vue` via `handleImportSubmit`)
+    only sets parsed YAML into local editor/component state (`flowYaml = importYaml`). It
+    does not call the create/save flow API. A correct answer must not claim it calls a
+    dedicated create/save or bulk-import API.
+  - >
+    `handleImportSubmit` in `FlowCreate.vue` calls `initialize(undefined, undefined, yaml)`
+    → `setupFlow`, setting local `flowStore` state from the imported YAML — it does not
+    itself save or otherwise change the availability of the Save action in
+    `MultiPanelFlowEditorView.vue`. The Save button/shortcut remains exactly as available as
+    it is for any newly-created (unsaved) flow; the bug is that nothing about the import path
+    triggers a save, not that it disables one. A correct answer should not need to hedge or
+    fabricate mechanisms (e.g. focus/blur handling, router redirects) not actually present in
+    the retrieved sources.

@@ -241,6 +241,37 @@ describe('serializeMcpQueryResult', () => {
     })
     expect(body.evidence).toBe('strong')
   })
+
+  it('[TC-182] notes and downgrades on unsupported prose claims even when the cited file is real', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'The `FlowsApi.ts` confirms import POSTs the flow to the backend and persists it.',
+        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+        retrieval: { unsupportedClaims: ['import POSTs the flow to the backend and persists it'] },
+      },
+    })
+    // The file name is grounded, so the file-name check stays silent — but the claim check fires.
+    expect(body.evidence).toBe('weak')
+    const claimNote = (body.notes ?? []).find(n => n.includes('do not directly support'))
+    expect(claimNote).toBeDefined()
+    expect(claimNote).toContain('POSTs the flow to the backend')
+    expect(claimNote).toContain('verify against the sources')
+  })
+
+  it('[TC-183] surfaces unsupportedClaims on the full REST retrieval body', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'Import persists to the backend.',
+        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+        retrieval: { method: 'hybrid', unsupportedClaims: ['Import persists to the backend'] },
+      },
+    })
+    expect(body.retrieval.unsupportedClaims).toEqual(['Import persists to the backend'])
+  })
 })
 
 describe('findUngroundedFileReferences', () => {

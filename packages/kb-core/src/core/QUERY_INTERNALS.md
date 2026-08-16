@@ -91,6 +91,42 @@ After retrieval, ranked units are turned into prose via **`formatRetrievedFactsF
 | **`kb query`** | **`enrichReadDocumentsAnswerWithLLM()`** (`intent-cli.ts`) | One-shot — a single LLM call over the retrieved pool. |
 | **`kb chat`** | **`runChatSynthesis()`** (`chat-cli.ts`) | Multi-turn — optional `query_kb` tool rounds for targeted follow-up before the final answer. |
 
+## Grounding: file names, and (opt-in) prose claims
+
+Two checks guard against a synthesized answer drifting from its evidence, and they
+catch different failures:
+
+1. **Ungrounded file names** (always on). **`findUngroundedFileReferences()`**
+   (`service/serialize.ts`) flags file-looking tokens in the prose that match no
+   retrieved source path. On a hit, the MCP payload gains a caveat note and the
+   evidence label is downgraded to `weak`. Deterministic, zero extra LLM cost.
+
+2. **Unsupported prose claims** (opt-in, issue #223). File-name grounding does not
+   notice a *claim* that is wrong even though every file it names is real — e.g.
+   "`FlowsApi` confirms flow import POSTs to the backend" when the cited code only
+   sets local editor state. **`verifyAnswerClaims()`**
+   (`query/claim-verification.ts`) is a second LLM pass, run after synthesis, that
+   re-reads the answer against the same evidence and lists claims the sources don't
+   support. Hits land on **`retrieval.unsupportedClaims[]`**, which `serialize.ts`
+   turns into a caveat note and a `weak` downgrade — the same posture as check 1.
+
+### Decision: claim verification ships opt-in only
+
+It is a **whole extra LLM round-trip per query** (added latency + tokens) to catch a
+failure only some answers exhibit, so it is **off by default**. Enable per call with
+`verifyClaims: true` or globally with **`KB_QUERY_VERIFY_CLAIMS=true`**. Even when
+enabled it only runs on answers whose evidence is at least
+**`KB_QUERY_VERIFY_MIN_CONFIDENCE`** (default `strong`): the confidently-wrong answer
+is the dangerous case in #223 and the one worth a second opinion, whereas a `weak`
+answer already carries a verify note and a downgrade. The pass is best-effort — a
+provider failure records on `retrieval.degraded[]` and never blocks the answer.
+
+**Whether it should ever become default-on for `strong`-evidence responses is
+deferred pending a measured cost/quality tradeoff.** Run `kb:evaluation-run` with and
+without `KB_QUERY_VERIFY_CLAIMS=true` and compare caught-hallucination rate against
+the added latency and token spend before flipping the default. Until that data
+exists, the default stays opt-in.
+
 ## When synthesis fails
 
 Retrieval and synthesis fail independently, and the difference is load-bearing: retrieval is
@@ -130,5 +166,6 @@ never fed into synthesis and never affects the answer or the eval score.
 - `src/tools/hybrid-retriever.ts` — six-lane RRF retriever + depth-1 doc↔symbol hop
 - `src/tools/fact-curator.ts` — post-retrieval judge-in-the-loop curator
 - `src/tools/query-trace.ts` — opt-in `--trace` content dump
+- `src/query/claim-verification.ts` — opt-in prose-claim grounding pass (#223)
 - `src/core/CHAT.md` — chat vs query alignment
 - `src/core/AGENT_LOOP.md` — intent loop wiring

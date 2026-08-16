@@ -1,6 +1,6 @@
 {
   "name": "@kb/core",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "KB core — indexing, retrieval, intents, LLM, and service layer",
   "type": "module",
   "private": true,
