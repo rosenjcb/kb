@@ -70,12 +70,14 @@ describe('createEmbedder / KB_EMBEDDER', () => {
 describe('GeminiEmbedder failure modes', () => {
   beforeEach(() => {
     process.env.KB_GEMINI_EMBED_MIN_INTERVAL_MS = '0'
-    process.env.KB_GEMINI_EMBED_MAX_RETRIES = '2'
+    process.env.KB_EMBED_MAX_RETRIES = '2'
+    process.env.KB_EMBED_MAX_BACKOFF_MS = '1'
   })
 
   afterEach(() => {
     delete process.env.KB_GEMINI_EMBED_MIN_INTERVAL_MS
-    delete process.env.KB_GEMINI_EMBED_MAX_RETRIES
+    delete process.env.KB_EMBED_MAX_RETRIES
+    delete process.env.KB_EMBED_MAX_BACKOFF_MS
   })
 
   it('[TC-D9SP][TC-80AI] Given Gemini returns 401, when embed runs, then it throws (hard-fail, no success path)', async () => {
@@ -122,7 +124,8 @@ describe('GeminiEmbedder failure modes', () => {
     sleep.mockRestore()
   })
 
-  it('[TC-BEY0] Given quota/billing body text, when embed runs, then it fails on the first response', async () => {
+  it('[TC-BEY0] Given 429 quota/billing text, when embed runs, then it retries up to the budget', async () => {
+    process.env.KB_EMBED_MAX_RETRIES = '2'
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 429,
@@ -132,7 +135,7 @@ describe('GeminiEmbedder failure modes', () => {
     vi.stubGlobal('fetch', fetchMock)
     const embedder = new GeminiEmbedder('key')
     await expect(embedder.embed(['text'])).rejects.toThrow(/gemini-embed/)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
 

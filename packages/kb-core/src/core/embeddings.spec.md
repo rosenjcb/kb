@@ -12,7 +12,7 @@ description: >-
   How KB selects the embedding backend, when builds must succeed, and how
   Gemini requests obey rate and quota limits.
 tags: [embeddings, gemini, onnx, init, index]
-timestamp: 2026-08-10T08:00:00Z
+timestamp: 2026-08-16T21:54:00Z
 ---
 
 ### Intro
@@ -60,7 +60,7 @@ Companion detail: [facts-architecture.md](./facts-architecture.md),
 | FR-3 | [NEW] Any other `KB_EMBEDDER` value throws; there is no special `none` backend |
 | FR-4 | [NEW] Cold `kb init` embeds documents, symbols, and facts after write and throws if embed fails |
 | FR-5 | [NEW] Post-rescan `scanBaseRepos` embed throws on failure and does not report success without vectors |
-| FR-6 | [NEW] Gemini embed paces requests and retries only transient rate limits; billing and quota-exhausted errors fail without retry storms |
+| FR-6 | [NEW] Gemini embed paces requests and retries transient 429/408/5xx/network failures with bounded backoff, then fails when the retry budget is exhausted |
 | FR-7 | [NEW] `embedAll*` without an attached embedder throws (it never silently no-ops) |
 
 ### QA Test Cases
@@ -75,7 +75,7 @@ Companion detail: [facts-architecture.md](./facts-architecture.md),
 | TC-D9SP | FR-4 | Gemini returns 401 mid cold init | Init throws; no "Index build complete" success path |
 | TC-80AI | FR-5 | Gemini quota message during post-rescan embed | `scanBaseRepos` throws; caller must not export as healthy |
 | TC-L7HH | FR-6 | HTTP 429 resource_exhausted with Retry-After | Retries with sleep, then succeeds or fails after max retries |
-| TC-BEY0 | FR-6 | Body text "exceeded your current quota" / billing details | Fails on first response (no multi-minute retry loop) |
+| TC-BEY0 | FR-6 | HTTP 429 with body text "exceeded your current quota" / billing details | Retries up to budget, then fails if provider does not recover |
 | TC-DVAP | FR-7 | `embedAllDocuments` with no embedder attached | Throws |
 
 ### Known issues

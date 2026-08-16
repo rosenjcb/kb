@@ -36,15 +36,6 @@ const GEMINI_BATCH_SIZE = 100
  */
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
 
-/**
- * Distinguishes exhausted-quota/billing errors from plain rate-limiting. Both surface as
- * HTTP 429, but only the latter is worth a backoff retry — a quota/billing failure will not
- * resolve itself within a request's retry budget.
- */
-function isQuotaExhaustedError(detail: string): boolean {
-  return /quota|billing/i.test(detail)
-}
-
 /** Retry budget for a single embed request. `0` disables retries. Env-overridable for tests/tuning. */
 function embedMaxRetries(): number {
   const raw = Number(process.env.KB_EMBED_MAX_RETRIES)
@@ -161,10 +152,10 @@ export class GeminiEmbedder implements Embedder {
 
       const detail = await response.text().catch(() => response.statusText)
       lastError = `${response.status}: ${detail.slice(0, 200)}`
-      // A 429 is retryable rate-limiting by default, but exhausted-quota/billing bodies mean
-      // more attempts can't succeed — retrying just burns the backoff budget on a guaranteed
-      // failure, so fail on the first response instead of storming the same dead request.
-      const retryable = RETRYABLE_STATUS.has(response.status) && !isQuotaExhaustedError(detail)
+      // Retry every transient HTTP status in the bounded budget. Some providers emit 429
+      // "quota/billing" text for burst overage as well as hard exhaustion, so treat 429 as
+      // transient here and let the finite retry budget decide when to fail.
+      const retryable = RETRYABLE_STATUS.has(response.status)
       if (!retryable || attempt >= maxRetries) {
         throw new Error(`[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`)
       }
