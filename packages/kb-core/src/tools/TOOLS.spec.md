@@ -130,6 +130,7 @@ See companion doc for full vocabulary where applicable.
 | TC-73 | FR-1 | upsertDocument invalidates the stale embedding on content change so only changed docs are re-embedded | pass |
 | TC-74 | FR-1 | countUnembeddedRows reports pending counts, and embedAll emits a per-batch start and success event that counts remaining down to zero | pass |
 | TC-75 | FR-1 | embedAll emits a retry event when the embedder backs off, and restores the embedder retry hook after it finishes | pass |
+| TC-76 | FR-3 | KB_HYBRID_KIND_WEIGHT lets a narrow symbol outrank a broad document tied on rank (#216) | pass |
 
 ### Related docs
 

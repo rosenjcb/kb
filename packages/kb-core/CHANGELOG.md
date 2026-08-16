@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.3
+
+### Patch Changes
+
+- Gate hybrid retrieval RRF fusion behind a `KB_HYBRID_KIND_WEIGHT` / `features.hybridKindWeight` flag (default off) that weights each lane's contribution by candidate kind — symbols 1.15x, whole documents 0.9x — so a whole markdown document no longer competes at equal weight against a single code symbol at the same rank position (issue #216).
+
 ## 2.0.2
 
 ### Patch Changes
