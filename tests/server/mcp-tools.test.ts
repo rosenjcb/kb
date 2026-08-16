@@ -6,6 +6,7 @@ import type { ToolDefinition } from '@kb/core/core/types.js'
 import { buildMcpToolList, dispatchMcpToolCall } from '@kb/server/mcp-tools.js'
 import { PendingFeedbackStore } from '@kb/server/pending-feedback-store.js'
 import { QueryFeedbackStore } from '@kb/server/query-feedback-store.js'
+import { BaseNotFoundError, type KbServiceRegistry } from '@kb/server/service-registry.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
 
 const registryTools: ToolDefinition[] = [
@@ -110,13 +111,13 @@ describe('dispatchMcpToolCall', () => {
     })
   })
 
-  it('[TC-110] advertises the verbose flag in the tool schema', () => {
+  it('[TC-110] advertises the verbose and base flags in the tool schema', () => {
     const tools = buildMcpToolList(makeStubService())
     const schema = tools[0].inputSchema as {
       properties: Record<string, unknown>
       required: string[]
     }
-    expect(Object.keys(schema.properties)).toEqual(['q', 'verbose'])
+    expect(Object.keys(schema.properties)).toEqual(['q', 'verbose', 'base'])
     expect(schema.required).toEqual(['q'])
   })
 
@@ -140,6 +141,66 @@ describe('dispatchMcpToolCall', () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_upsert_fact', { factText: 'x' })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('unavailable')
+  })
+
+  function makeStubRegistry(overrides: Partial<KbServiceRegistry> = {}): KbServiceRegistry {
+    return {
+      defaultBaseName: 'base',
+      resolve: () => {
+        throw new BaseNotFoundError('unset')
+      },
+      list: async () => [],
+      closeAll: async () => {},
+      ...overrides,
+    }
+  }
+
+  it('[TC-177] base argument resolves the named base via the registry instead of the session default', async () => {
+    const sessionDefault = makeStubService()
+    const otherBase = makeStubService({
+      query: async params => ({
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: { answer: `other-base:${params.query}`, results: [], retrieval: { method: 'hybrid' } },
+      }),
+    })
+    const registry = makeStubRegistry({
+      resolve: slug => {
+        if (slug === 'raylib') return otherBase
+        throw new BaseNotFoundError(slug ?? '')
+      },
+    })
+    const result = await dispatchMcpToolCall(
+      sessionDefault,
+      'kb_query',
+      { q: 'auth', base: 'raylib' },
+      { registry }
+    )
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text).answer).toBe('other-base:auth')
+  })
+
+  it('[TC-178] errors (not a 404) when base names a slug the registry can\'t resolve', async () => {
+    const registry = makeStubRegistry({
+      resolve: slug => {
+        throw new BaseNotFoundError(slug ?? '')
+      },
+    })
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'kb_query',
+      { q: 'auth', base: 'nope' },
+      { registry }
+    )
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('unknown base "nope"')
+  })
+
+  it('[TC-179] ignores a base argument when no registry is configured (single-base server)', async () => {
+    const service = makeStubService()
+    const result = await dispatchMcpToolCall(service, 'kb_query', { q: 'auth', base: 'raylib' })
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text).answer).toBe('synth:true')
   })
 })
 

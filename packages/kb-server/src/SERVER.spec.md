@@ -34,7 +34,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-1 | Stream chat synthesis over SSE |
 | FR-2 | Expose authenticated REST routes for query, chat, and health; `/healthz` is liveness (HTTP 200 when reachable) with readiness in body (`ok` / `indexing`); includes `version.server` (not `@kb/core`); empty API-key list allows open access |
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
-| FR-4 | [UPDATED] Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true` |
+| FR-4 | [UPDATED] Expose an answer-first MCP tool (`kb_query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true`; an optional `base` argument overrides the MCP session's default base for that one call, the same per-call override FR-14's body `base` already offers over REST — an unresolvable slug is an error result (not a 404, MCP has no status codes) and a single-base server (no registry) ignores it |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`) |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
@@ -242,6 +242,9 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-174 | FR-25 | base delete removes a base with --yes | pass |
 | TC-175 | FR-25 | base help lists the subcommands | pass |
 | TC-176 | FR-26 | a /v1/chat turn writes a report whose turns hold the user message and assistant answer | pass |
+| TC-177 | FR-4 | kb_query base argument resolves the named base via the registry instead of the session default | pass |
+| TC-178 | FR-4 | kb_query errors (not a 404) when base names a slug the registry can't resolve | pass |
+| TC-179 | FR-4 | kb_query ignores a base argument when no registry is configured (single-base server) | pass |
 
 ### Related docs
 

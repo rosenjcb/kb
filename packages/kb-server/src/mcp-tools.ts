@@ -9,7 +9,11 @@
  * synthesizes; the citations are physical file paths so the caller knows
  * exactly what to open. The full evidence payload (GroupedSource facts/ids/
  * snippets, raw `results`, `retrieval.detail`) is opt-in via `verbose: true`.
- * (A fact-id drill-down tool may return later.)
+ * (A fact-id drill-down tool may return later.) An optional `base` argument
+ * overrides the connection's default base for a single call — the same
+ * per-call override `/v1/query`'s body `base` already offers — so one MCP
+ * session can query more than the base it was installed against; unknown
+ * slug is an error result, and a single-base server (no registry) ignores it.
  *
  * `submit_feedback` closes the loop: agents report whether a kb_query answer
  * held up once they acted on it, one `requestId` per call (no batching — a call
@@ -27,6 +31,7 @@
 
 import type { KbService } from '@kb/core/service/kb-service.js'
 import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
+import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
   CallToolRequestSchema,
@@ -71,6 +76,13 @@ const KB_QUERY_TOOL = {
           'Return the full evidence payload (GroupedSource with facts/ids/snippets, ' +
           'raw results, retrieval.method/detail) instead of the default lean answer + ' +
           'sources. Default false.',
+      },
+      base: {
+        type: 'string',
+        description:
+          'Base slug to query, overriding this connection’s default base for this ' +
+          'call only (a kb-server process can serve many bases, à la Postgres’s ' +
+          '`dbname`). Omit to use the connection’s default. Unknown slug ⇒ error.',
       },
     },
     required: ['q'],
@@ -167,6 +179,13 @@ export interface McpToolCallResult {
 export interface McpDispatchOptions {
   /** Server-assigned id of this HTTP request, echoed into payloads for feedback correlation. */
   requestId?: string
+  /**
+   * Multi-base registry, when the server is running with one. Lets `kb_query`'s
+   * optional `base` argument resolve a different `KbService` than the session
+   * default for a single call. Absent ⇒ single-base server; `base` is ignored,
+   * matching `/v1/query`'s body-`base` semantics.
+   */
+  registry?: KbServiceRegistry
   /** Overrides the KB_FEEDBACK_SAMPLE_RATE env var (tests). */
   feedbackSampleRate?: number
   /** Injectable RNG for the nudge sampling gate (tests). */
@@ -322,8 +341,20 @@ export async function dispatchMcpToolCall(
     const q = typeof args.q === 'string' ? args.q : ''
     if (!q.trim()) return errorResult('kb_query requires a non-empty "q"')
     const verbose = args.verbose === true
+    // An explicit `base` overrides the session default for this call only, same
+    // as `/v1/query`'s body `base`. No registry ⇒ single-base server; ignored.
+    const baseArg = typeof args.base === 'string' ? args.base.trim() : ''
+    let svc = service
+    if (baseArg && opts.registry) {
+      try {
+        svc = opts.registry.resolve(baseArg)
+      } catch (error) {
+        if (error instanceof BaseNotFoundError) return errorResult(error.message)
+        throw error
+      }
+    }
     // Always answer-first: synthesize a direct answer, with source files as evidence.
-    const result = await service.query({ query: q, synthesize: true })
+    const result = await svc.query({ query: q, synthesize: true })
     // Default is the trimmed agent payload (answer + citations + notes); the full
     // fact dump and retrieval metadata are opt-in via verbose.
     const body: Record<string, unknown> = {

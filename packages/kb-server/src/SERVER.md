@@ -217,6 +217,13 @@ on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
 - Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
   reindex write-guard is per-base.
 
+`/mcp` is stateful (one `X-KB-Base` fixed for the whole session at `initialize`,
+since an agent's MCP client sends headers once, not per tool call), so `kb_query`
+also takes an optional **`base`** tool argument — the wire-level override applied
+one call at a time, same semantics as `/v1/query`'s body `base` (unresolvable slug
+⇒ an error result, not a `404`; no registry ⇒ ignored). This is what lets one MCP
+connection reach more than the base it happened to be installed against.
+
 This lets one server back parallel `kb eval` suites (`scripts/eval-run.mjs` multi-suite
 batch): the parent starts one process; each child attaches with its own `--base` /
 `X-KB-Base` instead of spawning a server per port. See [`eval/EVAL.md`](../../../eval/EVAL.md).
