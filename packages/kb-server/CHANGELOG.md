@@ -1,19 +1,12 @@
 # kb-server
 
-## 2.0.3
-
-### Patch Changes
-
-- 3750c80: Rename the MCP tool `kb_query` to `query` — the `kb_` prefix was redundant given the server is already registered as `kb` (so the fully-qualified MCP name is `mcp__kb__query`). Updates the tool schema/name, hook matchers and scripts (`kb-reminder.sh`, `kb-feedback.sh`), docs, and tests. Anyone with the hooks already installed should re-run `kb skills install` to pick up the renamed matcher.
-- Updated dependencies [3750c80]
-  - @kb/core@2.0.3
-
 ## 2.0.2
 
 ### Patch Changes
 
 - 4764c74: `kb_query`'s MCP tool now accepts an optional `base` argument that overrides the session's default base for a single call — the same per-call override `/v1/query`'s body `base` already offered over REST. An MCP connection is stateful (one `X-KB-Base` fixed for the whole session at `initialize`), so this is what lets one agent connection reach more than the base it happened to be installed against. Unresolvable slug is an error result (not a 404, MCP has no status codes); a single-base server (no registry) ignores it.
-- Updated dependencies [a2edefe]
+- 3750c80: Rename the MCP tool `kb_query` to `query` — the `kb_` prefix was redundant given the server is already registered as `kb` (so the fully-qualified MCP name is `mcp__kb__query`). Updates the tool schema/name, hook matchers and scripts (`kb-reminder.sh`, `kb-feedback.sh`), docs, and tests. Anyone with the hooks already installed should re-run `kb skills install` to pick up the renamed matcher.
+- Updated dependencies [a2edefe, 3750c80]
   - @kb/core@2.0.2
 
 ## 2.0.1
