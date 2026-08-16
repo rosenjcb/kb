@@ -29,7 +29,7 @@ function keysForRepo(indexer: SqliteKbIndexer, gitRepo: string): Set<string> {
 }
 
 describe('deleteRemovedCodeFiles', () => {
-  it('[TC-172] deletes only the removed file symbols, scoped to its repo', async () => {
+  it('[TC-1IPC] deletes only the removed file symbols, scoped to its repo', async () => {
     const indexer = await newIndexer()
     try {
       upsertCodeSymbol(indexer, 'src/a.ts', 'foo', 'function', undefined, 'repo-a')
@@ -49,7 +49,7 @@ describe('deleteRemovedCodeFiles', () => {
     }
   })
 
-  it('[TC-173] is a no-op when nothing was removed', async () => {
+  it('[TC-FSDL] is a no-op when nothing was removed', async () => {
     const indexer = await newIndexer()
     try {
       upsertCodeSymbol(indexer, 'src/a.ts', 'foo', 'function', undefined, 'repo-a')
@@ -60,7 +60,7 @@ describe('deleteRemovedCodeFiles', () => {
     }
   })
 
-  it('[TC-174] contrast: blanket deleteStaleCodeSymbols would purge unchanged files on a partial rescan', async () => {
+  it('[TC-HVMQ] contrast: blanket deleteStaleCodeSymbols would purge unchanged files on a partial rescan', async () => {
     const indexer = await newIndexer()
     try {
       upsertCodeSymbol(indexer, 'src/changed.ts', 'a', 'function', undefined, 'repo-a')

@@ -41,19 +41,19 @@ Black-box contract for `kb-server start`. Runbook and env: [HTTP.md](./HTTP.md).
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 | --------- | ------------ | ---------- | ------------------ |
-| TC-1 | FR-1 | GET /health response shape | ok, base, and version.server present |
-| TC-2 | FR-7 | Slack url_verification challenge | Challenge value echoed in response |
-| TC-3 | FR-2 | [UPDATED] lean query result shape (`sources` present; no `results`/`retrieval`) | pass (packages/kb-server/http/server.http) |
-| TC-4 | FR-2 | [UPDATED] `verbose: true` returns `results` as an array | pass (packages/kb-server/http/server.http) |
-| TC-5 | FR-3 | status 401 without key | pass (packages/kb-server/http/server.http) |
-| TC-6 | FR-4 | sse content type | pass (packages/kb-server/http/server.http) |
-| TC-7 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
-| TC-8 | FR-4 | answered | pass (packages/kb-server/http/server.http) |
-| TC-9 | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
-| TC-10 | FR-6 | tools include query | pass (packages/kb-server/http/server.http) |
-| TC-11 | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
-| TC-12 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
-| TC-13 | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |
+| TC-4OCI | FR-1 | GET /health response shape | ok, base, and version.server present |
+| TC-U2FF | FR-7 | Slack url_verification challenge | Challenge value echoed in response |
+| TC-TOEH | FR-2 | [UPDATED] lean query result shape (`sources` present; no `results`/`retrieval`) | pass (packages/kb-server/http/server.http) |
+| TC-VO6E | FR-2 | [UPDATED] `verbose: true` returns `results` as an array | pass (packages/kb-server/http/server.http) |
+| TC-8XQM | FR-3 | status 401 without key | pass (packages/kb-server/http/server.http) |
+| TC-L6IF | FR-4 | sse content type | pass (packages/kb-server/http/server.http) |
+| TC-1JJ9 | FR-4 | sse stream has session + terminal events | pass (packages/kb-server/http/server.http) |
+| TC-H2UW | FR-4 | answered | pass (packages/kb-server/http/server.http) |
+| TC-L2OM | FR-6 | jsonrpc result | pass (packages/kb-server/http/server.http) |
+| TC-5L2H | FR-6 | tools include query | pass (packages/kb-server/http/server.http) |
+| TC-RFKP | FR-6 | tool returns content | pass (packages/kb-server/http/server.http) |
+| TC-EJD2 | FR-6 | tools include submit_feedback | pass (packages/kb-server/http/server.http) |
+| TC-FI6S | FR-6 | submit_feedback call returns ok | pass (packages/kb-server/http/server.http) |
 
 ### Related docs
 

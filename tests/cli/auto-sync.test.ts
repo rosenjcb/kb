@@ -48,13 +48,13 @@ afterEach(async () => {
 })
 
 describe('scanBaseRepos', () => {
-  it('[TC-1] Given no clones on the volume, then no-ops and returns 0', async () => {
+  it('[TC-APK3] Given no clones on the volume, then no-ops and returns 0', async () => {
     expect(await scanBaseRepos(baseDir)).toBe(0)
     expect(mockPullRepo).not.toHaveBeenCalled()
     expect(mockRunKbInit).not.toHaveBeenCalled()
   })
 
-  it('[TC-2] Given a repo with no new commits, then pulls but does not re-index', async () => {
+  it('[TC-BNCE] Given a repo with no new commits, then pulls but does not re-index', async () => {
     await addClone('org-repo')
     mockPullRepo.mockResolvedValue(false)
     mockGetHeadSha.mockResolvedValue('samesha')
@@ -64,7 +64,7 @@ describe('scanBaseRepos', () => {
     expect(mockRunKbInit).not.toHaveBeenCalled()
   })
 
-  it('[TC-3] Given a repo with new commits, then pulls and re-indexes that repo by slug', async () => {
+  it('[TC-P865] Given a repo with new commits, then pulls and re-indexes that repo by slug', async () => {
     await addClone('org-repo')
     const newSha = 'newshanewshanewshanewshanewshanewsha'
     mockPullRepo.mockResolvedValue(true)
@@ -85,7 +85,7 @@ describe('scanBaseRepos', () => {
     expect(progress.some(l => l.includes(newSha.slice(0, 8)))).toBe(true)
   })
 
-  it('[TC-4] Given multiple repos, then only the changed repo is re-indexed', async () => {
+  it('[TC-VI0W] Given multiple repos, then only the changed repo is re-indexed', async () => {
     await addClone('org-a')
     await addClone('org-b')
     mockPullRepo.mockImplementation(async (dir: string) => dir.endsWith(path.join('repos', 'org-a')))
@@ -96,7 +96,7 @@ describe('scanBaseRepos', () => {
     expect(mockRunKbInit).toHaveBeenCalledWith(expect.objectContaining({ gitRepo: 'org-a' }))
   })
 
-  it("[TC-5] Given one repo's pull fails, then the other repos still sync", async () => {
+  it("[TC-R0QY] Given one repo's pull fails, then the other repos still sync", async () => {
     await addClone('org-a')
     await addClone('org-b')
     mockPullRepo.mockImplementation(async (dir: string) => {

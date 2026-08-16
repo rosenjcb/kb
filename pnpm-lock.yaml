@@ -15,8 +15,8 @@ importers:
         specifier: ^2.31.0
         version: 2.31.0(@types/node@22.19.17)
       '@rosenjcb/spec-md':
-        specifier: ^0.3.3
-        version: 0.3.3
+        specifier: ^0.5.0
+        version: 0.5.0
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -1520,8 +1520,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rosenjcb/spec-md@0.3.3':
-    resolution: {integrity: sha512-sZtLzSxUKokzWPHjaAnTefQrITGBkwOV4huW/E3BtLS/1mTiDCD+rKkpB2GRmmK41h3jA3IMsbl7VK2DScQRBw==}
+  '@rosenjcb/spec-md@0.5.0':
+    resolution: {integrity: sha512-58s50zVehV/FkVYJUoHT+z6FtP853fhTS/aZXdoK2IhHUHcYEgMKfllWPS4PJCP6FMWYts68Qw0+fCw6uKwggA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4469,7 +4469,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@rosenjcb/spec-md@0.3.3': {}
+  '@rosenjcb/spec-md@0.5.0': {}
 
   '@sindresorhus/is@4.6.0': {}
 

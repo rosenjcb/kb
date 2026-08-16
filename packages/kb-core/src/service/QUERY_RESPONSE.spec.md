@@ -51,6 +51,6 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|----------|------------------|
-| TC-1 | FR-1 | Serializer gets a slug-prefixed source path and a matching source-repo registry | Output source label strips slug and includes a blob href |
-| TC-2 | FR-2 | Serializer gets unsupported claims, ungrounded file text, and degraded retrieval | REST and MCP both return the same notes and weak evidence label |
-| TC-3 | FR-3 | CLI printer renders one grouped source with symbols | Output line uses one source entry with symbol suffix on the same line |
+| TC-GEV5 | FR-1 | Serializer gets a slug-prefixed source path and a matching source-repo registry | Output source label strips slug and includes a blob href |
+| TC-0T3O | FR-2 | Serializer gets unsupported claims, ungrounded file text, and degraded retrieval | REST and MCP both return the same notes and weak evidence label |
+| TC-TBPH | FR-3 | CLI printer renders one grouped source with symbols | Output line uses one source entry with symbol suffix on the same line |

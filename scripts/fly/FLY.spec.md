@@ -86,19 +86,19 @@ from crash-looping the public demo. Architecture narrative:
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|---------|------------------|
-| TC-1 | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
-| TC-10 | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
-| TC-11 | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
-| TC-12 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
-| TC-13 | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
-| TC-2 | FR-2 | Upload succeeds but `kb-snapshot.json` never becomes head-able within wait budget | `s3_push_prefix` fails; pointer not written |
-| TC-3 | FR-2 | Upload of a complete local snapshot dir | Required objects head-able; caller may flip `latest.json` |
-| TC-4 | FR-3 | Pull of a prefix that temporarily LIST/GETs only `.kb-index.sqlite` | Retries; success only once `kb-snapshot.json` is local too, else non-zero |
-| TC-5 | FR-3 | `version="$(pull_latest …)"` around a multi-file pull | Captured value is the version token only (no aws progress text) |
-| TC-6 | FR-4 | Serving boot with default + large optional bases | `/healthz` reports `ok:true` after default import/start, before optional imports finish |
-| TC-7 | FR-5 | Optional base pointer exists but prefix stays incomplete after retries | Base skipped; process continues; default still served |
-| TC-8 | FR-6 | Default base pointer missing or prefix incomplete after retries | Entrypoint exits non-zero; nothing binds `:PORT` |
-| TC-9 | FR-7 | Builder finishes publish and rolls one serving machine | Roll does not fail solely because optional-base downloads are still in flight |
+| TC-D98R | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
+| TC-PDQD | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
+| TC-4JKB | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
+| TC-IHL1 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
+| TC-OUBI | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
+| TC-U5RT | FR-2 | Upload succeeds but `kb-snapshot.json` never becomes head-able within wait budget | `s3_push_prefix` fails; pointer not written |
+| TC-QMFK | FR-2 | Upload of a complete local snapshot dir | Required objects head-able; caller may flip `latest.json` |
+| TC-8KCV | FR-3 | Pull of a prefix that temporarily LIST/GETs only `.kb-index.sqlite` | Retries; success only once `kb-snapshot.json` is local too, else non-zero |
+| TC-2PNL | FR-3 | `version="$(pull_latest …)"` around a multi-file pull | Captured value is the version token only (no aws progress text) |
+| TC-VJML | FR-4 | Serving boot with default + large optional bases | `/healthz` reports `ok:true` after default import/start, before optional imports finish |
+| TC-B5JP | FR-5 | Optional base pointer exists but prefix stays incomplete after retries | Base skipped; process continues; default still served |
+| TC-UNIF | FR-6 | Default base pointer missing or prefix incomplete after retries | Entrypoint exits non-zero; nothing binds `:PORT` |
+| TC-4KB9 | FR-7 | Builder finishes publish and rolls one serving machine | Roll does not fail solely because optional-base downloads are still in flight |
 
 ### Known issues
 

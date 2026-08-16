@@ -2,20 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { partitionShellOutputForTui } from '@kb/client/tui/partition-shell-output.js'
 
 describe('tui/partitionShellOutputForTui', () => {
-  it('[TC-46] output with no meta lines → one body segment', () => {
+  it('[TC-ZVA1] output with no meta lines → one body segment', () => {
     const { segments } = partitionShellOutputForTui('Hello world\nSecond line')
     expect(segments).toHaveLength(1)
     expect(segments[0]).toEqual({ kind: 'body', text: 'Hello world\nSecond line' })
   })
 
-  it('[TC-47] empty output → no body segments', () => {
+  it('[TC-TMKW] empty output → no body segments', () => {
     const { segments, emptyPrimaryContent } = partitionShellOutputForTui('')
     const bodySegments = segments.filter(s => s.kind === 'body')
     expect(bodySegments).toHaveLength(0)
     expect(emptyPrimaryContent).toBe('')
   })
 
-  it('[TC-48] only meta lines → no body segments', () => {
+  it('[TC-B275] only meta lines → no body segments', () => {
     const { segments, emptyPrimaryContent } = partitionShellOutputForTui(
       'retrieval> hybrid\nmatches> 5'
     )
@@ -26,7 +26,7 @@ describe('tui/partitionShellOutputForTui', () => {
     expect(emptyPrimaryContent).toBe('')
   })
 
-  it('[TC-49] meta line splits body into two segments', () => {
+  it('[TC-43R0] meta line splits body into two segments', () => {
     const output = 'Before content\nsep> —\nAfter content'
     const { segments } = partitionShellOutputForTui(output)
     const bodies = segments.filter(s => s.kind === 'body')
@@ -36,7 +36,7 @@ describe('tui/partitionShellOutputForTui', () => {
     expect(metas[0]).toEqual({ kind: 'meta', line: 'sep> —' })
   })
 
-  it('[TC-50] evidence> summary is a single meta line after the answer', () => {
+  it('[TC-HSBX] evidence> summary is a single meta line after the answer', () => {
     const output = [
       'Final answer text',
       'sep> —',
@@ -54,13 +54,13 @@ describe('tui/partitionShellOutputForTui', () => {
     expect((bodies[0] as { kind: 'body'; text: string }).text).toBe('Final answer text')
   })
 
-  it('[TC-51] assistant> lines are NOT meta — they are body', () => {
+  it('[TC-U414] assistant> lines are NOT meta — they are body', () => {
     const output = 'assistant> The answer is here'
     const { segments } = partitionShellOutputForTui(output)
     expect(segments[0].kind).toBe('body')
   })
 
-  it('[TC-52] emptyPrimaryContent is non-empty only when there is body content', () => {
+  it('[TC-WWPM] emptyPrimaryContent is non-empty only when there is body content', () => {
     const withBody = partitionShellOutputForTui('some answer')
     expect(withBody.emptyPrimaryContent).toBe('some answer')
 
@@ -68,7 +68,7 @@ describe('tui/partitionShellOutputForTui', () => {
     expect(metaOnly.emptyPrimaryContent).toBe('')
   })
 
-  it('[TC-53] real-world /query output: stage lines are meta, answer prose is body', () => {
+  it('[TC-CC33] real-world /query output: stage lines are meta, answer prose is body', () => {
     // Reproduces the bug: answer text between stage>answer:done and sep> must be a body segment.
     const output = [
       'stage> answer:start',
@@ -100,7 +100,7 @@ describe('tui/partitionShellOutputForTui', () => {
     expect(metaLines).toContain('matches> 381 ranked facts')
   })
 
-  it('[TC-54] first body segment index is stable so primary-first ordering works', () => {
+  it('[TC-FCN7] first body segment index is stable so primary-first ordering works', () => {
     // Validates the App.tsx fix: firstBodyIdx must point to the answer prose, not a meta line.
     const output = [
       'stage> answer:start',

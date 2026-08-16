@@ -19,7 +19,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('SQLite KB index integration', () => {
-  it('[TC-1] Given write_document with sqlite indexing enabled, then should upsert original_docs record', async () => {
+  it('[TC-3KVY] Given write_document with sqlite indexing enabled, then should upsert original_docs record', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -51,7 +51,7 @@ describe('SQLite KB index integration', () => {
     db.close()
   })
 
-  it('[TC-2] Given append/update/prune mutations, then should keep original_docs markdown synchronized', async () => {
+  it('[TC-XPH6] Given append/update/prune mutations, then should keep original_docs markdown synchronized', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const writer = new MarkdownMDWriterTool({
@@ -94,7 +94,7 @@ describe('SQLite KB index integration', () => {
     db.close()
   })
 
-  it('[TC-3] Given indexed content hash, then should report staleness only when content changes', async () => {
+  it('[TC-ND0Y] Given indexed content hash, then should report staleness only when content changes', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -117,7 +117,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-4] Given repeated miss events with candidates, then should persist miss clusters and accumulate ranking hints', async () => {
+  it('[TC-8JH2] Given repeated miss events with candidates, then should persist miss clusters and accumulate ranking hints', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -167,7 +167,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-5] Given checkpoint event traces, then should compute stage metrics and promote rollout when thresholds are met', async () => {
+  it('[TC-TZ3D] Given checkpoint event traces, then should compute stage metrics and promote rollout when thresholds are met', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -208,7 +208,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-6] Given poor checkpoint outcomes, then rollout assessment should rollback', async () => {
+  it('[TC-AB3M] Given poor checkpoint outcomes, then rollout assessment should rollback', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -244,7 +244,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-7] Given a document upsert, then getDocument returns the body', async () => {
+  it('[TC-BAN1] Given a document upsert, then getDocument returns the body', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -262,7 +262,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-8] Given natural language query, searchFacts should match token-level evidence', async () => {
+  it('[TC-JS6M] Given natural language query, searchFacts should match token-level evidence', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -285,7 +285,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-9] Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
+  it('[TC-SEPU] Given lane routing events, then should report lane-level precision and fallback indicators', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -326,7 +326,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-10] Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
+  it('[TC-YCQ9] Given weak lane-routing metrics, then lane rollout assessment should rollback', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const indexer = new SqliteKbIndexer({ dbPath })
@@ -376,7 +376,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-73] re-embeds a document only when its content changes (stale vector invalidated)', async () => {
+  it('[TC-YLGT] re-embeds a document only when its content changes (stale vector invalidated)', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const embedder = {
@@ -407,7 +407,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-74] countUnembeddedRows and embedAll emit per-batch progress that drains to zero', async () => {
+  it('[TC-B37U] countUnembeddedRows and embedAll emit per-batch progress that drains to zero', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const embedder = {
@@ -467,7 +467,7 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 
-  it('[TC-75] embedAll surfaces a retry progress event when the embedder backs off', async () => {
+  it('[TC-Q5DT] embedAll surfaces a retry progress event when the embedder backs off', async () => {
     const baseDir = await createTempDir()
     const dbPath = path.join(baseDir, 'kb-index.sqlite')
     const embedder: {

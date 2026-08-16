@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 describe('runSessionCommand', () => {
-  it('[TC-442] Given no reports carry a sessionId, then returns a friendly notice', async () => {
+  it('[TC-HZ60] Given no reports carry a sessionId, then returns a friendly notice', async () => {
     mockLogsDir([makeReport({ command: 'init' }), makeReport({ command: 'scan' })])
     const { runSessionCommand } = await import('@kb/core/cli/session-cli.js')
     const output = await runSessionCommand([])
@@ -46,7 +46,7 @@ describe('runSessionCommand', () => {
     vi.resetModules()
   })
 
-  it('[TC-443] Given two sessions, then summarizes the most recent and totals its runs', async () => {
+  it('[TC-M5TH] Given two sessions, then summarizes the most recent and totals its runs', async () => {
     mockLogsDir([
       makeReport({
         runId: 'run-old',
@@ -80,7 +80,7 @@ describe('runSessionCommand', () => {
     vi.resetModules()
   })
 
-  it('[TC-444] Given a --session prefix, then selects that session even when older', async () => {
+  it('[TC-TP4E] Given a --session prefix, then selects that session even when older', async () => {
     mockLogsDir([
       makeReport({
         runId: 'run-old',
@@ -102,7 +102,7 @@ describe('runSessionCommand', () => {
     vi.resetModules()
   })
 
-  it('[TC-445] Given an unknown --session selector, then throws not found', async () => {
+  it('[TC-J1JB] Given an unknown --session selector, then throws not found', async () => {
     mockLogsDir([
       makeReport({ runId: 'run-a', command: 'chat', sessionId: 'sess-real' }),
     ])
@@ -111,7 +111,7 @@ describe('runSessionCommand', () => {
     vi.resetModules()
   })
 
-  it('[TC-448] Given reports with transcript turns, then renders the concatenated conversation', async () => {
+  it('[TC-ZY9W] Given reports with transcript turns, then renders the concatenated conversation', async () => {
     mockLogsDir([
       makeReport({
         runId: 'run-1',

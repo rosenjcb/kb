@@ -4,7 +4,7 @@ import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 
 describe('chat-query-orchestrator', () => {
-  it('[TC-76] Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {
+  it('[TC-FR8X] Given a mocked read_facts result, then returns accepted read_facts IntentResult', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),

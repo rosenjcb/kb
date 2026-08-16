@@ -56,7 +56,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",
     "@changesets/cli": "^2.31.0",
-    "@rosenjcb/spec-md": "^0.3.3",
+    "@rosenjcb/spec-md": "^0.5.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.28",

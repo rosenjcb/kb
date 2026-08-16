@@ -51,7 +51,7 @@ async function makeBase(slug: string): Promise<string> {
 }
 
 describe('createKbServiceRegistry', () => {
-  it('[TC-88] resolves the default base for empty/matching slugs without building', async () => {
+  it('[TC-SHF7] resolves the default base for empty/matching slugs without building', async () => {
     const defaultDir = await makeBase('demo')
     const registry = createKbServiceRegistry({
       defaultService: fakeDefault(defaultDir),
@@ -63,7 +63,7 @@ describe('createKbServiceRegistry', () => {
     expect(createKbService).not.toHaveBeenCalled()
   })
 
-  it('[TC-89] lazily creates and caches a service for another built base', async () => {
+  it('[TC-VOAQ] lazily creates and caches a service for another built base', async () => {
     const defaultDir = await makeBase('demo')
     const raylibDir = await makeBase('raylib')
     const registry = createKbServiceRegistry({
@@ -77,7 +77,7 @@ describe('createKbServiceRegistry', () => {
     expect(createKbService).toHaveBeenCalledTimes(1)
   })
 
-  it('[TC-90] throws BaseNotFoundError for a base with no index', async () => {
+  it('[TC-K2XB] throws BaseNotFoundError for a base with no index', async () => {
     const defaultDir = await makeBase('demo')
     const registry = createKbServiceRegistry({
       defaultService: fakeDefault(defaultDir),
@@ -86,7 +86,7 @@ describe('createKbServiceRegistry', () => {
     expect(() => registry.resolve('missing')).toThrow(BaseNotFoundError)
   })
 
-  it('[TC-91] list() advertises the default plus every built base', async () => {
+  it('[TC-BNWZ] list() advertises the default plus every built base', async () => {
     const defaultDir = await makeBase('demo')
     await makeBase('raylib')
     const registry = createKbServiceRegistry({

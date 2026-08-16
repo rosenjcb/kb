@@ -62,7 +62,7 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
 }
 
 describe('buildMcpToolList', () => {
-  it('[TC-21] exposes exactly query, submit_feedback, and get_feedback_requests, never allowlist tools or upsert_fact', () => {
+  it('[TC-NFCZ] exposes exactly query, submit_feedback, and get_feedback_requests, never allowlist tools or upsert_fact', () => {
     const tools = buildMcpToolList(makeStubService())
     const names = tools.map(t => t.name)
     expect(names).toEqual(['query', 'submit_feedback', 'get_feedback_requests'])
@@ -70,7 +70,7 @@ describe('buildMcpToolList', () => {
 })
 
 describe('dispatchMcpToolCall', () => {
-  it('[TC-22] always synthesizes an answer (answer-first, no synthesize flag)', async () => {
+  it('[TC-3391] always synthesizes an answer (answer-first, no synthesize flag)', async () => {
     const service = makeStubService()
     const result = await dispatchMcpToolCall(service, 'query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
@@ -79,7 +79,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).toContain('synth:true')
   })
 
-  it('[TC-109] default response is answer + lean citations, no fact dump or retrieval metadata', async () => {
+  it('[TC-741S] default response is answer + lean citations, no fact dump or retrieval metadata', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
     const body = JSON.parse(result.content[0].text)
@@ -93,7 +93,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).not.toContain('factCount')
   })
 
-  it('[TC-111] verbose:true opts into the full evidence payload', async () => {
+  it('[TC-ONSY] verbose:true opts into the full evidence payload', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'query', {
       q: 'auth',
       verbose: true,
@@ -111,7 +111,7 @@ describe('dispatchMcpToolCall', () => {
     })
   })
 
-  it('[TC-110] advertises the verbose and base flags in the tool schema', () => {
+  it('[TC-O6P7] advertises the verbose and base flags in the tool schema', () => {
     const tools = buildMcpToolList(makeStubService())
     const schema = tools[0].inputSchema as {
       properties: Record<string, unknown>
@@ -121,12 +121,12 @@ describe('dispatchMcpToolCall', () => {
     expect(schema.required).toEqual(['q'])
   })
 
-  it('[TC-23] errors when query is missing q', async () => {
+  it('[TC-XZYJ] errors when query is missing q', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'query', {})
     expect(result.isError).toBe(true)
   })
 
-  it('[TC-24] refuses former registry tools like kb_read_facts', async () => {
+  it('[TC-ILZU] refuses former registry tools like kb_read_facts', async () => {
     const execute = vi.fn(async () => ({ results: ['fact-1'] }))
     const service = makeStubService({
       toolExecutor: { getTools: () => registryTools, execute, register: () => {} },
@@ -137,7 +137,7 @@ describe('dispatchMcpToolCall', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
-  it('[TC-25] refuses tools outside the allowlist', async () => {
+  it('[TC-OYMN] refuses tools outside the allowlist', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'kb_upsert_fact', { factText: 'x' })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('unavailable')
@@ -155,7 +155,7 @@ describe('dispatchMcpToolCall', () => {
     }
   }
 
-  it('[TC-177] base argument resolves the named base via the registry instead of the session default', async () => {
+  it('[TC-8NCJ] base argument resolves the named base via the registry instead of the session default', async () => {
     const sessionDefault = makeStubService()
     const otherBase = makeStubService({
       query: async params => ({
@@ -180,7 +180,7 @@ describe('dispatchMcpToolCall', () => {
     expect(JSON.parse(result.content[0].text).answer).toBe('other-base:auth')
   })
 
-  it('[TC-178] errors (not a 404) when base names a slug the registry can\'t resolve', async () => {
+  it('[TC-QCMR] errors (not a 404) when base names a slug the registry can\'t resolve', async () => {
     const registry = makeStubRegistry({
       resolve: slug => {
         throw new BaseNotFoundError(slug ?? '')
@@ -196,7 +196,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).toContain('unknown base "nope"')
   })
 
-  it('[TC-179] ignores a base argument when no registry is configured (single-base server)', async () => {
+  it('[TC-01LO] ignores a base argument when no registry is configured (single-base server)', async () => {
     const service = makeStubService()
     const result = await dispatchMcpToolCall(service, 'query', { q: 'auth', base: 'raylib' })
     expect(result.isError).toBeUndefined()
@@ -210,7 +210,7 @@ describe('submit_feedback and feedback nudge', () => {
     return { dir, store: new QueryFeedbackStore(dir) }
   }
 
-  it('[TC-130] records helped/notes/query/requestId/scores as an NDJSON record and returns ok', async () => {
+  it('[TC-W2FJ] records helped/notes/query/requestId/scores as an NDJSON record and returns ok', async () => {
     const { dir, store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -239,7 +239,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.ts).toBeTruthy()
   })
 
-  it('[TC-131] errors when helped is missing or not yes/partial/no', async () => {
+  it('[TC-ZOLQ] errors when helped is missing or not yes/partial/no', async () => {
     const { store } = makeTempStore()
     const missing = await dispatchMcpToolCall(
       makeStubService(),
@@ -258,7 +258,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(invalid.content[0].text).toContain('helped')
   })
 
-  it('[TC-132] query payload echoes the server requestId for feedback correlation', async () => {
+  it('[TC-AYDQ] query payload echoes the server requestId for feedback correlation', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'query',
@@ -269,7 +269,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(result.content[0].text).requestId).toBe('req-42')
   })
 
-  it('[TC-133] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
+  it('[TC-K557] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
       'query',
@@ -285,7 +285,7 @@ describe('submit_feedback and feedback nudge', () => {
     }
   })
 
-  it('[TC-134] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
+  it('[TC-7NV4] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
     vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
     try {
       const unset = await dispatchMcpToolCall(makeStubService(), 'query', { q: 'auth' })
@@ -302,7 +302,7 @@ describe('submit_feedback and feedback nudge', () => {
     }
   })
 
-  it('[TC-135] query response echoes back the original query text', async () => {
+  it('[TC-EHKV] query response echoes back the original query text', async () => {
     const result = await dispatchMcpToolCall(makeStubService(), 'query', {
       q: 'how does auth retry work?',
     })
@@ -310,7 +310,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(result.content[0].text).query).toBe('how does auth retry work?')
   })
 
-  it('[TC-136] submit_feedback response echoes back the submitted query when provided, omits it when absent', async () => {
+  it('[TC-ZI7U] submit_feedback response echoes back the submitted query when provided, omits it when absent', async () => {
     const { store } = makeTempStore()
     const withQuery = await dispatchMcpToolCall(
       makeStubService(),
@@ -329,7 +329,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(withoutQuery.content[0].text).query).toBeUndefined()
   })
 
-  it('[TC-137] submit_feedback response echoes the full recorded feedback, not just query', async () => {
+  it('[TC-CZ3E] submit_feedback response echoes the full recorded feedback, not just query', async () => {
     const { store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -349,7 +349,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(body.scores).toEqual({ correctness: 3 })
   })
 
-  it('[TC-138] submit_feedback rejects a non-string requestId (no array batching)', async () => {
+  it('[TC-ULOC] submit_feedback rejects a non-string requestId (no array batching)', async () => {
     const { store } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -361,7 +361,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(result.content[0].text).toContain('requestId')
   })
 
-  it('[TC-139] get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it', async () => {
+  it('[TC-KYRN] get_feedback_requests lists a pending entry queued by a sampled nudge, and submit_feedback resolves it', async () => {
     const service = makeStubService()
     const pendingFeedbackStore = new PendingFeedbackStore()
     const { store: feedbackStore } = makeTempStore()
@@ -400,7 +400,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(JSON.parse(pendingAfter.content[0].text).pending).toEqual([])
   })
 
-  it('[TC-140] submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched', async () => {
+  it('[TC-BZZH] submit_feedback with no requestId is valid general feedback and leaves the pending queue untouched', async () => {
     const service = makeStubService()
     const pendingFeedbackStore = new PendingFeedbackStore()
     const { store: feedbackStore } = makeTempStore()
@@ -429,7 +429,7 @@ describe('submit_feedback and feedback nudge', () => {
     ])
   })
 
-  it('[TC-141] elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending', async () => {
+  it('[TC-1SRC] elicitFeedback accept records feedback via elicitation and skips AGENT_INSTRUCTION/pending', async () => {
     const pendingFeedbackStore = new PendingFeedbackStore()
     const { dir, store: feedbackStore } = makeTempStore()
     const result = await dispatchMcpToolCall(
@@ -466,7 +466,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.notes).toBe('missed the retry path')
   })
 
-  it('[TC-142] elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending', async () => {
+  it('[TC-M9E1] elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending', async () => {
     const pendingFeedbackStore = new PendingFeedbackStore()
     const { dir, store: feedbackStore } = makeTempStore()
     const declined = await dispatchMcpToolCall(
@@ -490,7 +490,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(() => readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8')).toThrow()
   })
 
-  it('[TC-143] elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending', async () => {
+  it('[TC-PIQZ] elicitFeedback unavailable falls back to AGENT_INSTRUCTION + pending', async () => {
     const pendingFeedbackStore = new PendingFeedbackStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
@@ -539,7 +539,7 @@ describe('query synthesis failure', () => {
       }),
     })
 
-  it('[TC-160] Given synthesis failed, then query reports answerError rather than an empty answer', async () => {
+  it('[TC-ZVKA] Given synthesis failed, then query reports answerError rather than an empty answer', async () => {
     const result = await dispatchMcpToolCall(failingService(), 'query', { q: 'auth' })
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBeNull()
@@ -549,7 +549,7 @@ describe('query synthesis failure', () => {
     expect(body.sources).toEqual([{ path: 'src/auth/login.ts' }])
   })
 
-  it('[TC-161] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {
+  it('[TC-RBLQ] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {
     // Sampling forced on: without the guard this would ask an agent to rate an answer
     // that never existed, scoring a provider outage as a KB quality problem.
     const result = await dispatchMcpToolCall(

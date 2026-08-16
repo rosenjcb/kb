@@ -41,16 +41,16 @@ const CREDS = {
 }
 
 describe('base selection', () => {
-  it('[TC-32] defaults to the manifest default base', () => {
+  it('[TC-BECU] defaults to the manifest default base', () => {
     expect(resolveBases(parseArgs(['node', 'snapshot-pull.mjs']), MANIFEST)).toEqual(['kb'])
   })
 
-  it('[TC-33] accepts --suite as an alias of --base and dedupes', () => {
+  it('[TC-NRO2] accepts --suite as an alias of --base and dedupes', () => {
     const args = parseArgs(['node', 's', '--suite', 'raylib,fzf', '--base', 'raylib'])
     expect(resolveBases(args, MANIFEST)).toEqual(['raylib', 'fzf'])
   })
 
-  it('[TC-34] --all expands to every base in the manifest', () => {
+  it('[TC-39TL] --all expands to every base in the manifest', () => {
     expect(resolveBases(parseArgs(['node', 's', '--all']), MANIFEST)).toEqual([
       'kb',
       'raylib',
@@ -58,20 +58,20 @@ describe('base selection', () => {
     ])
   })
 
-  it('[TC-35] rejects a base the manifest never publishes', () => {
+  it('[TC-DAQN] rejects a base the manifest never publishes', () => {
     const args = parseArgs(['node', 's', '--base', 'nope'])
     expect(() => resolveBases(args, MANIFEST)).toThrow(/unknown base\(s\): nope/)
   })
 
-  it('[TC-36] rejects --into when several bases are pulled', () => {
+  it('[TC-25UV] rejects --into when several bases are pulled', () => {
     expect(() => parseArgs(['node', 's', '--all', '--into', 'x'])).toThrow(/single base/)
   })
 
-  it('[TC-37] rejects unknown flags instead of ignoring them', () => {
+  it('[TC-BWRH] rejects unknown flags instead of ignoring them', () => {
     expect(() => parseArgs(['node', 's', '--wat'])).toThrow(/unknown flag: --wat/)
   })
 
-  it('[TC-38] maps a fly base to the eval-<base> session and its object prefix', () => {
+  it('[TC-40BM] maps a fly base to the eval-<base> session and its object prefix', () => {
     expect(defaultLocalBase('raylib')).toBe('eval-raylib')
     expect(snapshotPrefixFor('snapshots', 'raylib')).toBe('snapshots/raylib')
     expect(sessionDir('eval-raylib', { KB_HOME: '/kbhome' })).toBe('/kbhome/sessions/eval-raylib')
@@ -79,7 +79,7 @@ describe('base selection', () => {
 })
 
 describe('pointer + listing parsing', () => {
-  it('[TC-39] reads the version out of a latest.json pointer', () => {
+  it('[TC-5LW0] reads the version out of a latest.json pointer', () => {
     expect(versionFromPointer('{"version":"20260803T000000Z","base":"kb"}')).toBe(
       '20260803T000000Z'
     )
@@ -87,7 +87,7 @@ describe('pointer + listing parsing', () => {
     expect(versionFromPointer('')).toBeNull()
   })
 
-  it('[TC-40] parses keys, common prefixes and truncation from ListObjectsV2 XML', () => {
+  it('[TC-F7B9] parses keys, common prefixes and truncation from ListObjectsV2 XML', () => {
     const xml = `<?xml version="1.0"?>
       <ListBucketResult>
         <IsTruncated>true</IsTruncated>
@@ -106,7 +106,7 @@ describe('pointer + listing parsing', () => {
     expect(parsed.nextToken).toBe('tok&2')
   })
 
-  it('[TC-41] treats an untruncated listing as the final page', () => {
+  it('[TC-USTN] treats an untruncated listing as the final page', () => {
     const parsed = parseListXml('<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>')
     expect(parsed.keys).toEqual([])
     expect(parsed.truncated).toBe(false)
@@ -115,19 +115,19 @@ describe('pointer + listing parsing', () => {
 })
 
 describe('sigv4 signing', () => {
-  it('[TC-42] keeps path separators literal and escapes the rest of a key', () => {
+  it('[TC-AO9G] keeps path separators literal and escapes the rest of a key', () => {
     expect(encodeKey('snapshots/kb/2026 08/.kb-index.sqlite')).toBe(
       'snapshots/kb/2026%2008/.kb-index.sqlite'
     )
   })
 
-  it('[TC-43] canonicalizes query parameters in sorted, encoded form', () => {
+  it('[TC-X75S] canonicalizes query parameters in sorted, encoded form', () => {
     expect(canonicalQuery({ prefix: 'snapshots/kb/', 'list-type': 2, empty: null })).toBe(
       'list-type=2&prefix=snapshots%2Fkb%2F'
     )
   })
 
-  it('[TC-44] signs a GET deterministically for a fixed clock and credentials', () => {
+  it('[TC-78IA] signs a GET deterministically for a fixed clock and credentials', () => {
     const now = new Date('2026-08-03T00:00:00Z')
     const a = signGet({ ...CREDS, key: 'snapshots/kb/latest.json', creds: CREDS, now })
     const b = signGet({ ...CREDS, key: 'snapshots/kb/latest.json', creds: CREDS, now })
@@ -145,7 +145,7 @@ describe('sigv4 signing', () => {
   // Golden vectors cross-checked against botocore's SigV4Auth (same clock, same
   // credentials, same canonical request) — an S3 the tests cannot reach would
   // otherwise only ever see this signer agree with itself.
-  it('[TC-60] matches a reference SigV4 implementation byte for byte', () => {
+  it('[TC-WXE8] matches a reference SigV4 implementation byte for byte', () => {
     const now = new Date('2026-08-03T00:00:00Z')
     const object = signGet({ ...CREDS, key: 'snapshots/kb/latest.json', creds: CREDS, now })
     expect(object.headers.authorization).toContain(
@@ -163,21 +163,21 @@ describe('sigv4 signing', () => {
     )
   })
 
-  it('[TC-45] binds the signature to the object key', () => {
+  it('[TC-4VSL] binds the signature to the object key', () => {
     const now = new Date('2026-08-03T00:00:00Z')
     const one = signGet({ ...CREDS, key: 'a', creds: CREDS, now }).headers.authorization
     const two = signGet({ ...CREDS, key: 'b', creds: CREDS, now }).headers.authorization
     expect(one).not.toBe(two)
   })
 
-  it('[TC-46] signs the security token header when the credentials are temporary', () => {
+  it('[TC-9TCW] signs the security token header when the credentials are temporary', () => {
     const creds = { ...CREDS, sessionToken: 'tok' }
     const signed = signGet({ ...creds, key: 'a', creds, now: new Date('2026-08-03T00:00:00Z') })
     expect(signed.headers['x-amz-security-token']).toBe('tok')
     expect(signed.headers.authorization).toContain('x-amz-security-token')
   })
 
-  it('[TC-47] appends the canonical query string to the request URL', () => {
+  it('[TC-U1VZ] appends the canonical query string to the request URL', () => {
     const signed = signGet({
       ...CREDS,
       key: '',
@@ -192,7 +192,7 @@ describe('sigv4 signing', () => {
 })
 
 describe('credential resolution', () => {
-  it('[TC-48] prefers explicit bucket credentials from the environment', async () => {
+  it('[TC-0EWN] prefers explicit bucket credentials from the environment', async () => {
     const creds = await resolveCredentials({
       app: 'kb-demo',
       env: {
@@ -207,11 +207,11 @@ describe('credential resolution', () => {
     expect(creds).toMatchObject({ source: 'env', bucket: 'b', endpoint: expect.any(String) })
   })
 
-  it('[TC-49] returns null when the environment is missing a required credential', () => {
+  it('[TC-EGPX] returns null when the environment is missing a required credential', () => {
     expect(credentialsFromEnv({ BUCKET_NAME: 'b', AWS_ACCESS_KEY_ID: 'k' })).toBeNull()
   })
 
-  it('[TC-50] reads Tigris keys from the Fly extension listing', async () => {
+  it('[TC-BTLZ] reads Tigris keys from the Fly extension listing', async () => {
     const creds = await resolveCredentials({
       app: 'kb-demo',
       env: { FLY_API_TOKEN: 'tok' },
@@ -237,13 +237,13 @@ describe('credential resolution', () => {
     expect(creds).toMatchObject({ source: 'fly', bucket: 'kb-bucket', accessKeyId: 'tid_x' })
   })
 
-  it('[TC-51] explains how to supply credentials when none are available', async () => {
+  it('[TC-UDYL] explains how to supply credentials when none are available', async () => {
     await expect(resolveCredentials({ app: 'kb-demo', env: {} })).rejects.toThrow(
       /BUCKET_NAME .* AWS_ACCESS_KEY_ID .* FLY_API_TOKEN/s
     )
   })
 
-  it('[TC-52] fails loudly when the Fly token yields no storage extension', async () => {
+  it('[TC-JRHB] fails loudly when the Fly token yields no storage extension', async () => {
     await expect(
       resolveCredentials({
         app: 'kb-demo',
@@ -253,7 +253,7 @@ describe('credential resolution', () => {
     ).rejects.toThrow(/did not yield bucket credentials/)
   })
 
-  it('[TC-61] asks Fly only for AddOn fields that exist in the schema', () => {
+  it('[TC-TUAB] asks Fly only for AddOn fields that exist in the schema', () => {
     // `AddOn` exposes `addOnProvider`, not `type`. Asking for `type` fails GraphQL
     // validation, which took out both candidate queries and reported as a generic
     // "did not yield bucket credentials" instead of a schema error.
@@ -263,7 +263,7 @@ describe('credential resolution', () => {
     }
   })
 
-  it('[TC-62] distinguishes a redacted add-on environment from a missing bucket', () => {
+  it('[TC-LGQL] distinguishes a redacted add-on environment from a missing bucket', () => {
     expect(describeAddOnMiss([])).toMatch(/no storage add-on visible/)
     expect(describeAddOnMiss([{ name: 'kb-demo-storage', environment: {} }])).toMatch(
       /kb-demo-storage.*cannot read extension secrets/
@@ -276,7 +276,7 @@ describe('credential resolution', () => {
     )
   })
 
-  it('[TC-63] falls back to the org listing when the app has no add-ons', async () => {
+  it('[TC-WM7M] falls back to the org listing when the app has no add-ons', async () => {
     // `fly storage create` attaches the bucket to the organization, so the
     // app-scoped connection can be empty even though the bucket exists.
     const creds = await resolveCredentials({
@@ -310,7 +310,7 @@ describe('credential resolution', () => {
     expect(creds).toMatchObject({ source: 'fly', bucket: 'kb-demo-storage' })
   })
 
-  it('[TC-53] ignores extensions that are not the requested bucket', () => {
+  it('[TC-NLON] ignores extensions that are not the requested bucket', () => {
     const nodes = [
       {
         name: 'a',
@@ -327,24 +327,24 @@ describe('credential resolution', () => {
 })
 
 describe('local adoption', () => {
-  it('[TC-54] imports into an empty base without forcing', () => {
+  it('[TC-MAIK] imports into an empty base without forcing', () => {
     expect(planImport({ baseHasIndex: false, localDigest: null, incomingDigest: 'd', force: false }))
       .toEqual({ action: 'import', force: false })
   })
 
-  it('[TC-55] skips the import when the base already holds this snapshot', () => {
+  it('[TC-P69G] skips the import when the base already holds this snapshot', () => {
     expect(
       planImport({ baseHasIndex: true, localDigest: 'd', incomingDigest: 'd', force: false }).action
     ).toBe('skip')
   })
 
-  it('[TC-56] replaces an older snapshot automatically', () => {
+  it('[TC-GSHR] replaces an older snapshot automatically', () => {
     expect(
       planImport({ baseHasIndex: true, localDigest: 'old', incomingDigest: 'new', force: false })
     ).toMatchObject({ action: 'import', force: true })
   })
 
-  it('[TC-57] refuses to clobber a locally built index without --force', () => {
+  it('[TC-88BA] refuses to clobber a locally built index without --force', () => {
     const plan = planImport({
       baseHasIndex: true,
       localDigest: null,
@@ -355,13 +355,13 @@ describe('local adoption', () => {
     expect(plan.reason).toMatch(/--force/)
   })
 
-  it('[TC-58] clobbers a locally built index when --force is given', () => {
+  it('[TC-QSZ4] clobbers a locally built index when --force is given', () => {
     expect(
       planImport({ baseHasIndex: true, localDigest: null, incomingDigest: 'new', force: true })
     ).toMatchObject({ action: 'import', force: true })
   })
 
-  it('[TC-59] treats a prefix missing a required file as incomplete', () => {
+  it('[TC-7B2Z] treats a prefix missing a required file as incomplete', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'))
     mkdirSync(dir, { recursive: true })
     writeFileSync(path.join(dir, 'kb-snapshot.json'), JSON.stringify({ digest: { index: 'abc' } }))
@@ -418,7 +418,7 @@ describe('snapshot download resilience to a short LIST', () => {
 
   const outDir = () => path.join(mkdtempSync(path.join(tmpdir(), 'kb-pull-')), 'snap')
 
-  it('[TC-64] recovers a prefix whose LIST is empty but whose objects all GET', async () => {
+  it('[TC-ONWZ] recovers a prefix whose LIST is empty but whose objects all GET', async () => {
     const gets = stubS3([])
     const dir = outDir()
     await downloadPrefix(CREDS, PREFIX, dir)
@@ -429,14 +429,14 @@ describe('snapshot download resilience to a short LIST', () => {
     expect(gets).toContain(`${PREFIX}/.kb-index.sqlite`)
   })
 
-  it('[TC-65] recovers a partial LIST that omits the manifest', async () => {
+  it('[TC-5Y6Q] recovers a partial LIST that omits the manifest', async () => {
     stubS3([`${PREFIX}/.kb-index.sqlite`])
     const dir = outDir()
     await downloadPrefix(CREDS, PREFIX, dir)
     expect(snapshotDirComplete(dir)).toBe(true)
   })
 
-  it('[TC-66] leaves a healthy LIST alone and still pulls aux objects', async () => {
+  it('[TC-NZ5T] leaves a healthy LIST alone and still pulls aux objects', async () => {
     stubS3(Object.keys(ORIGIN))
     const dir = outDir()
     await downloadPrefix(CREDS, PREFIX, dir)
@@ -444,12 +444,12 @@ describe('snapshot download resilience to a short LIST', () => {
     expect(existsSync(path.join(dir, 'source-files-manifest.json'))).toBe(true)
   })
 
-  it('[TC-67] still fails when the prefix is absent by LIST and by GET', async () => {
+  it('[TC-NM9Q] still fails when the prefix is absent by LIST and by GET', async () => {
     stubS3([], {})
     await expect(downloadPrefix(CREDS, PREFIX, outDir())).rejects.toThrow(/missing required objects/)
   })
 
-  it('[TC-68] takes index file names from the manifest, always including the primary', () => {
+  it('[TC-4F47] takes index file names from the manifest, always including the primary', () => {
     const dir = outDir()
     mkdirSync(dir, { recursive: true })
     writeFileSync(path.join(dir, 'kb-snapshot.json'), MANIFEST_BODY)

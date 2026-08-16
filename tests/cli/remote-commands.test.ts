@@ -12,7 +12,7 @@ import {
 } from '@kb/client/cli/remote-commands.js'
 
 describe('isClientLocalCommand', () => {
-  it('[TC-27] keeps mcp/skills/uninstall/sync/base use on the client', () => {
+  it('[TC-KFYC] keeps mcp/skills/uninstall/sync/base use on the client', () => {
     expect(isClientLocalCommand(['mcp', 'status'])).toBe(true)
     expect(isClientLocalCommand(['mcp', 'install', '--host', 'localhost:38117'])).toBe(true)
     expect(isClientLocalCommand(['skills', 'install'])).toBe(true)
@@ -25,7 +25,7 @@ describe('isClientLocalCommand', () => {
     expect(isClientLocalCommand(['base', 'delete', 'x'])).toBe(true)
   })
 
-  it('[TC-29] still forwards server-backed commands remotely', () => {
+  it('[TC-SD1N] still forwards server-backed commands remotely', () => {
     expect(isClientLocalCommand(['query', 'hi'])).toBe(false)
     expect(isClientLocalCommand(['base', 'list'])).toBe(false)
     expect(isClientLocalCommand(['facts', 'list'])).toBe(false)
@@ -38,7 +38,7 @@ describe('discoverRemoteDefaultBase', () => {
     vi.unstubAllGlobals()
   })
 
-  it('[TC-52] returns the base reported by the server health probe', async () => {
+  it('[TC-DCY8] returns the base reported by the server health probe', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'raylib' }), { status: 200 })),
@@ -46,7 +46,7 @@ describe('discoverRemoteDefaultBase', () => {
     await expect(discoverRemoteDefaultBase({})).resolves.toBe('raylib')
   })
 
-  it('[TC-53] returns undefined when the server is unreachable', async () => {
+  it('[TC-I12L] returns undefined when the server is unreachable', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -74,7 +74,7 @@ describe('resolveDisplayBase', () => {
     if (kbHome) await rm(kbHome, { recursive: true, force: true })
   })
 
-  it('[TC-69] returns the active base (isServerDefault false) when one is selected', async () => {
+  it('[TC-4N1R] returns the active base (isServerDefault false) when one is selected', async () => {
     process.env.KB_BASE = 'raylib'
     // No health probe needed — the active base short-circuits before any network call.
     vi.stubGlobal(
@@ -89,7 +89,7 @@ describe('resolveDisplayBase', () => {
     })
   })
 
-  it('[TC-70] falls back to the server default (isServerDefault true) when no active base', async () => {
+  it('[TC-MQGP] falls back to the server default (isServerDefault true) when no active base', async () => {
     kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
     process.env.KB_HOME = kbHome
     delete process.env.KB_BASE
@@ -104,7 +104,7 @@ describe('resolveDisplayBase', () => {
     })
   })
 
-  it('[TC-71] reports no base (isServerDefault false) when the server is unreachable', async () => {
+  it('[TC-PHMI] reports no base (isServerDefault false) when the server is unreachable', async () => {
     kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
     process.env.KB_HOME = kbHome
     delete process.env.KB_BASE
@@ -123,7 +123,7 @@ describe('resolveDisplayBase', () => {
 })
 
 describe('dispatchRemoteChatStreamEvent', () => {
-  it('[TC-51] routes reasoning to progress and meta to log (keeps thinking alive)', () => {
+  it('[TC-9QI3] routes reasoning to progress and meta to log (keeps thinking alive)', () => {
     const log = vi.fn()
     const progress = vi.fn()
     dispatchRemoteChatStreamEvent({ type: 'meta', text: 'stage> route:start' }, { log, progress })
@@ -142,7 +142,7 @@ describe('dispatchRemoteChatStreamEvent', () => {
 })
 
 describe('CLI startup wiring', () => {
-  it('[TC-28] does not auto-sync MCP or install skills from main()', () => {
+  it('[TC-B09L] does not auto-sync MCP or install skills from main()', () => {
     const indexPath = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       '../../packages/kb-client/src/cli/index.ts'

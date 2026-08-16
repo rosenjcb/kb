@@ -34,12 +34,12 @@ See companion doc for full vocabulary where applicable.
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | Given query_truth without discoveryDepth, then defaults to deep discovery like chat | pass |
-| TC-2 | FR-1 | Given query_truth with high-recall token query, then uses default limit without floor | pass |
-| TC-3 | FR-1 | Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts | pass |
-| TC-4 | FR-1 | Given a collector on the constructor, then query_truth operationInput carries it through | pass |
-| TC-5 | FR-1 | Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong | pass |
-| TC-6 | FR-1 | Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong | pass |
+| TC-Z1H5 | FR-1 | Given query_truth without discoveryDepth, then defaults to deep discovery like chat | pass |
+| TC-GTAJ | FR-1 | Given query_truth with high-recall token query, then uses default limit without floor | pass |
+| TC-AX85 | FR-1 | Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts | pass |
+| TC-HZOB | FR-1 | Given a collector on the constructor, then query_truth operationInput carries it through | pass |
+| TC-XH9F | FR-1 | Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong | pass |
+| TC-1YYY | FR-1 | Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong | pass |
 
 ### Related docs
 

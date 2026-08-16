@@ -5,7 +5,7 @@ import {
 } from '@kb/core/core/evidence-summary.js'
 
 describe('evidence-summary', () => {
-  it('[TC-49] Given mixed doc and code facts, then header summarizes count, mix, themes, and leads', () => {
+  it('[TC-WX2Q] Given mixed doc and code facts, then header summarizes count, mix, themes, and leads', () => {
     const header = formatEvidenceSummaryHeader({
       results: [
         {
@@ -44,11 +44,11 @@ describe('evidence-summary', () => {
     expect(header).toContain('evidence: moderate')
   })
 
-  it('[TC-50] Given empty results, then header is omitted', () => {
+  it('[TC-9UBM] Given empty results, then header is omitted', () => {
     expect(formatEvidenceSummaryHeader({ results: [] })).toBeUndefined()
   })
 
-  it('[TC-51] Given homogenous source kind, then mix uses all-doc shorthand', () => {
+  it('[TC-WS0E] Given homogenous source kind, then mix uses all-doc shorthand', () => {
     const parts = buildEvidenceSummaryParts({
       results: [
         { metadata: { title: 'A', tags: ['import_doc', 'fact'] } },
@@ -58,7 +58,7 @@ describe('evidence-summary', () => {
     expect(parts?.sourceMix).toBe('mix: all doc')
   })
 
-  it('[TC-52] Given duplicate lead titles, then leads are deduped', () => {
+  it('[TC-RF7O] Given duplicate lead titles, then leads are deduped', () => {
     const parts = buildEvidenceSummaryParts({
       results: [
         { metadata: { title: 'CodeGraphWalker', tags: ['import_doc', 'fact'] } },

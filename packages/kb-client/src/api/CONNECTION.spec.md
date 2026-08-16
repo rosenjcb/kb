@@ -72,75 +72,75 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 | --------- | ------------ | ---------- | ------------------ |
-| TC-1 | FR-1 | Given no env overrides | `resolveServerConnection` → `http://localhost:38117` |
-| TC-2 | FR-2 | Given a bare remote hostname (`KB_HOST`, no `KB_SSLMODE`) | Infers `https` under default `prefer` — parity with `kb://` |
-| TC-3 | FR-1 | Given `health()` | Calls `/healthz` |
-| TC-4 | FR-1 | Given an older server where `/health` 404s | `health()` falls back to `/healthz` |
-| TC-5 | FR-4 | Given connection failure message | Includes `kb-server start`, `--host`, env vars |
-| TC-6 | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
-| TC-7 | FR-3 | Given `--host=value` | Parses inline form |
-| TC-8 | FR-3 | Given bare `--host` | Throws requiring a value |
-| TC-9 | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
-| TC-10 | FR-3 | Given `--host http://remote/` | Decomposes into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` |
-| TC-11 | FR-5 | Given config + base name | `formatConnectionContext` → `host: … │ base: …` |
-| TC-12 | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
-| TC-13 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
-| TC-14 | FR-9 | Given Claude entry builder | includes `type: "http"` |
-| TC-15 | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
-| TC-16 | FR-10 | Given `requireExplicitHost` and only the implicit localhost default | Refuses the implicit default instead of syncing it |
-| TC-17 | FR-9 | Given `KB_HOST`/`KB_PORT`/`KB_SSLMODE` | MCP URL uses that host `/mcp` |
-| TC-18 | FR-10 | Given matching entry | action is skipped |
-| TC-19 | FR-10 | Given stale URL + sibling server | updates `kb` only |
-| TC-20 | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
-| TC-21 | FR-11 | Given no `kb` entry | action is not-found |
-| TC-22 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
-| TC-23 | FR-23 | Given env unset / `KB_HOST` / `KB_CONNECTION_STRING` / `config.server.host` | `hasExplicitServerHost` false then true |
-| TC-24 | FR-9 | Given `--host` with env unset | installs Cursor + Claude + Antigravity entries |
-| TC-25 | FR-10 | Given `needs-host` result | report includes warning |
-| TC-26 | FR-12 | Given no MCP files | status shows unset / missing entries |
-| TC-27 | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
-| TC-28 | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
-| TC-29 | FR-13 | Given `query` / `facts list` / `session` | `isClientLocalCommand` is false (forwarded remotely) |
-| TC-30 | FR-2 | Given only `config.server.host` (bare, non-loopback) + apiKey | Infers `https` with no port (implicit 443); sync installs with Bearer |
-| TC-31 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
-| TC-32 | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |
-| TC-33 | FR-15 | Given `apiKey` option and `KB_SERVER_API_KEY` set | option key overrides the env key |
-| TC-34 | FR-17 | Given `kb://localhost:38117/raylib` | url `http://localhost:38117`, base `raylib` |
-| TC-35 | FR-17 | Given a remote host under `prefer` | scheme defaults to `https` |
-| TC-36 | FR-17 | Given `apikey@host` userinfo | `apiKey` parsed from userinfo |
-| TC-37 | FR-17 | Given `user:secret@host` userinfo | password slot taken as `apiKey` |
-| TC-38 | FR-17 | Given `?sslmode=disable` on a remote host | scheme forced to `http` |
-| TC-39 | FR-17 | Given `?sslmode=require` on loopback | scheme forced to `https` |
-| TC-40 | FR-17 | Given an empty path | `base` omitted |
-| TC-41 | FR-17 | Given a bare plaintext remote host | defaults to the KB server port |
-| TC-42 | FR-17 | Given a non-`kb://` scheme | parser throws |
-| TC-43 | FR-17 | Given an unknown `sslmode` | parser throws |
-| TC-44 | FR-16 | Given `--base` + `--connection-string` + args | flags stripped, args preserved |
-| TC-45 | FR-16 | Given `--base=` / `--connection-string=` inline forms | values parsed |
-| TC-46 | FR-16 | Given bare `--base` | throws requiring a value |
-| TC-47 | FR-18 | Given a connection string | expands into `KB_HOST`/`KB_PORT`/`KB_SSLMODE`/`API_KEY`/`BASE` |
-| TC-48 | FR-18 | Given connection string + `--base` | `--base` refines the base |
-| TC-49 | FR-19 | Given a connection with `base` | `kb-api-client` sends `X-KB-Base` |
-| TC-50 | FR-19 | Given `KB_BASE` set | `resolveActiveBaseName` returns it; the endpoint resolver `resolveServerConnection` carries no base |
-| TC-67 | FR-19 | Given `KB_BASE` set | `resolveServerConnectionWithBase` sends the same base `resolveActiveBaseName` resolves (wire == UI, no drift) |
-| TC-68 | FR-17 | Given a schemeless `host:port/base` | parsed as `kb://` shorthand with `base` populated |
-| TC-51 | FR-20 | Given interleaved meta + reasoning SSE events | meta → log; reasoning → progress only |
-| TC-52 | FR-21 | Given no local base and a reachable server | `discoverRemoteDefaultBase` returns the server-reported `base` |
-| TC-53 | FR-21 | Given no local base and an unreachable server | `discoverRemoteDefaultBase` resolves `undefined` |
-| TC-69 | FR-25 | Given an active base is selected | `resolveDisplayBase` returns it with `isServerDefault: false` and never probes |
-| TC-70 | FR-25 | Given no active base and a reachable server | `resolveDisplayBase` returns the server default with `isServerDefault: true` |
-| TC-71 | FR-25 | Given no active base and an unreachable server | `resolveDisplayBase` returns `{ name: undefined, isServerDefault: false }` |
-| TC-72 | FR-25 | Given a server-default base | `formatConnectionContext` renders `base: <name> (server default)`; a local active base has no label |
-| TC-54 | FR-2 | Given `KB_HOST` (remote) + `KB_SSLMODE=disable` | Forces plaintext despite the remote host |
-| TC-55 | FR-2 | Given `KB_HOST` (remote) + explicit `KB_PORT` | Inferred `https` scheme keeps the explicit port |
-| TC-56 | FR-16 | Given `--port`, `--sslmode`, `--api-key`, and the `--key` alias | All four stripped, both space and `=` forms |
-| TC-57 | FR-2 | Given `--host https://remote:9443` | Explicit scheme forces `sslmode=require` (authoritative over `prefer`) |
-| TC-58 | FR-22 | Given `applyPortCliOverride`/`applySslModeCliOverride`/`applyApiKeyCliOverride` | Each sets its env var; `sslmode` is lowercased |
-| TC-59 | FR-22 | Given an unknown `--sslmode` value | `applySslModeCliOverride` throws `Invalid --sslmode value` |
-| TC-60 | FR-18 | Given `--host` + `--port` + `--sslmode` + `--api-key` together | Each applies in order, later flags refining earlier ones |
-| TC-61 | FR-24 | Given `kb mcp install` with zero extra args | Syncs from the already-applied ambient connection (no duplicate parser) |
-| TC-62 | FR-24 | Given `kb mcp install <unrecognized-arg>` | Still throws `Unknown argument: <arg>` |
-| TC-63 | FR-4 | Given a 401 with a JSON error body | Message names `KB_SERVER_API_KEY` as the fix |
-| TC-64 | FR-4 | Given a 401 whose body is not JSON | Still returns the API-key hint |
-| TC-65 | FR-4 | Given a non-401 server error carrying an `error` field | Passes the server message through unchanged |
-| TC-66 | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |
+| TC-THW7 | FR-1 | Given no env overrides | `resolveServerConnection` → `http://localhost:38117` |
+| TC-V25H | FR-2 | Given a bare remote hostname (`KB_HOST`, no `KB_SSLMODE`) | Infers `https` under default `prefer` — parity with `kb://` |
+| TC-JJBZ | FR-1 | Given `health()` | Calls `/healthz` |
+| TC-3GYT | FR-1 | Given an older server where `/health` 404s | `health()` falls back to `/healthz` |
+| TC-GNQK | FR-4 | Given connection failure message | Includes `kb-server start`, `--host`, env vars |
+| TC-ZYDA | FR-3 | Given `kb --host h:38117 query …` | Strips flag; sets host env |
+| TC-SI3F | FR-3 | Given `--host=value` | Parses inline form |
+| TC-QJ8A | FR-3 | Given bare `--host` | Throws requiring a value |
+| TC-QWHE | FR-3 | Given `--host myhost:12345` | Sets `KB_HOST` and `KB_PORT` |
+| TC-4SG4 | FR-3 | Given `--host http://remote/` | Decomposes into `KB_HOST`/`KB_PORT`/`KB_SSLMODE` |
+| TC-PYBW | FR-5 | Given config + base name | `formatConnectionContext` → `host: … │ base: …` |
+| TC-DLOM | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
+| TC-J1S1 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
+| TC-KUXM | FR-9 | Given Claude entry builder | includes `type: "http"` |
+| TC-SQMH | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
+| TC-6ZYN | FR-10 | Given `requireExplicitHost` and only the implicit localhost default | Refuses the implicit default instead of syncing it |
+| TC-41V9 | FR-9 | Given `KB_HOST`/`KB_PORT`/`KB_SSLMODE` | MCP URL uses that host `/mcp` |
+| TC-QD7E | FR-10 | Given matching entry | action is skipped |
+| TC-ZIAB | FR-10 | Given stale URL + sibling server | updates `kb` only |
+| TC-XA0Q | FR-11 | Given `kb` + other servers | uninstall removes only `kb` |
+| TC-UX51 | FR-11 | Given no `kb` entry | action is not-found |
+| TC-68L8 | FR-9 | Given sync results | `formatMcpSyncReport` lists agents |
+| TC-DDES | FR-23 | Given env unset / `KB_HOST` / `KB_CONNECTION_STRING` / `config.server.host` | `hasExplicitServerHost` false then true |
+| TC-749M | FR-9 | Given `--host` with env unset | installs Cursor + Claude + Antigravity entries |
+| TC-3WXS | FR-10 | Given `needs-host` result | report includes warning |
+| TC-O4VO | FR-12 | Given no MCP files | status shows unset / missing entries |
+| TC-KFYC | FR-13 | Given `mcp status` / `skills` / `base use` | `isClientLocalCommand` is true (not admin CLI) |
+| TC-B09L | FR-14 | Given bare `kb` / one-shot CLI startup | Does not call `syncKbMcpConfigs` |
+| TC-SD1N | FR-13 | Given `query` / `facts list` / `session` | `isClientLocalCommand` is false (forwarded remotely) |
+| TC-5W7A | FR-2 | Given only `config.server.host` (bare, non-loopback) + apiKey | Infers `https` with no port (implicit 443); sync installs with Bearer |
+| TC-JI78 | FR-10 | Given no API key but existing Bearer | sync updates and clears Authorization |
+| TC-X5IO | FR-15 | Given `apiKey` option and env unset | writes Bearer header from the option |
+| TC-UJ7R | FR-15 | Given `apiKey` option and `KB_SERVER_API_KEY` set | option key overrides the env key |
+| TC-6RF5 | FR-17 | Given `kb://localhost:38117/raylib` | url `http://localhost:38117`, base `raylib` |
+| TC-J38J | FR-17 | Given a remote host under `prefer` | scheme defaults to `https` |
+| TC-9K70 | FR-17 | Given `apikey@host` userinfo | `apiKey` parsed from userinfo |
+| TC-XT98 | FR-17 | Given `user:secret@host` userinfo | password slot taken as `apiKey` |
+| TC-UAJH | FR-17 | Given `?sslmode=disable` on a remote host | scheme forced to `http` |
+| TC-ACZ1 | FR-17 | Given `?sslmode=require` on loopback | scheme forced to `https` |
+| TC-2ZVF | FR-17 | Given an empty path | `base` omitted |
+| TC-LEKU | FR-17 | Given a bare plaintext remote host | defaults to the KB server port |
+| TC-UJCF | FR-17 | Given a non-`kb://` scheme | parser throws |
+| TC-TJZV | FR-17 | Given an unknown `sslmode` | parser throws |
+| TC-PKFE | FR-16 | Given `--base` + `--connection-string` + args | flags stripped, args preserved |
+| TC-4N6E | FR-16 | Given `--base=` / `--connection-string=` inline forms | values parsed |
+| TC-0GV1 | FR-16 | Given bare `--base` | throws requiring a value |
+| TC-PVC6 | FR-18 | Given a connection string | expands into `KB_HOST`/`KB_PORT`/`KB_SSLMODE`/`API_KEY`/`BASE` |
+| TC-GB52 | FR-18 | Given connection string + `--base` | `--base` refines the base |
+| TC-N0AI | FR-19 | Given a connection with `base` | `kb-api-client` sends `X-KB-Base` |
+| TC-7VJJ | FR-19 | Given `KB_BASE` set | `resolveActiveBaseName` returns it; the endpoint resolver `resolveServerConnection` carries no base |
+| TC-P6JO | FR-19 | Given `KB_BASE` set | `resolveServerConnectionWithBase` sends the same base `resolveActiveBaseName` resolves (wire == UI, no drift) |
+| TC-3F7S | FR-17 | Given a schemeless `host:port/base` | parsed as `kb://` shorthand with `base` populated |
+| TC-9QI3 | FR-20 | Given interleaved meta + reasoning SSE events | meta → log; reasoning → progress only |
+| TC-DCY8 | FR-21 | Given no local base and a reachable server | `discoverRemoteDefaultBase` returns the server-reported `base` |
+| TC-I12L | FR-21 | Given no local base and an unreachable server | `discoverRemoteDefaultBase` resolves `undefined` |
+| TC-4N1R | FR-25 | Given an active base is selected | `resolveDisplayBase` returns it with `isServerDefault: false` and never probes |
+| TC-MQGP | FR-25 | Given no active base and a reachable server | `resolveDisplayBase` returns the server default with `isServerDefault: true` |
+| TC-PHMI | FR-25 | Given no active base and an unreachable server | `resolveDisplayBase` returns `{ name: undefined, isServerDefault: false }` |
+| TC-JD2O | FR-25 | Given a server-default base | `formatConnectionContext` renders `base: <name> (server default)`; a local active base has no label |
+| TC-P35U | FR-2 | Given `KB_HOST` (remote) + `KB_SSLMODE=disable` | Forces plaintext despite the remote host |
+| TC-O9YH | FR-2 | Given `KB_HOST` (remote) + explicit `KB_PORT` | Inferred `https` scheme keeps the explicit port |
+| TC-L9YJ | FR-16 | Given `--port`, `--sslmode`, `--api-key`, and the `--key` alias | All four stripped, both space and `=` forms |
+| TC-4Y4B | FR-2 | Given `--host https://remote:9443` | Explicit scheme forces `sslmode=require` (authoritative over `prefer`) |
+| TC-AYV4 | FR-22 | Given `applyPortCliOverride`/`applySslModeCliOverride`/`applyApiKeyCliOverride` | Each sets its env var; `sslmode` is lowercased |
+| TC-3NVS | FR-22 | Given an unknown `--sslmode` value | `applySslModeCliOverride` throws `Invalid --sslmode value` |
+| TC-DC9W | FR-18 | Given `--host` + `--port` + `--sslmode` + `--api-key` together | Each applies in order, later flags refining earlier ones |
+| TC-5PBB | FR-24 | Given `kb mcp install` with zero extra args | Syncs from the already-applied ambient connection (no duplicate parser) |
+| TC-HALW | FR-24 | Given `kb mcp install <unrecognized-arg>` | Still throws `Unknown argument: <arg>` |
+| TC-KRYS | FR-4 | Given a 401 with a JSON error body | Message names `KB_SERVER_API_KEY` as the fix |
+| TC-2QL3 | FR-4 | Given a 401 whose body is not JSON | Still returns the API-key hint |
+| TC-GTHU | FR-4 | Given a non-401 server error carrying an `error` field | Passes the server message through unchanged |
+| TC-XJ1F | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |

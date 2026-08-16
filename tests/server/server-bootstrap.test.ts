@@ -10,7 +10,7 @@ const ENV_KEYS = [
 ] as const
 
 describe('parseReposEnv', () => {
-  it('[TC-36] splits on commas and whitespace, preserving inline #branch', () => {
+  it('[TC-6JDU] splits on commas and whitespace, preserving inline #branch', () => {
     expect(parseReposEnv('a.git, b.git#dev  c.git')).toEqual([
       { url: 'a.git', branch: undefined },
       { url: 'b.git', branch: 'dev' },
@@ -18,21 +18,21 @@ describe('parseReposEnv', () => {
     ])
   })
 
-  it('[TC-37] handles newline-separated multi-line values and ignores blanks', () => {
+  it('[TC-6SG4] handles newline-separated multi-line values and ignores blanks', () => {
     expect(parseReposEnv('\n a.git \n\n b.git \n')).toEqual([
       { url: 'a.git', branch: undefined },
       { url: 'b.git', branch: undefined },
     ])
   })
 
-  it('[TC-38] applies the default branch only when no inline branch is given', () => {
+  it('[TC-O0YC] applies the default branch only when no inline branch is given', () => {
     expect(parseReposEnv('a.git b.git#main', 'release')).toEqual([
       { url: 'a.git', branch: 'release' },
       { url: 'b.git', branch: 'main' },
     ])
   })
 
-  it('[TC-39] returns [] for undefined/empty', () => {
+  it('[TC-C759] returns [] for undefined/empty', () => {
     expect(parseReposEnv(undefined)).toEqual([])
     expect(parseReposEnv('   ')).toEqual([])
   })
@@ -53,20 +53,20 @@ describe('resolveBootstrapPlan', () => {
     }
   })
 
-  it('[TC-40] resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE)', async () => {
+  it('[TC-L9F8] resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE)', async () => {
     process.env.KB_BASE = 'legacy'
     process.env.KB_SERVER_BASE_NAME = 'preferred'
     const plan = await resolveBootstrapPlan([])
     expect(plan.base).toBe('preferred')
   })
 
-  it('[TC-41] lets the --base flag win over env', async () => {
+  it('[TC-JT2B] lets the --base flag win over env', async () => {
     process.env.KB_SERVER_BASE_NAME = 'fromenv'
     const plan = await resolveBootstrapPlan(['--base', 'fromflag'])
     expect(plan.base).toBe('fromflag')
   })
 
-  it('[TC-42] reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS)', async () => {
+  it('[TC-C3QO] reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS)', async () => {
     process.env.KB_GIT_REPOS = 'legacy.git'
     process.env.KB_SERVER_BASE_GIT_REPOS = 'a.git, b.git#dev'
     const plan = await resolveBootstrapPlan([])
@@ -77,21 +77,21 @@ describe('resolveBootstrapPlan', () => {
     ])
   })
 
-  it('[TC-43] lets --git flags win over env repos', async () => {
+  it('[TC-Z0WI] lets --git flags win over env repos', async () => {
     process.env.KB_SERVER_BASE_GIT_REPOS = 'env.git'
     const plan = await resolveBootstrapPlan(['--git', 'flag.git#main'])
     expect(plan.source).toBe('flags')
     expect(plan.gitTargets).toEqual([{ url: 'flag.git', branch: 'main' }])
   })
 
-  it('[TC-44] reads ignore patterns from KB_SERVER_IGNORE', async () => {
+  it('[TC-PNLO] reads ignore patterns from KB_SERVER_IGNORE', async () => {
     process.env.KB_SERVER_BASE_GIT_REPOS = 'a.git'
     process.env.KB_SERVER_IGNORE = 'tests/, **/*.spec.ts'
     const plan = await resolveBootstrapPlan([])
     expect(plan.ignore).toEqual(['tests/', '**/*.spec.ts'])
   })
 
-  it('[TC-45] reports source "none" and no ignore when nothing is declared', async () => {
+  it('[TC-H3UU] reports source "none" and no ignore when nothing is declared', async () => {
     const plan = await resolveBootstrapPlan([])
     expect(plan.source).toBe('none')
     expect(plan.gitTargets).toEqual([])
@@ -99,7 +99,7 @@ describe('resolveBootstrapPlan', () => {
     expect(plan.ignore).toBeUndefined()
   })
 
-  it('[TC-46] applies --branch as the default branch for targets without an inline pin', async () => {
+  it('[TC-NAUJ] applies --branch as the default branch for targets without an inline pin', async () => {
     const plan = await resolveBootstrapPlan(['--git', 'a.git', '--git', 'b.git#x', '--branch', 'rel'])
     expect(plan.gitTargets).toEqual([
       { url: 'a.git', branch: 'rel' },

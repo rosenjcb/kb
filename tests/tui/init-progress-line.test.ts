@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseInitProgressLine } from '@kb/client/tui/init-progress-line.js'
 
 describe('parseInitProgressLine', () => {
-  it('[TC-28] extracts repo slug and progress body', () => {
+  it('[TC-1N1D] extracts repo slug and progress body', () => {
     expect(
       parseInitProgressLine('[init] @ raysan5-raylib │ [====] 1/3 code-index tree-sitter 10/20')
     ).toEqual({
@@ -11,13 +11,13 @@ describe('parseInitProgressLine', () => {
     })
   })
 
-  it('[TC-29] returns the full line when no repo prefix is present', () => {
+  it('[TC-5GYA] returns the full line when no repo prefix is present', () => {
     expect(parseInitProgressLine('[init] [====] 1/3 code-index')).toEqual({
       body: '[init] [====] 1/3 code-index',
     })
   })
 
-  it('[TC-30] passes through init prompts unchanged', () => {
+  it('[TC-LEF5] passes through init prompts unchanged', () => {
     const prompt = '> Git URL(s)'
     expect(parseInitProgressLine(prompt)).toEqual({ body: prompt })
   })

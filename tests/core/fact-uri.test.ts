@@ -6,58 +6,58 @@ import {
 } from '@kb/core/core/fact-uri.js'
 
 describe('formatFactUri', () => {
-  it('[TC-56] strips fact- prefix before scheme so sources line does not repeat fact', () => {
+  it('[TC-U5SU] strips fact- prefix before scheme so sources line does not repeat fact', () => {
     expect(formatFactUri('fact-91cf8cf47a435545')).toBe('fact://91cf8cf47a435545')
   })
 
-  it('[TC-57] passes through ids that are not fact-prefixed', () => {
+  it('[TC-BBJ0] passes through ids that are not fact-prefixed', () => {
     expect(formatFactUri('doc-abc')).toBe('doc-abc')
   })
 })
 
 describe('sourceRefToPath', () => {
-  it('[TC-58] resolves a code ast: ref to its physical file + symbol', () => {
+  it('[TC-5OC8] resolves a code ast: ref to its physical file + symbol', () => {
     expect(sourceRefToPath('ast:src/ast/langs/typescript.ts@parseModule')).toEqual({
       path: 'src/ast/langs/typescript.ts',
       symbol: 'parseModule',
     })
   })
 
-  it('[TC-59] resolves an ast: ref without a symbol', () => {
+  it('[TC-LXRC] resolves an ast: ref without a symbol', () => {
     expect(sourceRefToPath('ast:src/ast/registry.ts')).toEqual({ path: 'src/ast/registry.ts' })
   })
 
-  it('[TC-60] drops the segment anchor from a doc ref', () => {
+  it('[TC-CYIQ] drops the segment anchor from a doc ref', () => {
     expect(sourceRefToPath('docs/architecture.md#s3')).toEqual({ path: 'docs/architecture.md' })
   })
 
-  it('[TC-61] prefixes the git repo slug for multi-repo provenance', () => {
+  it('[TC-LCG9] prefixes the git repo slug for multi-repo provenance', () => {
     expect(sourceRefToPath('ast:src/index.ts@main', 'acme-web')).toEqual({
       path: 'acme-web/src/index.ts',
       symbol: 'main',
     })
   })
 
-  it('[TC-62] returns undefined for empty or synthetic refs', () => {
+  it('[TC-I9SO] returns undefined for empty or synthetic refs', () => {
     expect(sourceRefToPath(null)).toBeUndefined()
     expect(sourceRefToPath('')).toBeUndefined()
     expect(sourceRefToPath('replace:fact-123')).toBeUndefined()
     expect(sourceRefToPath('https://example.com/doc.md')).toBeUndefined()
   })
 
-  it('[TC-63] allows colons in later path segments (skill folder names)', () => {
+  it('[TC-YQCF] allows colons in later path segments (skill folder names)', () => {
     expect(
       sourceRefToPath('rosenjcb-kb/skills/kb:dev-workflow/SKILL.md#s53', 'rosenjcb-kb')
     ).toEqual({ path: 'rosenjcb-kb/skills/kb:dev-workflow/SKILL.md' })
   })
 
-  it('[TC-64] returns undefined for heritage/import hash refs (no openable path)', () => {
+  it('[TC-O4MN] returns undefined for heritage/import hash refs (no openable path)', () => {
     // These hash the file away; surfacing them yields a bogus `edge:<sha>` filename.
     expect(sourceRefToPath('ast:edge:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
     expect(sourceRefToPath('ast:import:03c6a44145faa9aabced488433aff605faf6cbdb')).toBeUndefined()
   })
 
-  it('[TC-65] returns undefined for document-id slugs (not workspace paths)', () => {
+  it('[TC-IE43] returns undefined for document-id slugs (not workspace paths)', () => {
     // Legacy original_docs wrote sanitizeId(path) as source_ref, producing citations
     // like `rosenjcb-kb/src-core-ast-source-text-md` that no agent can open.
     expect(sourceRefToPath('src-core-ast-source-text-md', 'rosenjcb-kb')).toBeUndefined()
@@ -66,12 +66,12 @@ describe('sourceRefToPath', () => {
     expect(sourceRefToPath('evaluation-md#s0')).toBeUndefined()
   })
 
-  it('[TC-66] returns undefined for synthetic integration provenance refs', () => {
+  it('[TC-VVF7] returns undefined for synthetic integration provenance refs', () => {
     expect(sourceRefToPath('rosenjcb-kb/integration:dep:vitest', 'rosenjcb-kb')).toBeUndefined()
     expect(sourceRefToPath('integration:repo')).toBeUndefined()
   })
 
-  it('[TC-67] still accepts real paths, including extensionless well-known names', () => {
+  it('[TC-4UFR] still accepts real paths, including extensionless well-known names', () => {
     expect(sourceRefToPath('packages/kb-core/src/core/AST_SOURCE_TEXT.md#s3', 'rosenjcb-kb')).toEqual(
       {
         path: 'rosenjcb-kb/packages/kb-core/src/core/AST_SOURCE_TEXT.md',

@@ -51,7 +51,7 @@ afterEach(async () => {
 })
 
 describe('kb base use', () => {
-  it('[TC-6] Given kb base use <base>, then sets activeBase and prints resolved path', async () => {
+  it('[TC-VR7I] Given kb base use <base>, then sets activeBase and prints resolved path', async () => {
     await initBase('mybase')
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'mybase'], out, {} as never)
@@ -60,14 +60,14 @@ describe('kb base use', () => {
     expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
   })
 
-  it('[TC-8] Given kb base use <base> that does not exist, then errors with server-managed guidance', async () => {
+  it('[TC-JX86] Given kb base use <base> that does not exist, then errors with server-managed guidance', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
     expect(lines.join('\n')).toContain('ghost')
     expect(lines.join('\n')).toContain('KB_GIT_REPOS')
   })
 
-  it('[TC-9] Given kb base use --show, then prints current base config', async () => {
+  it('[TC-FCBG] Given kb base use --show, then prints current base config', async () => {
     await initBase('showbase')
     await writeSessionBase('showbase')
     const { out, lines } = makeOut()
@@ -76,7 +76,7 @@ describe('kb base use', () => {
     expect(lines.join('\n')).toContain('Active base: showbase')
   })
 
-  it('[TC-10] Given kb base --help, then prints base help pointing deletion at the server', async () => {
+  it('[TC-G0FE] Given kb base --help, then prints base help pointing deletion at the server', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', '--help'], out, {} as never)
     expect(lines.join('\n')).toContain('kb base commands')
@@ -88,7 +88,7 @@ describe('kb base use', () => {
 })
 
 describe('kb base list (remote) / delete (refused)', () => {
-  it('[TC-11] Given kb base list, then forwards to runRemoteCliCommand', async () => {
+  it('[TC-SL1J] Given kb base list, then forwards to runRemoteCliCommand', async () => {
     const { out } = makeOut()
     await runMainWithOutput(['base', 'list'], out, {} as never)
     expect(mockRunRemoteCliCommand).toHaveBeenCalledTimes(1)
@@ -100,14 +100,14 @@ describe('kb base list (remote) / delete (refused)', () => {
     )
   })
 
-  it('[TC-12] Given kb base delete, then refuses client-side and does not forward to the server', async () => {
+  it('[TC-MVEM] Given kb base delete, then refuses client-side and does not forward to the server', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', 'to-delete', '--force'], out, {} as never)
     expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
     expect(lines.join('\n')).toContain('kb-server base delete')
   })
 
-  it('[TC-13] Given base delete in the TUI, then refuses client-side and does not forward', async () => {
+  it('[TC-ITSC] Given base delete in the TUI, then refuses client-side and does not forward', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'delete', 'catalog'], out, {} as never, 'tui')
     expect(mockRunRemoteCliCommand).not.toHaveBeenCalled()
@@ -116,7 +116,7 @@ describe('kb base list (remote) / delete (refused)', () => {
 })
 
 describe('kb --help', () => {
-  it('[TC-14] Given kb --help, then prints --host and core commands', async () => {
+  it('[TC-052V] Given kb --help, then prints --host and core commands', async () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['--help'], out, {} as never)
 

@@ -37,7 +37,7 @@ afterEach(async () => {
 })
 
 describe('hybrid-retriever', () => {
-  it('[TC-70] hybrid retrieval returns ranked documents and code symbols for a natural-language query', () => {
+  it('[TC-0V13] hybrid retrieval returns ranked documents and code symbols for a natural-language query', () => {
     const result = retrieveHybrid(indexer, {
       query: 'AuthService login cookies',
       limit: 10,
@@ -55,7 +55,7 @@ describe('hybrid-retriever', () => {
     expect(kinds.has('document') || kinds.has('symbol')).toBe(true)
   })
 
-  it('[TC-71] hybrid retrieval detail reports docs/symbols/facts/hops counts', () => {
+  it('[TC-DZZT] hybrid retrieval detail reports docs/symbols/facts/hops counts', () => {
     const result = retrieveHybrid(indexer, { query: 'AuthService', limit: 5 })
     expect(result.detail).toMatch(/^hybrid:docs=\d+,symbols=\d+,facts=\d+,hops=\d+$/)
     expect(result.counts).toMatchObject({
@@ -66,7 +66,7 @@ describe('hybrid-retriever', () => {
     })
   })
 
-  it('[TC-72] one-hop join surfaces symbols linked from a top document', () => {
+  it('[TC-71GI] one-hop join surfaces symbols linked from a top document', () => {
     const result = retrieveHybrid(indexer, {
       query: 'AuthService overview session cookies',
       limit: 20,
@@ -77,7 +77,7 @@ describe('hybrid-retriever', () => {
     expect(result.counts.hops + result.counts.symbol).toBeGreaterThan(0)
   })
 
-  it('[TC-76] KB_HYBRID_KIND_WEIGHT lets a narrow symbol outrank a broad document tied on rank (#216)', () => {
+  it('[TC-O0JK] KB_HYBRID_KIND_WEIGHT lets a narrow symbol outrank a broad document tied on rank (#216)', () => {
     indexer.upsertDocument({
       gitRepo: 'demo',
       relPath: 'docs/gizmo-guide.md',

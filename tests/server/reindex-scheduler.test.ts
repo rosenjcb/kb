@@ -2,34 +2,34 @@ import { describe, expect, it, vi } from 'vitest'
 import { parseDuration, startReindexScheduler } from '@kb/server/reindex-scheduler.js'
 
 describe('parseDuration', () => {
-                it('[TC-26] parses unit suffixes', () => {
+                it('[TC-8JUE] parses unit suffixes', () => {
     expect(parseDuration('500ms')).toBe(500)
     expect(parseDuration('10s')).toBe(10_000)
     expect(parseDuration('30m')).toBe(1_800_000)
     expect(parseDuration('1h')).toBe(3_600_000)
   })
 
-                it('[TC-27] treats bare numbers as milliseconds', () => {
+                it('[TC-RGFH] treats bare numbers as milliseconds', () => {
     expect(parseDuration('250')).toBe(250)
   })
 
-                it('[TC-28] defaults to one hour when unset or empty', () => {
+                it('[TC-GE9E] defaults to one hour when unset or empty', () => {
     expect(parseDuration(undefined)).toBe(3_600_000)
     expect(parseDuration('')).toBe(3_600_000)
   })
 
-  it('[TC-29] returns 0 (disabled) for "0"', () => {
+  it('[TC-I665] returns 0 (disabled) for "0"', () => {
     expect(parseDuration('0')).toBe(0)
   })
 
-                it('[TC-30] returns undefined for malformed values', () => {
+                it('[TC-LFY8] returns undefined for malformed values', () => {
     expect(parseDuration('soon')).toBeUndefined()
     expect(parseDuration('5x')).toBeUndefined()
   })
 })
 
 describe('startReindexScheduler', () => {
-                it('[TC-31] is inert when interval <= 0', async () => {
+                it('[TC-WBZA] is inert when interval <= 0', async () => {
     const runReindex = vi.fn(async () => 'ok')
     const scheduler = startReindexScheduler({ intervalMs: 0, runReindex })
     expect(scheduler.isRunning()).toBe(false)
@@ -37,7 +37,7 @@ describe('startReindexScheduler', () => {
     expect(runReindex).not.toHaveBeenCalled()
   })
 
-                it('[TC-32] runs ticks and skips overlapping runs', async () => {
+                it('[TC-7K0Z] runs ticks and skips overlapping runs', async () => {
     vi.useFakeTimers()
     try {
       let resolveFirst: (() => void) | undefined
@@ -71,7 +71,7 @@ describe('startReindexScheduler', () => {
     }
   })
 
-                it('[TC-33] does not emit a completion line when a tick is intentionally skipped', async () => {
+                it('[TC-K7IT] does not emit a completion line when a tick is intentionally skipped', async () => {
     vi.useFakeTimers()
     try {
       const runReindex = vi.fn(async () => undefined)

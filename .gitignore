@@ -43,11 +43,16 @@ tmp/
 # Local Python clustering env
 .kb-python/
 
-# Skills directories (keep workflows tracked)
+# Skills directories (keep workflows + skills tracked)
 .claude/**
 !.claude/skills/
 !.claude/skills/**
-.github/SKILLS
+.cursor/**
+!.cursor/skills/
+!.cursor/skills/**
+.github/**
+!.github/SKILLS/
+!.github/SKILLS/**
 
 # Misc
 tickets/

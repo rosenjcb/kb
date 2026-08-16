@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 describe('init-source-files-manifest', () => {
-  it('[TC-246] returns null diff when no manifest exists yet (first run)', async () => {
+  it('[TC-7SME] returns null diff when no manifest exists yet (first run)', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-'))
     tempDirs.push(baseDir)
     const manifest = await readSourceFilesManifest(baseDir)
@@ -27,7 +27,7 @@ describe('init-source-files-manifest', () => {
     expect(diff).toBeNull()
   })
 
-  it('[TC-247] round-trips manifest writes and detects changed/new source files only', async () => {
+  it('[TC-NO8M] round-trips manifest writes and detects changed/new source files only', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-rt-'))
     tempDirs.push(baseDir)
     const v1 = { 'README.md': '# Alpha\n', 'docs/guide.md': '# Beta\n' }
@@ -45,7 +45,7 @@ describe('init-source-files-manifest', () => {
     expect(new Set(diff)).toEqual(new Set(['docs/guide.md', 'notes.txt']))
   })
 
-  it('[TC-248] detects source files removed since the last manifest', () => {
+  it('[TC-3M1Y] detects source files removed since the last manifest', () => {
     const manifest = {
       version: 1 as const,
       files: { 'README.md': 'a', 'docs/old.md': 'b' },
@@ -59,7 +59,7 @@ describe('init-source-files-manifest', () => {
     expect(diffRemovedSourceFiles({ 'README.md': '# stay\n' }, { version: 1, files: {}, updatedAt: '' })).toEqual([])
   })
 
-  it('[TC-249] treats unchanged contents as a no-op diff', async () => {
+  it('[TC-263O] treats unchanged contents as a no-op diff', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-noop-'))
     tempDirs.push(baseDir)
     const v1 = { 'README.md': '# Alpha\n' }
@@ -68,7 +68,7 @@ describe('init-source-files-manifest', () => {
     expect(diffChangedSourceFiles(v1, manifest)).toEqual([])
   })
 
-  it('[TC-427] scopes manifests per repo slug so one repo never clobbers another', async () => {
+  it('[TC-EYB6] scopes manifests per repo slug so one repo never clobbers another', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-multi-'))
     tempDirs.push(baseDir)
 
@@ -91,7 +91,7 @@ describe('init-source-files-manifest', () => {
     expect(entries).not.toContain('source-files-manifest.json')
   })
 
-  it('[TC-428] undefined slug falls back to the un-suffixed legacy filename', async () => {
+  it('[TC-WUXM] undefined slug falls back to the un-suffixed legacy filename', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-src-mf-legacy-'))
     tempDirs.push(baseDir)
     await writeSourceFilesManifest(baseDir, buildSourceFileHashes({ 'README.md': '# A\n' }))

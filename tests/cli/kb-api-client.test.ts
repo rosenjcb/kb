@@ -9,7 +9,7 @@ import {
 } from '@kb/client/api/server-connection.js'
 
 describe('server-connection', () => {
-  it('[TC-1] resolves KB_HOST/KB_PORT defaults to localhost:38117', () => {
+  it('[TC-THW7] resolves KB_HOST/KB_PORT defaults to localhost:38117', () => {
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
     delete process.env.KB_HOST
@@ -20,7 +20,7 @@ describe('server-connection', () => {
     if (prevPort) process.env.KB_PORT = prevPort
   })
 
-  it('[TC-2] bare remote hostname infers https under default sslmode (parity with kb://)', () => {
+  it('[TC-V25H] bare remote hostname infers https under default sslmode (parity with kb://)', () => {
     const prevHost = process.env.KB_HOST
     const prevSslmode = process.env.KB_SSLMODE
     delete process.env.KB_SSLMODE
@@ -33,7 +33,7 @@ describe('server-connection', () => {
     else process.env.KB_SSLMODE = prevSslmode
   })
 
-  it('[TC-54] KB_SSLMODE=disable forces plaintext even for a remote host', () => {
+  it('[TC-P35U] KB_SSLMODE=disable forces plaintext even for a remote host', () => {
     const prevHost = process.env.KB_HOST
     const prevSslmode = process.env.KB_SSLMODE
     process.env.KB_HOST = 'kb.example.com'
@@ -46,7 +46,7 @@ describe('server-connection', () => {
     else process.env.KB_SSLMODE = prevSslmode
   })
 
-  it('[TC-55] KB_PORT is honored as an explicit port alongside an inferred scheme', () => {
+  it('[TC-O9YH] KB_PORT is honored as an explicit port alongside an inferred scheme', () => {
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
     process.env.KB_HOST = 'kb.example.com'
@@ -59,13 +59,13 @@ describe('server-connection', () => {
     else process.env.KB_PORT = prevPort
   })
 
-  it('[TC-11] formatConnectionContext shows host and base', () => {
+  it('[TC-PYBW] formatConnectionContext shows host and base', () => {
     const line = formatConnectionContext({}, 'dogfood')
     expect(line).toContain('host: localhost:38117')
     expect(line).toContain('base: dogfood')
   })
 
-  it('[TC-72] formatConnectionContext labels the server-default base', () => {
+  it('[TC-JD2O] formatConnectionContext labels the server-default base', () => {
     expect(formatConnectionContext({}, 'base', { serverDefault: true })).toContain(
       'base: base (server default)'
     )
@@ -76,7 +76,7 @@ describe('server-connection', () => {
     expect(formatConnectionContext({}, 'dogfood')).not.toContain('server default')
   })
 
-  it('[TC-50] resolveActiveBaseName returns KB_BASE (explicit --base / connection-string) first', async () => {
+  it('[TC-7VJJ] resolveActiveBaseName returns KB_BASE (explicit --base / connection-string) first', async () => {
     const prevBase = process.env.KB_BASE
     process.env.KB_BASE = 'raylib'
     // The endpoint resolver no longer carries a base — base is resolved separately.
@@ -86,7 +86,7 @@ describe('server-connection', () => {
     else process.env.KB_BASE = prevBase
   })
 
-  it('[TC-67] resolveServerConnectionWithBase sends the same base the UI shows (no drift)', async () => {
+  it('[TC-P6JO] resolveServerConnectionWithBase sends the same base the UI shows (no drift)', async () => {
     const prevBase = process.env.KB_BASE
     process.env.KB_BASE = 'shared-base'
     const conn = await resolveServerConnectionWithBase({})
@@ -99,7 +99,7 @@ describe('server-connection', () => {
 })
 
 describe('KbApiClient', () => {
-  it('[TC-3] health() calls /health (passes through Cloud Run edge)', async () => {
+  it('[TC-JJBZ] health() calls /health (passes through Cloud Run edge)', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, base: 'demo' }), { status: 200 }),
     )
@@ -116,7 +116,7 @@ describe('KbApiClient', () => {
     )
   })
 
-  it('[TC-4] health() falls back to /healthz when /health 404s (older servers)', async () => {
+  it('[TC-3GYT] health() falls back to /healthz when /health 404s (older servers)', async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const path = String(url)
       if (path.endsWith('/health')) return new Response('not found', { status: 404 })
@@ -141,7 +141,7 @@ describe('KbApiClient', () => {
     )
   })
 
-  it('[TC-49] sends X-KB-Base when the connection carries a base', async () => {
+  it('[TC-N0AI] sends X-KB-Base when the connection carries a base', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'raylib' }), { status: 200 }))
     const client = new KbApiClient({
       connection: { url: 'http://127.0.0.1:9', base: 'raylib' },
@@ -152,7 +152,7 @@ describe('KbApiClient', () => {
     expect(headers.get('X-KB-Base')).toBe('raylib')
   })
 
-  it('[TC-5] connection errors include setup hints', () => {
+  it('[TC-GNQK] connection errors include setup hints', () => {
     const msg = formatConnectionError({ url: 'http://localhost:38117' })
     expect(msg).toContain('kb-server start')
     expect(msg).toContain('KB_HOST')
@@ -165,7 +165,7 @@ describe('KbApiClient', () => {
 })
 
 describe('formatApiError', () => {
-  it('[TC-63] turns a 401 into an actionable KB_SERVER_API_KEY hint', () => {
+  it('[TC-KRYS] turns a 401 into an actionable KB_SERVER_API_KEY hint', () => {
     const msg = formatApiError(401, JSON.stringify({ error: 'unauthorized' }))
     expect(msg).toContain('requires an API key')
     expect(msg).toContain('KB_SERVER_API_KEY')
@@ -173,16 +173,16 @@ describe('formatApiError', () => {
     expect(msg).not.toBe('unauthorized')
   })
 
-  it('[TC-64] gives the API-key hint even when the 401 body is not JSON', () => {
+  it('[TC-2QL3] gives the API-key hint even when the 401 body is not JSON', () => {
     const msg = formatApiError(401, 'Unauthorized')
     expect(msg).toContain('KB_SERVER_API_KEY')
   })
 
-  it('[TC-65] passes through other server error messages unchanged', () => {
+  it('[TC-GTHU] passes through other server error messages unchanged', () => {
     expect(formatApiError(404, JSON.stringify({ error: 'base not found' }))).toBe('base not found')
   })
 
-  it('[TC-66] falls back to a status code when the body has no error field', () => {
+  it('[TC-XJ1F] falls back to a status code when the body has no error field', () => {
     expect(formatApiError(500, 'boom')).toBe('server error (500)')
   })
 })

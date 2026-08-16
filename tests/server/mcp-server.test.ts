@@ -63,7 +63,7 @@ describe('handleMcpHttpRequest sessions', () => {
     resetMcpSessionsForTests()
   })
 
-  it('[TC-145] rejects POST tools/list without mcp-session-id (must initialize first)', async () => {
+  it('[TC-MJBS] rejects POST tools/list without mcp-session-id (must initialize first)', async () => {
     const res = mockRes()
     await handleMcpHttpRequest(
       makeStubService(),
@@ -76,7 +76,7 @@ describe('handleMcpHttpRequest sessions', () => {
     expect(res.body).toContain('No valid MCP session ID')
   })
 
-  it('[TC-145] rejects GET without mcp-session-id', async () => {
+  it('[TC-MJBS] rejects GET without mcp-session-id', async () => {
     const res = mockRes()
     await handleMcpHttpRequest(makeStubService(), mockReq('GET'), res, undefined, {
       elicitationEnabled: false,

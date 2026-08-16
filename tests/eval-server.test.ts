@@ -10,7 +10,7 @@ import {
 } from '../scripts/eval-server.mjs'
 
 describe('eval-server helpers', () => {
-  it('[TC-249][TC-242] buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE, sets KB_BASE', () => {
+  it('[TC-64J1][TC-M1NO] buildKbRemoteEnv decomposes a url into KB_HOST/KB_PORT/KB_SSLMODE, sets KB_BASE', () => {
     const prevNodePath = process.env.NODE_PATH
     process.env.NODE_PATH = '/tmp/node_path'
     try {
@@ -31,7 +31,7 @@ describe('eval-server helpers', () => {
     }
   })
 
-  it('[TC-241] healthzUrl appends ?base= for multi-base probes', () => {
+  it('[TC-2FU6] healthzUrl appends ?base= for multi-base probes', () => {
     expect(healthzUrl('http://127.0.0.1:38117/', 'eval-kb')).toBe(
       'http://127.0.0.1:38117/healthz?base=eval-kb'
     )
@@ -40,7 +40,7 @@ describe('eval-server helpers', () => {
     )
   })
 
-  it('[TC-253] buildEvalOfflineEnv clears remote connection vars', () => {
+  it('[TC-NSSA] buildEvalOfflineEnv clears remote connection vars', () => {
     const prevHost = process.env.KB_HOST
     const prevPort = process.env.KB_PORT
     const prevSslmode = process.env.KB_SSLMODE
@@ -103,23 +103,23 @@ describe('eval-server helpers', () => {
     }
   })
 
-  it('[TC-251] DEFAULT_KB_SERVER_PORT is 38117', () => {
+  it('[TC-IF8Y] DEFAULT_KB_SERVER_PORT is 38117', () => {
     expect(DEFAULT_KB_SERVER_PORT).toBe(38117)
   })
 
-  it('[TC-252] buildKbRemoteEnv passes through host and default port', () => {
+  it('[TC-J8US] buildKbRemoteEnv passes through host and default port', () => {
     const env = buildKbRemoteEnv({ host: '127.0.0.1', port: DEFAULT_KB_SERVER_PORT, apiKey: defaultEvalApiKey() })
     expect(env.KB_HOST).toBe('127.0.0.1')
     expect(env.KB_PORT).toBe('38117')
   })
 
-  it('[TC-250] allocateFreePort returns a positive integer', async () => {
+  it('[TC-3JSP] allocateFreePort returns a positive integer', async () => {
     const port = await allocateFreePort('127.0.0.1')
     expect(Number.isInteger(port)).toBe(true)
     expect(port).toBeGreaterThan(0)
   })
 
-  it('[TC-254] allocateFreePort yields distinct ports for concurrent callers', async () => {
+  it('[TC-VWVQ] allocateFreePort yields distinct ports for concurrent callers', async () => {
     const ports = await Promise.all([
       allocateFreePort('127.0.0.1'),
       allocateFreePort('127.0.0.1'),

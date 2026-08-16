@@ -48,21 +48,21 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | More than threshold results | `shouldCurate` returns true |
-| TC-2 | FR-1 | Few results | `shouldCurate` returns false |
-| TC-3 | FR-2 | JSON object embedded in prose | Extracts keep, gaps, sufficient |
-| TC-4 | FR-2 | No JSON in response | Throws |
-| TC-5 | FR-3 | Irrelevant facts in pool | Only judge-kept facts remain |
-| TC-6 | FR-4 | High-overlap fact omitted by judge | Fact auto-kept |
-| TC-7 | FR-5 | Gaps reported, insufficient | Re-discovery runs and admits new facts |
-| TC-8 | FR-6 | LLM throws | Original pool returned, `fellBack` set |
-| TC-9 | FR-7 | Judge drops everything | Non-empty deterministic top-K fallback |
-| TC-10 | FR-5 | Re-discovery returns only known ids | Loop stops without spinning |
-| TC-11 | FR-8 | Pool larger than the candidate cap | Tail hard-dropped; judge sees at most the cap |
-| TC-12 | FR-8 | LLM throws on an over-cap pool | Fail-safe bounded to the cap, not the full pool |
-| TC-13 | FR-11 | Collector supplied and the judge runs | Each judge round recorded as a telemetry stage |
-| TC-14 | FR-9 | Rank auto-keep enabled, judge keeps nothing | Top-N incoming facts still in keep set |
-| TC-15 | FR-10 | LLM throws during judging | record carries the failure kind and stage alongside fellBack |
+| TC-3UN8 | FR-1 | More than threshold results | `shouldCurate` returns true |
+| TC-KLE3 | FR-1 | Few results | `shouldCurate` returns false |
+| TC-NACU | FR-2 | JSON object embedded in prose | Extracts keep, gaps, sufficient |
+| TC-OE63 | FR-2 | No JSON in response | Throws |
+| TC-HEXQ | FR-3 | Irrelevant facts in pool | Only judge-kept facts remain |
+| TC-B147 | FR-4 | High-overlap fact omitted by judge | Fact auto-kept |
+| TC-MI89 | FR-5 | Gaps reported, insufficient | Re-discovery runs and admits new facts |
+| TC-MZQY | FR-6 | LLM throws | Original pool returned, `fellBack` set |
+| TC-LQFN | FR-7 | Judge drops everything | Non-empty deterministic top-K fallback |
+| TC-R5W9 | FR-5 | Re-discovery returns only known ids | Loop stops without spinning |
+| TC-AGUM | FR-8 | Pool larger than the candidate cap | Tail hard-dropped; judge sees at most the cap |
+| TC-W5NK | FR-8 | LLM throws on an over-cap pool | Fail-safe bounded to the cap, not the full pool |
+| TC-VZ2O | FR-11 | Collector supplied and the judge runs | Each judge round recorded as a telemetry stage |
+| TC-F3JM | FR-9 | Rank auto-keep enabled, judge keeps nothing | Top-N incoming facts still in keep set |
+| TC-NIJ2 | FR-10 | LLM throws during judging | record carries the failure kind and stage alongside fellBack |
 
 ### Related docs
 

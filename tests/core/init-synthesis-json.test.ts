@@ -6,7 +6,7 @@ import {
 } from '@kb/core/core/init-synthesis-json.js'
 
 describe('stripSynthesisJsonWrapper', () => {
-  it('[TC-65] Given fenced JSON whose body contains triple backticks in a string, then does not truncate early', () => {
+  it('[TC-IE43] Given fenced JSON whose body contains triple backticks in a string, then does not truncate early', () => {
     const body = [
       '```json',
       '{"title":"X","type":"reference","tags":[],"content":"see ```npm``` here"}',
@@ -18,7 +18,7 @@ describe('stripSynthesisJsonWrapper', () => {
     expect(parseInitSynthesisObject(body)?.content).toBe('see ```npm``` here')
   })
 
-  it('[TC-66] Given prose then fenced JSON, then returns inner JSON only when full closing fence exists', () => {
+  it('[TC-VVF7] Given prose then fenced JSON, then returns inner JSON only when full closing fence exists', () => {
     const body = [
       'Here:',
       '```json',
@@ -32,7 +32,7 @@ describe('stripSynthesisJsonWrapper', () => {
 })
 
 describe('parseInitSynthesisObject', () => {
-  it('[TC-67] Given balanced JSON object, then returns doc fields', () => {
+  it('[TC-4UFR] Given balanced JSON object, then returns doc fields', () => {
     const doc = parseInitSynthesisObject(
       '{"title":"  Hello ","type":"introduction","tags":["a"],"content":"# Body\\n"}'
     )
@@ -44,7 +44,7 @@ describe('parseInitSynthesisObject', () => {
     })
   })
 
-  it('[TC-68] Given INIT_SYNTHESIS_OPENAI_JSON_SCHEMA shape, then schema is strict-ready', () => {
+  it('[TC-RSRD] Given INIT_SYNTHESIS_OPENAI_JSON_SCHEMA shape, then schema is strict-ready', () => {
     expect(INIT_SYNTHESIS_OPENAI_JSON_SCHEMA.type).toBe('object')
     expect(INIT_SYNTHESIS_OPENAI_JSON_SCHEMA.additionalProperties).toBe(false)
     expect(INIT_SYNTHESIS_OPENAI_JSON_SCHEMA.required).toEqual(

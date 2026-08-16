@@ -23,31 +23,31 @@ function makeTrajectory(
 }
 
 describe('computeResourceLoss', () => {
-  it('[TC-130] Given zero tokens, returns loss = 0 and weightedTotal = 0', () => {
+  it('[TC-I5SX] Given zero tokens, returns loss = 0 and weightedTotal = 0', () => {
     const result = computeResourceLoss(makeTrajectory([{ fresh: 0, cached: 0, output: 0 }]))
     expect(result.loss).toBe(0)
     expect(result.weightedTotal).toBe(0)
   })
 
-  it('[TC-131] Given exactly at budget (fresh only), returns loss = 1.0', () => {
+  it('[TC-IZUC] Given exactly at budget (fresh only), returns loss = 1.0', () => {
     const budget = 250_000
     const result = computeResourceLoss(makeTrajectory([{ fresh: budget }]), budget, 0.1, 1.0)
     expect(result.loss).toBe(1.0)
   })
 
-  it('[TC-132] Given tokens far above budget, loss is clamped at 1.0', () => {
+  it('[TC-A94O] Given tokens far above budget, loss is clamped at 1.0', () => {
     const result = computeResourceLoss(makeTrajectory([{ fresh: 1_000_000 }]), 250_000)
     expect(result.loss).toBe(1.0)
   })
 
-  it('[TC-133] Cached-heavy run has lower loss than fresh-heavy run with same raw total', () => {
+  it('[TC-CC9F] Cached-heavy run has lower loss than fresh-heavy run with same raw total', () => {
     const total = 100_000
     const freshResult = computeResourceLoss(makeTrajectory([{ fresh: total }]), 250_000, 0.1, 1.0)
     const cachedResult = computeResourceLoss(makeTrajectory([{ cached: total }]), 250_000, 0.1, 1.0)
     expect(cachedResult.loss).toBeLessThan(freshResult.loss)
   })
 
-  it('[TC-134] Given delta = 0, cached tokens contribute nothing to weightedTotal', () => {
+  it('[TC-ROLQ] Given delta = 0, cached tokens contribute nothing to weightedTotal', () => {
     const result = computeResourceLoss(
       makeTrajectory([{ fresh: 0, cached: 100_000, output: 0 }]),
       250_000,
@@ -58,7 +58,7 @@ describe('computeResourceLoss', () => {
     expect(result.loss).toBe(0)
   })
 
-  it('[TC-135] Breakdown fields are summed correctly across multiple steps', () => {
+  it('[TC-EQ0Z] Breakdown fields are summed correctly across multiple steps', () => {
     const t = makeTrajectory([
       { fresh: 1000, cached: 2000, output: 500 },
       { fresh: 500, cached: 0, output: 100 },
@@ -71,7 +71,7 @@ describe('computeResourceLoss', () => {
     expect(result.weightedTotal).toBeCloseTo(2300)
   })
 
-  it('[TC-136] Result budget field reflects the budget passed in', () => {
+  it('[TC-OLU7] Result budget field reflects the budget passed in', () => {
     const result = computeResourceLoss(makeTrajectory([]), 100_000)
     expect(result.budget).toBe(100_000)
   })

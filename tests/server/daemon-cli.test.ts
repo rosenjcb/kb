@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 describe('resolveDaemonPort', () => {
-  it('[TC-78] reads --port, then PORT, then the default', () => {
+  it('[TC-SYYS] reads --port, then PORT, then the default', () => {
     expect(resolveDaemonPort(['--port', '4000'])).toBe(4000)
     process.env.PORT = '5000'
     expect(resolveDaemonPort([])).toBe(5000)
@@ -40,13 +40,13 @@ describe('resolveDaemonPort', () => {
 })
 
 describe('pid file lifecycle', () => {
-  it('[TC-79] writePidFile/readLivePid round-trips the running pid', () => {
+  it('[TC-9GUC] writePidFile/readLivePid round-trips the running pid', () => {
     writePidFile(process.pid)
     expect(readFileSync(pidFilePath(), 'utf8').trim()).toBe(String(process.pid))
     expect(readLivePid()).toBe(process.pid)
   })
 
-  it('[TC-80] readLivePid returns null for a stale pid file (dead process)', () => {
+  it('[TC-N9EM] readLivePid returns null for a stale pid file (dead process)', () => {
     writePidFile(process.pid) // ensures the run dir exists
     // 2^31-2 is not a live pid; process.kill(pid, 0) throws ESRCH.
     writeFileSync(pidFilePath(), '2147483646\n', 'utf8')

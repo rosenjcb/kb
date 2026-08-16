@@ -6,22 +6,22 @@ import {
 } from '../../eval/compaction'
 
 describe('buildEmptyCompactionRecord', () => {
-  it('[TC-8] returns triggered: false', () => {
+  it('[TC-F71U] returns triggered: false', () => {
     expect(buildEmptyCompactionRecord().triggered).toBe(false)
   })
 
-  it('[TC-9] returns an empty events array', () => {
+  it('[TC-7TIB] returns an empty events array', () => {
     expect(buildEmptyCompactionRecord().events).toEqual([])
   })
 
-  it('[TC-10] returns a new object each call (not shared reference)', () => {
+  it('[TC-MZ13] returns a new object each call (not shared reference)', () => {
     const a = buildEmptyCompactionRecord()
     const b = buildEmptyCompactionRecord()
     a.events.push({ stepIndex: 1, tokensFreed: 100, turnsCompacted: 3, condition: 'K' })
     expect(b.events).toHaveLength(0)
   })
 
-  it('[TC-11] returned object satisfies CompactionRecord type shape', () => {
+  it('[TC-06LJ] returned object satisfies CompactionRecord type shape', () => {
     const rec: CompactionRecord = buildEmptyCompactionRecord()
     expect(typeof rec.triggered).toBe('boolean')
     expect(Array.isArray(rec.events)).toBe(true)
@@ -29,7 +29,7 @@ describe('buildEmptyCompactionRecord', () => {
 })
 
 describe('CompactionEvent', () => {
-  it('[TC-12] accepts all valid condition values', () => {
+  it('[TC-FB7K] accepts all valid condition values', () => {
     const conditions = ['N', 'K', 'O'] as const
     for (const condition of conditions) {
       const event: CompactionEvent = {

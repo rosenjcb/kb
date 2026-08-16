@@ -73,7 +73,7 @@ describe('multi-base HTTP routing', () => {
   const services = { raylib: makeStubService('raylib'), eval: makeStubService('eval') }
   const registry = makeRegistry(services, 'raylib')
 
-  it('[TC-82] routes /v1/query to the base named by X-KB-Base', async () => {
+  it('[TC-LV2C] routes /v1/query to the base named by X-KB-Base', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -85,7 +85,7 @@ describe('multi-base HTTP routing', () => {
     expect((await res.json()).answer).toBe('[eval] hi')
   })
 
-  it('[TC-83] falls back to the default base when no header is sent', async () => {
+  it('[TC-VYBU] falls back to the default base when no header is sent', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -96,7 +96,7 @@ describe('multi-base HTTP routing', () => {
     expect((await res.json()).answer).toBe('[raylib] hi')
   })
 
-  it('[TC-84] returns 404 with unknown_base for a base with no index', async () => {
+  it('[TC-TGKF] returns 404 with unknown_base for a base with no index', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -108,7 +108,7 @@ describe('multi-base HTTP routing', () => {
     expect(await res.json()).toMatchObject({ status: 'unknown_base' })
   })
 
-  it('[TC-85] honors a body base override on /v1/query', async () => {
+  it('[TC-ST1F] honors a body base override on /v1/query', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -119,7 +119,7 @@ describe('multi-base HTTP routing', () => {
     expect((await res.json()).answer).toBe('[eval] hi')
   })
 
-  it('[TC-86] /healthz?base= reports the named base', async () => {
+  it('[TC-AE0N] /healthz?base= reports the named base', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/healthz?base=eval`)
@@ -127,7 +127,7 @@ describe('multi-base HTTP routing', () => {
     expect((await res.json()).base).toBe('eval')
   })
 
-  it('[TC-87] GET /v1/bases lists every served base', async () => {
+  it('[TC-NUXG] GET /v1/bases lists every served base', async () => {
     server = createHttpServer({ service: services.raylib, registry, apiKeys: [] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/bases`)

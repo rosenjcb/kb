@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseInitOutput } from '@kb/client/tui/init-status.js'
 
 describe('init status helpers', () => {
-  it('[TC-31] routes init progress lines away from transcript history', () => {
+  it('[TC-Y4O9] routes init progress lines away from transcript history', () => {
     const parsed = parseInitOutput(`
 Starting init…
 [init] [==========--------------] 5/6 write …
@@ -12,7 +12,7 @@ Starting init…
     expect(parsed.progressLine).toBe('[init] [==========--------------] 5/6 write …')
   })
 
-  it('[TC-32] keeps kb init questions in the main transcript history', () => {
+  it('[TC-QO2H] keeps kb init questions in the main transcript history', () => {
     const parsed = parseInitOutput(`
 [kb init] Follow-up questions for weak topics:
 > What should a newcomer understand first about the project purpose or audience?
@@ -25,7 +25,7 @@ Starting init…
     expect(parsed.progressLine).toBeUndefined()
   })
 
-  it('[TC-33] uses the last init progress line when multiple updates arrive together', () => {
+  it('[TC-119T] uses the last init progress line when multiple updates arrive together', () => {
     const parsed = parseInitOutput(`
 [init] [========----------------] 2/6 document-facts 📄 indexing document sentences into facts…
 [init] [========----------------] 4/6 import-docs importing original markdown…
@@ -37,7 +37,7 @@ Starting init…
     )
   })
 
-  it('[TC-34] keeps ast-facts totals inside the progress line without requiring a separate action row', () => {
+  it('[TC-1EXM] keeps ast-facts totals inside the progress line without requiring a separate action row', () => {
     const parsed = parseInitOutput(`
 [init] [====================----] 6/6 ast-facts tree-sitter 10 changed, 69 unchanged | 83 symbols, 141 edges
 `)

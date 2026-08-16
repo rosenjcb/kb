@@ -56,7 +56,7 @@ describe('mcp-feedback-elicitation helpers', () => {
     expect(parseElicitedHelped(1)).toBeUndefined()
   })
 
-  it('[TC-144] KB_MCP_ELICITATION defaults to true; only false opts out', () => {
+  it('[TC-W21K] KB_MCP_ELICITATION defaults to true; only false opts out', () => {
     expect(isMcpElicitationEnvEnabled(undefined)).toBe(true)
     expect(isMcpElicitationEnvEnabled('')).toBe(true)
     expect(isMcpElicitationEnvEnabled('true')).toBe(true)
@@ -67,7 +67,7 @@ describe('mcp-feedback-elicitation helpers', () => {
 describe('createServerElicitFeedback', () => {
   const ctx = { query: 'how does auth work?', answer: 'Via loginHandler.', requestId: 'req-1' }
 
-  it('[TC-146] resolves unavailable without asking when no elicitation capability is declared', async () => {
+  it('[TC-S6SI] resolves unavailable without asking when no elicitation capability is declared', async () => {
     const elicitInput = vi.fn()
     const request = vi.fn()
     const server = makeFakeServer({ capabilities: undefined, elicitInput, request })
@@ -77,7 +77,7 @@ describe('createServerElicitFeedback', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('[TC-147] resolves unavailable without asking when the client only declares url-mode', async () => {
+  it('[TC-MGIV] resolves unavailable without asking when the client only declares url-mode', async () => {
     const elicitInput = vi.fn()
     const request = vi.fn()
     const server = makeFakeServer({ capabilities: { url: {} }, elicitInput, request })
@@ -87,7 +87,7 @@ describe('createServerElicitFeedback', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('[TC-148] dispatches via the raw request() fallback for back-compat empty elicitation: {}', async () => {
+  it('[TC-8HEN] dispatches via the raw request() fallback for back-compat empty elicitation: {}', async () => {
     const elicitInput = vi.fn()
     const request = vi.fn(async () => ({ action: 'decline' }))
     const server = makeFakeServer({ capabilities: {}, elicitInput, request })
@@ -99,7 +99,7 @@ describe('createServerElicitFeedback', () => {
     expect(req).toMatchObject({ method: 'elicitation/create' })
   })
 
-  it('[TC-149] dispatches via elicitInput() when the client declares explicit form support', async () => {
+  it('[TC-BY0W] dispatches via elicitInput() when the client declares explicit form support', async () => {
     const elicitInput = vi.fn(async () => ({ action: 'decline' }))
     const request = vi.fn()
     const server = makeFakeServer({ capabilities: { form: {} }, elicitInput, request })
@@ -111,7 +111,7 @@ describe('createServerElicitFeedback', () => {
     expect(params).toMatchObject({ mode: 'form', requestedSchema: expect.any(Object) })
   })
 
-  it('[TC-150] accept with a valid helped value resolves accepted with helped/notes', async () => {
+  it('[TC-6RV1] accept with a valid helped value resolves accepted with helped/notes', async () => {
     const server = makeFakeServer({
       capabilities: { form: {} },
       elicitInput: async () => ({
@@ -127,7 +127,7 @@ describe('createServerElicitFeedback', () => {
     })
   })
 
-  it('[TC-151] accept with a missing or invalid helped value resolves unavailable', async () => {
+  it('[TC-EYUX] accept with a missing or invalid helped value resolves unavailable', async () => {
     const missing = makeFakeServer({
       capabilities: { form: {} },
       elicitInput: async () => ({ action: 'accept', content: {} }),
@@ -141,7 +141,7 @@ describe('createServerElicitFeedback', () => {
     await expect(createServerElicitFeedback(invalid)(ctx)).resolves.toEqual({ kind: 'unavailable' })
   })
 
-  it('[TC-152] decline resolves dismissed with action decline', async () => {
+  it('[TC-CXZ2] decline resolves dismissed with action decline', async () => {
     const server = makeFakeServer({
       capabilities: { form: {} },
       elicitInput: async () => ({ action: 'decline' }),
@@ -152,7 +152,7 @@ describe('createServerElicitFeedback', () => {
     })
   })
 
-  it('[TC-153] cancel resolves dismissed with action cancel', async () => {
+  it('[TC-AFVZ] cancel resolves dismissed with action cancel', async () => {
     const server = makeFakeServer({
       capabilities: { form: {} },
       elicitInput: async () => ({ action: 'cancel' }),
@@ -163,7 +163,7 @@ describe('createServerElicitFeedback', () => {
     })
   })
 
-  it('[TC-154] a rejecting client request resolves unavailable instead of throwing', async () => {
+  it('[TC-U3IC] a rejecting client request resolves unavailable instead of throwing', async () => {
     const server = makeFakeServer({
       capabilities: { form: {} },
       elicitInput: async () => {
