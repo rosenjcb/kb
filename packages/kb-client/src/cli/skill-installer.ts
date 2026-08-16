@@ -303,7 +303,7 @@ export const CLAUDE_KB_HOOK_MATCHER = 'Bash|Grep|Glob'
  * See https://code.claude.com/docs/en/hooks
  */
 export const KB_HOOK_SCRIPT_CONTENT = `#!/usr/bin/env bash
-# kb-reminder.sh — remind agents to use kb MCP (kb_query) before spelunking.
+# kb-reminder.sh — remind agents to use kb MCP (query) before spelunking.
 # Scoped: fires only on repo-search commands in command position (grep/rg/find/…,
 # git grep, kb query) and the native Grep/Glob tools — never on VCS/build/cloud
 # tooling — and is throttled per session so it nudges instead of nagging.
@@ -398,7 +398,7 @@ except OSError:
     pass  # an unwritable state dir must not suppress the reminder
 
 msg = (
-    "Ask the kb MCP tool kb_query a direct question before Grep/Glob/find/rg or kb query. "
+    "Ask the kb MCP query tool a direct question before Grep/Glob/find/rg or kb query. "
     "It answers agent-to-agent: a direct answer plus the source files to open. "
     "CLI/TUI is for humans; agents investigate via MCP only."
 )
@@ -419,13 +419,13 @@ exit 0
 const KB_FEEDBACK_HOOK_SCRIPT_NAME = 'kb-feedback.sh'
 
 /** Claude PostToolUse matcher for the kb MCP tools (server registered as `kb`). */
-export const CLAUDE_KB_FEEDBACK_MCP_MATCHER = 'mcp__kb__kb_query|mcp__kb__submit_feedback'
+export const CLAUDE_KB_FEEDBACK_MCP_MATCHER = 'mcp__kb__query|mcp__kb__submit_feedback'
 
 /**
  * End-of-session feedback hook (Claude Code only — it is the only provider here
  * with PostToolUse/Stop JSON hook semantics). Immediate post-query judgment is
  * too early to be trustworthy, so this waits until the work is validated:
- * - PostToolUse on the kb MCP tools records per-session kb_query use (and a
+ * - PostToolUse on the kb MCP tools records per-session query use (and a
  *   done-marker once submit_feedback is called) — it does not itself track
  *   which requestId values are outstanding; that queue lives server-side
  *   (PendingFeedbackStore) behind the get_feedback_requests MCP tool, so the
@@ -438,7 +438,7 @@ export const CLAUDE_KB_FEEDBACK_MCP_MATCHER = 'mcp__kb__kb_query|mcp__kb__submit
  */
 export const KB_FEEDBACK_HOOK_SCRIPT_CONTENT = `#!/usr/bin/env bash
 # kb-feedback.sh — ask agents to close the loop with submit_feedback at the END
-# of the work, not right after kb_query: at the first git push (work validated)
+# of the work, not right after query: at the first git push (work validated)
 # or, failing that, by blocking the first Stop. One nudge per session; silent
 # once feedback is in. Opt out with KB_FEEDBACK_REMINDER=false.
 # Docs: https://code.claude.com/docs/en/hooks
@@ -477,13 +477,13 @@ def touch(marker, text=""):
         pass  # unwritable state dir must not break the hook
 
 if event == "PostToolUse":
-    if tool.endswith("__kb_query"):
+    if tool.endswith("__query"):
         touch(used_marker)
     elif tool.endswith("__submit_feedback"):
         touch(done_marker)
     sys.exit(0)
 
-# Reminder paths (PreToolUse git push, Stop): only after kb_query use, before
+# Reminder paths (PreToolUse git push, Stop): only after query use, before
 # feedback, and at most once per session.
 if not os.path.exists(used_marker):
     sys.exit(0)
@@ -492,7 +492,7 @@ if os.path.exists(done_marker) or os.path.exists(nudged_marker):
 
 def build_msg():
     return (
-        "You used the kb MCP tool kb_query this session. Now that the work is done, "
+        "You used the kb MCP query tool this session. Now that the work is done, "
         "call get_feedback_requests to see which of your queries are still waiting on "
         "feedback, then resolve each entry with its own submit_feedback call "
         "(requestId + helped yes|partial|no plus notes) -- one requestId per call, no "

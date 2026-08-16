@@ -231,10 +231,10 @@ mcp-session-id: {{mcpSessionId}}
     return res.parsedBody;
   };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-10] tools include kb_query', () => {
+  test('[TC-10] tools include query', () => {
     const tools = mcpJson(response).result?.tools;
     assert.ok(Array.isArray(tools));
-    assert.ok(tools.some(t => t.name === 'kb_query'));
+    assert.ok(tools.some(t => t.name === 'query'));
   });
   test('[TC-12] tools include submit_feedback', () => {
     const tools = mcpJson(response).result?.tools;
@@ -245,7 +245,7 @@ mcp-session-id: {{mcpSessionId}}
 
 ###
 
-# MCP — submit feedback on earlier kb_query answers (no LLM required)
+# MCP — submit feedback on earlier query answers (no LLM required)
 # @name mcpSubmitFeedback
 POST {{baseUrl}}/mcp
 Authorization: Bearer {{apiKey}}

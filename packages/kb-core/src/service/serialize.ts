@@ -114,7 +114,7 @@ export function toSource(item: ReadDocumentsResultItem): QuerySource {
   }
 }
 
-// ─── Lean agent response (kb_query / REST default) ────────────────────────────
+// ─── Lean agent response (query / REST default) ────────────────────────────
 //
 // Agent consumers want the synthesized answer plus a handful of openable
 // citations — not the fact dump or retrieval telemetry. The full payload stays
@@ -250,7 +250,7 @@ function formatMcpSources(results: QuerySource[]): McpSource[] {
 }
 
 /**
- * Map an `IntentResult` to the trimmed agent payload (MCP `kb_query` default and
+ * Map an `IntentResult` to the trimmed agent payload (MCP `query` default and
  * REST without `verbose`): answer + top cited files, no fact dump, no retrieval
  * metadata. Adds `notes` when the answer needs verification (evidence below
  * `MCP_VERIFY_EVIDENCE_FLOOR`) or when the prose names files absent from the evidence.

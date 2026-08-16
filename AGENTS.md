@@ -106,12 +106,12 @@ re-document them.
   bearer key. Gotcha: an exported `KB_SERVER_API_KEY` leaks into the written
   entry as an `Authorization` header — run `kb mcp install` from a shell without
   it for a key-free entry. Re-point/remove with `kb mcp install --host <url>` /
-  `kb mcp uninstall`; inspect with `kb mcp status`. The `kb_query` MCP tool takes
+  `kb mcp uninstall`; inspect with `kb mcp status`. The `query` MCP tool takes
   arg `q` (not `query`). Two more MCP tools close the feedback loop:
   `submit_feedback` (`helped` = `yes`/`partial`/`no`, optional
   `notes`/`answer`/`query`/`requestId`/`scores` — one `requestId` per call, no
   array batching; omit it for general feedback) records answer-quality feedback
-  to `~/.kb/feedback/` on the server and echoes the full record back; `kb_query`
+  to `~/.kb/feedback/` on the server and echoes the full record back; `query`
   responses echo a `requestId` to reference in it, and `KB_FEEDBACK_SAMPLE_RATE`
   (server-side, default 0) still gates *whether* to ask on a sampled fraction of
   responses. When the client supports form elicitation and
@@ -124,9 +124,9 @@ re-document them.
   `packages/kb-client/src/cli/skill-installer.ts`): it also installs the
   `kb:*` skill files, a profile blurb (`~/.claude/CLAUDE.md` etc.), and the
   kb-first **hook** (`~/.kb/hooks/kb-reminder.sh`, registered as a `PreToolUse`
-  hook in `~/.claude/settings.json` — nudges agents to call `kb_query` before
+  hook in `~/.claude/settings.json` — nudges agents to call `query` before
   `grep`/`rg`/`find`/`Grep`/`Glob`) and the **end-of-session feedback hook**
-  (`~/.kb/hooks/kb-feedback.sh`, Claude Code only: tracks kb_query use per
+  (`~/.kb/hooks/kb-feedback.sh`, Claude Code only: tracks query use per
   session, then asks once — at the first `git push`, or by blocking the first
   Stop — to call `get_feedback_requests` and resolve what it returns via
   `submit_feedback`; opt out with `KB_FEEDBACK_REMINDER=false`). It **re-syncs

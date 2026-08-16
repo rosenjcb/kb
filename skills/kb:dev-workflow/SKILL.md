@@ -2,16 +2,16 @@
 name: kb:dev-workflow
 description: >-
   Is the user giving me a coding task in a project that uses the KB knowledge
-  store? Should I investigate by asking the kb MCP tool (kb_query) a real
+  store? Should I investigate by asking the kb MCP tool (query) a real
   natural-language question — then verify against the returned sources — before
   grepping or reading the repo blind?
 ---
 
 # KB dev workflow (agent skill)
 
-## MCP connection → `kb_query` for discovery
+## MCP connection → `query` for discovery
 
-This session has a **kb MCP** connection. Use **`kb_query`** to discover how the
+This session has a **kb MCP** connection. Use **`query`** to discover how the
 codebase works: ask a real question, get an answer plus lean source citations
 (`{ path, symbols? }`), then verify by opening those files.
 
@@ -86,11 +86,11 @@ impression.
 On every coding task, before broad exploration:
 
 ```
-ALWAYS: kb_query with a real question first
+ALWAYS: query with a real question first
 THEN:   open cited sources and verify
 THEN:   follow-up questions for remaining gaps
 ONLY THEN: minimal grep/read outside citations
 ```
 
-If `kb_query` is missing, say so and ask the user to fix the kb MCP connection
+If `query` is missing, say so and ask the user to fix the kb MCP connection
 in this session. Do not pretend you queried KB.

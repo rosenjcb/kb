@@ -42,7 +42,7 @@ Dev:   skills/<name>/SKILL.md     (tsx from src/skills/)
 
 Maintained in `SKILLS` constant inside `skill-installer.ts` (must stay in sync with `skills/` directory):
 
-- `kb:dev-workflow` — agents ask **semantic NL questions** via MCP `kb_query` only (not keyword dumps); verify against cited `filePath`s; skill body never mentions CLI/TUI
+- `kb:dev-workflow` — agents ask **semantic NL questions** via MCP `query` only (not keyword dumps); verify against cited `filePath`s; skill body never mentions CLI/TUI
 
 `kb:dump-context` was removed — superseded by the `spec-md` skill (OKF companions + `*.spec.md` behavioral specs). `kb:evaluation-run` was removed from the repo-bundled set — it's maintained as a user-level skill outside this repo, not installed via `kb skills install`.
 
@@ -58,6 +58,6 @@ Adding a skill:
 - Skill bodies should stay **short and imperative** — they are always-on context when installed to profile MDs.
 - Do not embed secrets or repo-specific paths in skills; use MCP tools / base flags in examples.
 - Hash header must remain first line after install so upgrades are detectable.
-- Dev-workflow skill: MCP `kb_query` only — real questions, verify sources; never mention CLI/TUI in the skill body (agents otherwise try to use it).
+- Dev-workflow skill: MCP `query` only — real questions, verify sources; never mention CLI/TUI in the skill body (agents otherwise try to use it).
 - MCP `kb` URL follows the active CLI/TUI connection (`--host` / env / localhost default).
 - Do not auto-install skills or MCP from CLI/TUI startup — opt-in commands only.

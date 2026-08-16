@@ -2,7 +2,7 @@
  * MCP form-elicitation schema + helpers for yes/partial/no feedback.
  *
  * When a client declares the `elicitation` capability (form mode), a sampled
- * kb_query can ask the *user* directly instead of stuffing an AGENT_INSTRUCTION
+ * query can ask the *user* directly instead of stuffing an AGENT_INSTRUCTION
  * nudge into the tool result for the agent to act on later.
  */
 
@@ -18,7 +18,7 @@ export const FEEDBACK_ELICITATION_SCHEMA: ElicitRequestFormParams['requestedSche
     helped: {
       type: 'string',
       title: 'Did this answer help?',
-      description: 'Was the kb_query answer useful for completing your task?',
+      description: 'Was the query answer useful for completing your task?',
       oneOf: [
         { const: 'yes', title: 'Yes' },
         { const: 'partial', title: 'Partial' },

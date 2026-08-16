@@ -62,17 +62,17 @@ function makeStubService(overrides: Partial<KbService> = {}): KbService {
 }
 
 describe('buildMcpToolList', () => {
-  it('[TC-21] exposes exactly kb_query, submit_feedback, and get_feedback_requests, never allowlist tools or upsert_fact', () => {
+  it('[TC-21] exposes exactly query, submit_feedback, and get_feedback_requests, never allowlist tools or upsert_fact', () => {
     const tools = buildMcpToolList(makeStubService())
     const names = tools.map(t => t.name)
-    expect(names).toEqual(['kb_query', 'submit_feedback', 'get_feedback_requests'])
+    expect(names).toEqual(['query', 'submit_feedback', 'get_feedback_requests'])
   })
 })
 
 describe('dispatchMcpToolCall', () => {
   it('[TC-22] always synthesizes an answer (answer-first, no synthesize flag)', async () => {
     const service = makeStubService()
-    const result = await dispatchMcpToolCall(service, 'kb_query', { q: 'auth' })
+    const result = await dispatchMcpToolCall(service, 'query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
     expect(result.content[0].text).toContain('"status": "accepted"')
     // The stub echoes params.synthesize into the answer; MCP must always pass true.
@@ -80,7 +80,7 @@ describe('dispatchMcpToolCall', () => {
   })
 
   it('[TC-109] default response is answer + lean citations, no fact dump or retrieval metadata', async () => {
-    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
+    const result = await dispatchMcpToolCall(makeStubService(), 'query', { q: 'auth' })
     expect(result.isError).toBeUndefined()
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBe('synth:true')
@@ -94,7 +94,7 @@ describe('dispatchMcpToolCall', () => {
   })
 
   it('[TC-111] verbose:true opts into the full evidence payload', async () => {
-    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {
+    const result = await dispatchMcpToolCall(makeStubService(), 'query', {
       q: 'auth',
       verbose: true,
     })
@@ -121,8 +121,8 @@ describe('dispatchMcpToolCall', () => {
     expect(schema.required).toEqual(['q'])
   })
 
-  it('[TC-23] errors when kb_query is missing q', async () => {
-    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {})
+  it('[TC-23] errors when query is missing q', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'query', {})
     expect(result.isError).toBe(true)
   })
 
@@ -172,7 +172,7 @@ describe('dispatchMcpToolCall', () => {
     })
     const result = await dispatchMcpToolCall(
       sessionDefault,
-      'kb_query',
+      'query',
       { q: 'auth', base: 'raylib' },
       { registry }
     )
@@ -188,7 +188,7 @@ describe('dispatchMcpToolCall', () => {
     })
     const result = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'auth', base: 'nope' },
       { registry }
     )
@@ -198,7 +198,7 @@ describe('dispatchMcpToolCall', () => {
 
   it('[TC-179] ignores a base argument when no registry is configured (single-base server)', async () => {
     const service = makeStubService()
-    const result = await dispatchMcpToolCall(service, 'kb_query', { q: 'auth', base: 'raylib' })
+    const result = await dispatchMcpToolCall(service, 'query', { q: 'auth', base: 'raylib' })
     expect(result.isError).toBeUndefined()
     expect(JSON.parse(result.content[0].text).answer).toBe('synth:true')
   })
@@ -258,10 +258,10 @@ describe('submit_feedback and feedback nudge', () => {
     expect(invalid.content[0].text).toContain('helped')
   })
 
-  it('[TC-132] kb_query payload echoes the server requestId for feedback correlation', async () => {
+  it('[TC-132] query payload echoes the server requestId for feedback correlation', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'auth' },
       { requestId: 'req-42' }
     )
@@ -272,7 +272,7 @@ describe('submit_feedback and feedback nudge', () => {
   it('[TC-133] sets a top-level AGENT_INSTRUCTION nudge (not buried in notes) when the sampling gate passes', async () => {
     const result = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'auth' },
       { requestId: 'req-7', feedbackSampleRate: 1, random: () => 0 }
     )
@@ -288,11 +288,11 @@ describe('submit_feedback and feedback nudge', () => {
   it('[TC-134] sets no AGENT_INSTRUCTION when KB_FEEDBACK_SAMPLE_RATE is unset or 0 (default off)', async () => {
     vi.stubEnv('KB_FEEDBACK_SAMPLE_RATE', '')
     try {
-      const unset = await dispatchMcpToolCall(makeStubService(), 'kb_query', { q: 'auth' })
+      const unset = await dispatchMcpToolCall(makeStubService(), 'query', { q: 'auth' })
       expect(JSON.parse(unset.content[0].text).AGENT_INSTRUCTION).toBeUndefined()
       const zero = await dispatchMcpToolCall(
         makeStubService(),
-        'kb_query',
+        'query',
         { q: 'auth' },
         { feedbackSampleRate: 0, random: () => 0 }
       )
@@ -302,8 +302,8 @@ describe('submit_feedback and feedback nudge', () => {
     }
   })
 
-  it('[TC-135] kb_query response echoes back the original query text', async () => {
-    const result = await dispatchMcpToolCall(makeStubService(), 'kb_query', {
+  it('[TC-135] query response echoes back the original query text', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'query', {
       q: 'how does auth retry work?',
     })
     expect(result.isError).toBeUndefined()
@@ -368,7 +368,7 @@ describe('submit_feedback and feedback nudge', () => {
 
     const queried = await dispatchMcpToolCall(
       service,
-      'kb_query',
+      'query',
       { q: 'how does auth retry work?' },
       { requestId: 'req-5', feedbackSampleRate: 1, random: () => 0, pendingFeedbackStore }
     )
@@ -407,7 +407,7 @@ describe('submit_feedback and feedback nudge', () => {
 
     await dispatchMcpToolCall(
       service,
-      'kb_query',
+      'query',
       { q: 'auth' },
       { requestId: 'req-6', feedbackSampleRate: 1, random: () => 0, pendingFeedbackStore }
     )
@@ -434,7 +434,7 @@ describe('submit_feedback and feedback nudge', () => {
     const { dir, store: feedbackStore } = makeTempStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'how does auth retry work?' },
       {
         requestId: 'req-elicit-1',
@@ -471,7 +471,7 @@ describe('submit_feedback and feedback nudge', () => {
     const { dir, store: feedbackStore } = makeTempStore()
     const declined = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'auth' },
       {
         requestId: 'req-elicit-2',
@@ -494,7 +494,7 @@ describe('submit_feedback and feedback nudge', () => {
     const pendingFeedbackStore = new PendingFeedbackStore()
     const result = await dispatchMcpToolCall(
       makeStubService(),
-      'kb_query',
+      'query',
       { q: 'auth' },
       {
         requestId: 'req-elicit-3',
@@ -513,7 +513,7 @@ describe('submit_feedback and feedback nudge', () => {
   })
 })
 
-describe('kb_query synthesis failure', () => {
+describe('query synthesis failure', () => {
   const failingService = () =>
     makeStubService({
       query: async () => ({
@@ -539,8 +539,8 @@ describe('kb_query synthesis failure', () => {
       }),
     })
 
-  it('[TC-160] Given synthesis failed, then kb_query reports answerError rather than an empty answer', async () => {
-    const result = await dispatchMcpToolCall(failingService(), 'kb_query', { q: 'auth' })
+  it('[TC-160] Given synthesis failed, then query reports answerError rather than an empty answer', async () => {
+    const result = await dispatchMcpToolCall(failingService(), 'query', { q: 'auth' })
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBeNull()
     expect(body.answerError.kind).toBe('insufficient_credits')
@@ -554,7 +554,7 @@ describe('kb_query synthesis failure', () => {
     // that never existed, scoring a provider outage as a KB quality problem.
     const result = await dispatchMcpToolCall(
       failingService(),
-      'kb_query',
+      'query',
       { q: 'auth' },
       {
         feedbackSampleRate: 1,

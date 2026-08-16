@@ -90,7 +90,7 @@ See companion doc for full vocabulary where applicable.
 | FR-36 | Connection context (host + base) is printed on CLI banner, TUI status bar, and chat session open |
 | FR-37 | Change-detection manifests are isolated per git-repo slug (base-level, surviving `--no-repos` snapshots); a warm rescan of an unchanged multi-repo base detects 0 changed per repo without clobbering sibling repos, so unchanged files are skipped instead of fully re-embedded |
 | FR-38 | A partial rescan re-indexes only files whose content hash changed for that repo and tombstones only files removed from that repo since its last manifest — never unchanged files' facts nor another repo's facts |
-| FR-39 | End-of-session feedback hook (Claude Code only): `kb skills install` writes `~/.kb/hooks/kb-feedback.sh` and registers it for PostToolUse (kb MCP tools), PreToolUse (Bash), and Stop. It records that the session used kb_query, then reminds the agent **once** to call `get_feedback_requests` and resolve what it returns via `submit_feedback` — at the first command-position `git push`, or by blocking the first Stop as a fallback — staying silent after feedback is submitted, after one nudge, when kb_query was never used, or when `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the entries from all three events |
+| FR-39 | End-of-session feedback hook (Claude Code only): `kb skills install` writes `~/.kb/hooks/kb-feedback.sh` and registers it for PostToolUse (kb MCP tools), PreToolUse (Bash), and Stop. It records that the session used query, then reminds the agent **once** to call `get_feedback_requests` and resolve what it returns via `submit_feedback` — at the first command-position `git push`, or by blocking the first Stop as a fallback — staying silent after feedback is submitted, after one nudge, when query was never used, or when `KB_FEEDBACK_REMINDER=false`; `kb skills uninstall` removes the entries from all three events |
 | FR-40 | [NEW] Answer synthesis never fails silently: a provider error or an empty completion records a structured `answerError` on the result (retrieval results preserved, `status` still `accepted` so downstream source handling is unaffected) instead of returning an answerless success, and a curator that fell back contributes no research note claiming the evidence was focused |
 | FR-41 | Session CLI groups run reports by sessionId and summarizes the most recent (or a named) session, listing each run for `kb logs show` follow-up |
 | FR-42 | Bare `kb skills` reports install status per agent (installed / update available / not installed) without writing any files |
@@ -414,11 +414,11 @@ See companion doc for full vocabulary where applicable.
 | TC-429 | FR-37 | Given a warm rescan of an unchanged multi-repo base, then each repo detects 0 changed and no facts are lost | pass |
 | TC-430 | FR-38 | Given a changed or deleted file in one repo, then only that repo is reindexed and unchanged files' and sibling repos' facts survive | pass |
 | TC-431 | FR-39 | Given kb skills install, then registers kb-feedback.sh for Claude PostToolUse, PreToolUse, and Stop | pass |
-| TC-432 | FR-39 | Given a kb_query PostToolUse event, then records the used marker and stays silent | pass |
-| TC-433 | FR-39 | Given git push after kb_query use, then injects a submit_feedback reminder pointing at get_feedback_requests | pass |
-| TC-434 | FR-39 | Given Stop after kb_query use without feedback, then blocks once with a submit_feedback reason | pass |
+| TC-432 | FR-39 | Given a query PostToolUse event, then records the used marker and stays silent | pass |
+| TC-433 | FR-39 | Given git push after query use, then injects a submit_feedback reminder pointing at get_feedback_requests | pass |
+| TC-434 | FR-39 | Given Stop after query use without feedback, then blocks once with a submit_feedback reason | pass |
 | TC-435 | FR-39 | Given submit_feedback already called or a prior nudge, then push reminder and Stop stay silent | pass |
-| TC-436 | FR-39 | Given no kb_query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent | pass |
+| TC-436 | FR-39 | Given no query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent | pass |
 | TC-437 | FR-39 | Given installed feedback hooks, then uninstall removes them from all three Claude events | pass |
 | TC-438 | FR-40 | provider throws during synthesis | answerError records kind and stage; results and status preserved |
 | TC-439 | FR-40 | model returns only whitespace | answerError kind is empty_response |

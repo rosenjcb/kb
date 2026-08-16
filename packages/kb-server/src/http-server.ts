@@ -865,8 +865,8 @@ async function handleMcpRequest(
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })
   try {
-    // requestId rides into kb_query payloads so submit_feedback can reference this call;
-    // registry lets kb_query's optional `base` argument override the session's default.
+    // requestId rides into query payloads so submit_feedback can reference this call;
+    // registry lets query's optional `base` argument override the session's default.
     await handleMcpHttpRequest(service, req, res, body, { requestId: ctx.requestId, registry })
     log.info('mcp complete', {
       requestId: ctx.requestId,

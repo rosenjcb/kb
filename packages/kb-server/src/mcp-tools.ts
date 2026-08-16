@@ -1,11 +1,11 @@
 /**
  * Bridge the KB service to MCP.
  *
- * `kb_query` is an **agent-to-agent** channel: a coding agent asks the knowledge
+ * `query` is an **agent-to-agent** channel: a coding agent asks the knowledge
  * base a direct question in plain terms and gets a direct, synthesized answer
  * plus lean source citations (`{ path, symbols? }`) — not a raw fact dump to
- * grep through. The MCP surface is exactly three tools — `kb_query`, its feedback
- * channel `submit_feedback`, and `get_feedback_requests` — and kb_query always
+ * grep through. The MCP surface is exactly three tools — `query`, its feedback
+ * channel `submit_feedback`, and `get_feedback_requests` — and query always
  * synthesizes; the citations are physical file paths so the caller knows
  * exactly what to open. The full evidence payload (GroupedSource facts/ids/
  * snippets, raw `results`, `retrieval.detail`) is opt-in via `verbose: true`.
@@ -15,13 +15,13 @@
  * session can query more than the base it was installed against; unknown
  * slug is an error result, and a single-base server (no registry) ignores it.
  *
- * `submit_feedback` closes the loop: agents report whether a kb_query answer
+ * `submit_feedback` closes the loop: agents report whether a query answer
  * held up once they acted on it, one `requestId` per call (no batching — a call
  * with no `requestId` is general feedback not tied to a specific query). A
  * sampled nudge (KB_FEEDBACK_SAMPLE_RATE) prefers MCP form elicitation when the
  * client declared that capability — asking the *user* yes/partial/no directly —
- * and otherwise sets a top-level `AGENT_INSTRUCTION` key on kb_query responses
- * so the agent can call `submit_feedback` later. Every kb_query payload carries
+ * and otherwise sets a top-level `AGENT_INSTRUCTION` key on query responses
+ * so the agent can call `submit_feedback` later. Every query payload carries
  * the server `requestId` so feedback joins the RunReport telemetry. Each
  * AGENT_INSTRUCTION nudge also queues its `requestId` in `PendingFeedbackStore`;
  * `get_feedback_requests` lists what's still outstanding so a session can defer
@@ -58,8 +58,8 @@ import {
   defaultFeedbackDir,
 } from './query-feedback-store.js'
 
-const KB_QUERY_TOOL = {
-  name: 'kb_query',
+const QUERY_TOOL = {
+  name: 'query',
   description:
     'Ask the knowledge base a direct question in plain language, agent-to-agent. ' +
     'Default response is lean: answer + openable sources ({path, symbols?}) + ' +
@@ -101,8 +101,8 @@ const FEEDBACK_SCORE_AXES = [
 const SUBMIT_FEEDBACK_TOOL = {
   name: 'submit_feedback',
   description:
-    'Report whether a kb_query answer held up once you acted on it. Pass requestId to answer ' +
-    'a specific query — one returned by get_feedback_requests, or echoed by a kb_query ' +
+    'Report whether a query answer held up once you acted on it. Pass requestId to answer ' +
+    'a specific query — one returned by get_feedback_requests, or echoed by a query ' +
     'response — or omit it for general feedback not tied to one query. One call reports on ' +
     'exactly one requestId (no batching); call it again for another.',
   inputSchema: {
@@ -111,7 +111,7 @@ const SUBMIT_FEEDBACK_TOOL = {
       helped: {
         type: 'string',
         enum: ['yes', 'partial', 'no'],
-        description: 'Did the kb_query answer help you complete the task?',
+        description: 'Did the query answer help you complete the task?',
       },
       notes: {
         type: 'string',
@@ -121,16 +121,16 @@ const SUBMIT_FEEDBACK_TOOL = {
       answer: {
         type: 'string',
         description:
-          'The kb_query answer text this feedback is about, so the record captures exactly what was evaluated.',
+          'The query answer text this feedback is about, so the record captures exactly what was evaluated.',
       },
       query: {
         type: 'string',
-        description: 'The kb_query question this feedback is about.',
+        description: 'The query question this feedback is about.',
       },
       requestId: {
         type: 'string',
         description:
-          'requestId of the specific kb_query response this feedback answers — from ' +
+          'requestId of the specific query response this feedback answers — from ' +
           'get_feedback_requests or echoed by that response. Omit for general feedback.',
       },
       scores: {
@@ -154,7 +154,7 @@ const SUBMIT_FEEDBACK_TOOL = {
 const GET_FEEDBACK_REQUESTS_TOOL = {
   name: 'get_feedback_requests',
   description:
-    'List kb_query answers still awaiting feedback (sampled via a prior AGENT_INSTRUCTION). ' +
+    'List query answers still awaiting feedback (sampled via a prior AGENT_INSTRUCTION). ' +
     'Call this at a natural checkpoint — e.g. once the work is validated — then resolve each ' +
     'entry with its own submit_feedback call (requestId + helped).',
   inputSchema: {
@@ -180,7 +180,7 @@ export interface McpDispatchOptions {
   /** Server-assigned id of this HTTP request, echoed into payloads for feedback correlation. */
   requestId?: string
   /**
-   * Multi-base registry, when the server is running with one. Lets `kb_query`'s
+   * Multi-base registry, when the server is running with one. Lets `query`'s
    * optional `base` argument resolve a different `KbService` than the session
    * default for a single call. Absent ⇒ single-base server; `base` is ignored,
    * matching `/v1/query`'s body-`base` semantics.
@@ -216,7 +216,7 @@ function errorResult(message: string): McpToolCallResult {
   return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true }
 }
 
-/** Fraction of kb_query responses that carry the feedback nudge. Default 0 (off). */
+/** Fraction of query responses that carry the feedback nudge. Default 0 (off). */
 function readFeedbackSampleRate(): number {
   const raw = process.env.KB_FEEDBACK_SAMPLE_RATE?.trim()
   if (!raw) return 0
@@ -296,10 +296,10 @@ function parseFeedbackArgs(args: Record<string, unknown>):
   }
 }
 
-/** Build the MCP tool list — kb_query plus its feedback channel and queue. */
+/** Build the MCP tool list — query plus its feedback channel and queue. */
 export function buildMcpToolList(_service: KbService): McpToolDescriptor[] {
   return [
-    { ...KB_QUERY_TOOL, inputSchema: { ...KB_QUERY_TOOL.inputSchema } },
+    { ...QUERY_TOOL, inputSchema: { ...QUERY_TOOL.inputSchema } },
     { ...SUBMIT_FEEDBACK_TOOL, inputSchema: { ...SUBMIT_FEEDBACK_TOOL.inputSchema } },
     { ...GET_FEEDBACK_REQUESTS_TOOL, inputSchema: { ...GET_FEEDBACK_REQUESTS_TOOL.inputSchema } },
   ]
@@ -335,11 +335,11 @@ export async function dispatchMcpToolCall(
         ...parsed,
       })
     }
-    if (name !== KB_QUERY_TOOL.name) {
+    if (name !== QUERY_TOOL.name) {
       return errorResult(`Unknown or unavailable tool: ${name}`)
     }
     const q = typeof args.q === 'string' ? args.q : ''
-    if (!q.trim()) return errorResult('kb_query requires a non-empty "q"')
+    if (!q.trim()) return errorResult('query requires a non-empty "q"')
     const verbose = args.verbose === true
     // An explicit `base` overrides the session default for this call only, same
     // as `/v1/query`'s body `base`. No registry ⇒ single-base server; ignored.
@@ -467,7 +467,6 @@ export function createServerElicitFeedback(
 
 /**
  * Register `tools/list` and `tools/call` handlers backed by a `KbService`.
- * `kb_query` is `kb_`-prefixed to avoid collisions in multi-server clients.
  *
  * Handlers close over the same `opts` object so a stateful MCP session can
  * refresh per-request fields (e.g. `requestId`) before each `handleRequest`.

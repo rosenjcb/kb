@@ -118,7 +118,7 @@ describe('installSkillIntoProject', () => {
 
     const content = await readFile(claudeMd, 'utf8')
     expect(content).toContain('# KB dev workflow')
-    expect(content).toContain('kb_query')
+    expect(content).toContain('query')
   })
 
   it('[TC-357] Given ~/.claude/CLAUDE.md already has KB section, then action is already-present', async () => {
@@ -470,7 +470,7 @@ describe('installHooks', () => {
     expect(content).toContain('#!/usr/bin/env bash')
     expect(content).toContain('additionalContext')
     expect(content).toContain('hookSpecificOutput')
-    expect(content).toContain('kb_query')
+    expect(content).toContain('query')
 
     const stdout = await runHook(scriptPath, {
       tool_name: 'Bash',
@@ -484,7 +484,7 @@ describe('installHooks', () => {
   it('[TC-376] Given Grep tool input, hook emits additionalContext JSON', async () => {
     const scriptPath = await installedHookScript()
     const stdout = await runHook(scriptPath, { tool_name: 'Grep', tool_input: { pattern: 'foo' } })
-    expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toContain('kb_query')
+    expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toContain('query')
   })
 
   it('[TC-377] Given Read tool, hook stays silent', async () => {
@@ -536,7 +536,7 @@ describe('installHooks', () => {
     ]
     for (const command of commands) {
       const stdout = await runHook(scriptPath, { tool_name: 'Bash', tool_input: { command } })
-      expect(stdout, command).toContain('kb_query')
+      expect(stdout, command).toContain('query')
     }
   })
 
@@ -555,7 +555,7 @@ describe('installHooks', () => {
         encoding: 'utf8',
         env: { ...process.env, KB_HOOK_STATE_DIR: stateDir },
       })
-    expect((run().stdout ?? '').trim()).toContain('kb_query')
+    expect((run().stdout ?? '').trim()).toContain('query')
     expect((run().stdout ?? '').trim()).toBe('')
 
     // A different session gets its own reminder.
@@ -564,7 +564,7 @@ describe('installHooks', () => {
       encoding: 'utf8',
       env: { ...process.env, KB_HOOK_STATE_DIR: stateDir },
     })
-    expect((other.stdout ?? '').trim()).toContain('kb_query')
+    expect((other.stdout ?? '').trim()).toContain('query')
   })
 
   it('[TC-423] Given KB_HOOK_REMINDER=false, hook stays silent even for searches', async () => {
@@ -616,9 +616,9 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     return (ran.stdout ?? '').trim()
   }
 
-  const kbQueryEvent = (session: string) => ({
+  const queryEvent = (session: string) => ({
     hook_event_name: 'PostToolUse',
-    tool_name: 'mcp__kb__kb_query',
+    tool_name: 'mcp__kb__query',
     session_id: session,
     tool_response: {
       content: [{ type: 'text', text: '{\n  "answer": "x",\n  "requestId": "req-abc"\n}' }],
@@ -635,7 +635,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     const raw = await readFile(path.join(fakeHome, '.claude', 'settings.json'), 'utf8')
     const settings = JSON.parse(raw)
     const post = settings.hooks.PostToolUse.find(
-      (g: { matcher: string }) => g.matcher === 'mcp__kb__kb_query|mcp__kb__submit_feedback'
+      (g: { matcher: string }) => g.matcher === 'mcp__kb__query|mcp__kb__submit_feedback'
     )
     expect(post.hooks[0].command).toContain('kb-feedback.sh')
     const pre = settings.hooks.PreToolUse.find(
@@ -650,10 +650,10 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(stop).toBeDefined()
   })
 
-  it('[TC-432] Given a kb_query PostToolUse event, then records the used marker and stays silent', async () => {
+  it('[TC-432] Given a query PostToolUse event, then records the used marker and stays silent', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-record')
-    const stdout = await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    const stdout = await runFeedback(scriptPath, queryEvent('s1'), stateDir)
     expect(stdout).toBe('')
     const { readdir } = await import('node:fs/promises')
     const files = await readdir(stateDir)
@@ -661,10 +661,10 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(used).toBeDefined()
   })
 
-  it('[TC-433] Given git push after kb_query use, then injects a submit_feedback reminder pointing at get_feedback_requests', async () => {
+  it('[TC-433] Given git push after query use, then injects a submit_feedback reminder pointing at get_feedback_requests', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-push')
-    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s1'), stateDir)
     const stdout = await runFeedback(
       scriptPath,
       {
@@ -680,7 +680,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain('get_feedback_requests')
 
     // Non-push Bash stays silent even with the marker set (fresh session key).
-    await runFeedback(scriptPath, kbQueryEvent('s2'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s2'), stateDir)
     const quiet = await runFeedback(
       scriptPath,
       {
@@ -694,10 +694,10 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(quiet).toBe('')
   })
 
-  it('[TC-434] Given Stop after kb_query use without feedback, then blocks once with a submit_feedback reason', async () => {
+  it('[TC-434] Given Stop after query use without feedback, then blocks once with a submit_feedback reason', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-stop')
-    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s1'), stateDir)
     const stop = { hook_event_name: 'Stop', session_id: 's1' }
     const stdout = await runFeedback(scriptPath, stop, stateDir)
     const parsed = JSON.parse(stdout)
@@ -706,7 +706,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     // Second Stop (post-nudge) passes through silently — no block loop.
     expect(await runFeedback(scriptPath, stop, stateDir)).toBe('')
     // A Stop resumed from a stop hook never re-blocks.
-    await runFeedback(scriptPath, kbQueryEvent('s3'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s3'), stateDir)
     expect(
       await runFeedback(
         scriptPath,
@@ -719,7 +719,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
   it('[TC-435] Given submit_feedback already called or a prior nudge, then push reminder and Stop stay silent', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-done')
-    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s1'), stateDir)
     await runFeedback(
       scriptPath,
       { hook_event_name: 'PostToolUse', tool_name: 'mcp__kb__submit_feedback', session_id: 's1' },
@@ -735,13 +735,13 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's1' }, stateDir)).toBe('')
 
     // One nudge per session: a push reminder consumes the Stop fallback too.
-    await runFeedback(scriptPath, kbQueryEvent('s2'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s2'), stateDir)
     const nudged = await runFeedback(scriptPath, { ...push, session_id: 's2' }, stateDir)
     expect(nudged).toContain('submit_feedback')
     expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's2' }, stateDir)).toBe('')
   })
 
-  it('[TC-436] Given no kb_query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent', async () => {
+  it('[TC-436] Given no query use or KB_FEEDBACK_REMINDER=false, then all feedback events stay silent', async () => {
     const scriptPath = await installedFeedbackScript()
     const stateDir = path.join(tempDir, 'fb-state-off')
     const push = {
@@ -753,7 +753,7 @@ describe('feedback hooks (end-of-session submit_feedback)', () => {
     expect(await runFeedback(scriptPath, push, stateDir)).toBe('')
     expect(await runFeedback(scriptPath, { hook_event_name: 'Stop', session_id: 's1' }, stateDir)).toBe('')
 
-    await runFeedback(scriptPath, kbQueryEvent('s1'), stateDir)
+    await runFeedback(scriptPath, queryEvent('s1'), stateDir)
     expect(
       await runFeedback(scriptPath, push, stateDir, { KB_FEEDBACK_REMINDER: 'false' })
     ).toBe('')

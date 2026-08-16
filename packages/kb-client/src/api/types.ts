@@ -48,7 +48,7 @@ export interface QuerySource {
   snippet?: string
 }
 
-/** Lean agent citation (default `/v1/query` and MCP `kb_query` without verbose). */
+/** Lean agent citation (default `/v1/query` and MCP `query` without verbose). */
 export interface LeanSource {
   path: string
   /** Folded fact subjects when known; omitted when empty. */

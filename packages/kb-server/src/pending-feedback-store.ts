@@ -1,10 +1,10 @@
 /**
- * Tracks `kb_query` answers that were sampled for a feedback nudge
+ * Tracks `query` answers that were sampled for a feedback nudge
  * (`AGENT_INSTRUCTION`, gated by `KB_FEEDBACK_SAMPLE_RATE`) but haven't yet had
  * a matching `submit_feedback` call. Exposed to agents via `get_feedback_requests`
  * so a session can defer feedback to a natural checkpoint (e.g. after the work
  * is validated) instead of answering immediately, then come back and drain the
- * queue precisely — rather than re-scraping every kb_query response for ids.
+ * queue precisely — rather than re-scraping every query response for ids.
  *
  * In-memory and process-local by design: this is an advisory queue, not a
  * durable record (that's `QueryFeedbackStore`), so it is fine for it to reset
@@ -24,7 +24,7 @@ const PENDING_TTL_MS = 6 * 60 * 60 * 1000 // 6h
 export class PendingFeedbackStore {
   private entries = new Map<string, PendingFeedbackEntry>()
 
-  /** Record a sampled kb_query answer as awaiting feedback. */
+  /** Record a sampled query answer as awaiting feedback. */
   add(requestId: string, query: string): void {
     this.prune()
     this.entries.set(requestId, { requestId, query, ts: new Date().toISOString() })
