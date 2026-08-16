@@ -1,15 +1,10 @@
 # @kb/core
 
-## 2.0.3
-
-### Patch Changes
-
-- Gate hybrid retrieval RRF fusion behind a `KB_HYBRID_KIND_WEIGHT` / `features.hybridKindWeight` flag (default off) that weights each lane's contribution by candidate kind — symbols 1.15x, whole documents 0.9x — so a whole markdown document no longer competes at equal weight against a single code symbol at the same rank position (issue #216).
-
 ## 2.0.2
 
 ### Patch Changes
 
+- Gate hybrid retrieval RRF fusion behind a `KB_HYBRID_KIND_WEIGHT` / `features.hybridKindWeight` flag (default off) that weights each lane's contribution by candidate kind — symbols 1.15x, whole documents 0.9x — so a whole markdown document no longer competes at equal weight against a single code symbol at the same rank position (issue #216).
 - 3750c80: Rename the MCP tool `kb_query` to `query` — the `kb_` prefix was redundant given the server is already registered as `kb` (so the fully-qualified MCP name is `mcp__kb__query`). Updates the tool schema/name, hook matchers and scripts (`kb-reminder.sh`, `kb-feedback.sh`), docs, and tests. Anyone with the hooks already installed should re-run `kb skills install` to pick up the renamed matcher.
 - a2edefe: `createEmbedder()` is strict now: it returns an `Embedder` (never `undefined`) and throws on misconfiguration instead of silently degrading. `KB_EMBEDDER` unset/`local`/`onnx` selects Local ONNX; `gemini` requires `GEMINI_API_KEY` or throws; any other value throws — a present `GEMINI_API_KEY` no longer auto-selects Gemini when `KB_EMBEDDER` is unset, so the backend is always an explicit choice. `SqliteKbIndexer#embedAll`/`embedAllDocuments`/`embedAllCodeSymbols`/`embedAllFacts` now throw when no embedder is attached instead of silently no-opping, and `scanBaseRepos`'s trailing embed step now propagates failures instead of swallowing them. `kb init`'s cold embed step and query-time embedding (`FactsDocumentReader`) keep their existing best-effort/hard-fail split via `requireEmbeddings/requireEmbedderForInit` vs. a local catch.
 
