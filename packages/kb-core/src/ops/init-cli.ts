@@ -1,13 +1,13 @@
 /**
  * kb init / kb scan — knowledge base bootstrap and refresh commands.
  *
- * Cycle 1 (read-inputs):    Discover markdown sources under each cloned repo (recursive).
- * Cycle 2 (code-index):     Deterministic AST indexing (tree-sitter WASM grammars for every
- *                            language) → `code_symbols` table (exported symbols + source text).
- * Cycle 3 (document-index): Each source markdown file → one `documents` row, linked to the
- *                            code symbols it describes via `doc_code_links`.
- * Cycle 4 (import-docs):    One `is_original` SQLite doc per collected markdown file (verbatim body).
- * Cycle 5 (write):          Upsert documents.
+ * Step 1 (code-index):       Deterministic AST indexing (tree-sitter WASM grammars for every
+ *                             language) → `code_symbols` table (exported symbols + source text).
+ * Step 2 (document-index):   Discover markdown sources, index each as a `documents` row linked
+ *                             to code symbols via `doc_code_links`, harvest entity ontology,
+ *                             import original markdown docs, and write/upsert all documents.
+ * Step 3 (create-embeddings): Batch-embed all unembedded documents, code symbols, and facts
+ *                             via the configured embedder (e.g. Gemini) with real progress.
  *
  * Reuses progress reporting and checkpoint patterns from the scan/init cycle helpers.
  */
@@ -79,7 +79,13 @@ import { assessTopicCoverage, summariseCoverage } from '@kb/core/ops/init-topic-
 import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
 import { type IgnoreMatcher, createIgnoreMatcher, readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
 
-export type InitCycle = 'read-inputs' | 'code-index' | 'document-index' | 'import-docs' | 'write'
+export type InitCycle =
+  | 'code-index'
+  | 'document-index'
+  | 'create-embeddings'
+  | 'read-inputs'
+  | 'import-docs'
+  | 'write'
 export type InitTopic =
   | 'project-overview'
   | 'install-setup'
@@ -120,6 +126,14 @@ export interface InitOptions {
    * (see `readIgnorePatternsFromEnv`).
    */
   ignorePatterns?: string[]
+  /**
+   * Treat embedding as mandatory rather than best-effort. When `true`, an embedder failure
+   * (rate limit, offline, model unavailable) aborts init instead of silently degrading to the
+   * lexical lane. The eval harness sets this: an index without embeddings scores nothing
+   * meaningful, so a half-built index must fail loudly rather than be published. Interactive
+   * `kb init` leaves this `false` so a missing key never blocks a local index.
+   */
+  requireEmbeddings?: boolean
 }
 
 /** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
@@ -310,7 +324,7 @@ class InitProgressReporter {
   private repoSlug?: string
 
   constructor(
-    private total: number,
+    private total = 3,
     private prefix: 'init' | 'scan' = 'init',
     sinkArg?: (line: string) => void
   ) {
@@ -332,26 +346,31 @@ class InitProgressReporter {
   }
 
   start(label: string, detail?: string) {
-    this.render(label, detail, false)
+    this.render(label, detail, false, 0)
   }
 
   finish(label: string, detail?: string) {
     this.completed += 1
-    this.render(label, detail, false)
+    this.render(label, detail, false, 0)
   }
 
-  update(label: string, detail?: string) {
+  update(label: string, detail?: string, intraFraction = 0) {
     if (this.throttleUpdates) {
       const now = Date.now()
       if (now - this.lastUpdateMs < InitProgressReporter.THROTTLE_MS) return
       this.lastUpdateMs = now
     }
-    this.render(label, detail, this.ttyMode)
+    this.render(label, detail, this.ttyMode, intraFraction)
   }
 
-  private render(label: string, detail?: string, inPlace = false) {
+  private render(label: string, detail?: string, inPlace = false, intraFraction = 0) {
     const width = 24
-    const filled = Math.round((this.completed / Math.max(this.total, 1)) * width)
+    const clampedIntra = Math.min(Math.max(intraFraction, 0), 0.999)
+    const progress = Math.min(
+      Math.max((this.completed + clampedIntra) / Math.max(this.total, 1), 0),
+      1
+    )
+    const filled = Math.round(progress * width)
     const bar = `${'='.repeat(filled)}${'-'.repeat(Math.max(width - filled, 0))}`
     const suffix = detail ? ` ${detail}` : ''
     const core = `[${bar}] ${this.completed}/${this.total} ${label}${suffix}`
@@ -500,9 +519,10 @@ export function parseInitCommand(args: string[]): InitOptions {
   const rawStopAfter = readOption(args, '--stop-after')
   const stopAfter = rawStopAfter ? (normalizeStoredCycleId(rawStopAfter) ?? undefined) : undefined
   const validCycles: InitCycle[] = [
-    'read-inputs',
     'code-index',
     'document-index',
+    'create-embeddings',
+    'read-inputs',
     'import-docs',
     'write',
   ]
@@ -665,7 +685,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
   const checkpointFile = await resolveCheckpointPath({ ...options, base }, cwd)
   const resumedCheckpoint = options.rescan ? undefined : await readCheckpoint(checkpointFile)
 
-  const progress = new InitProgressReporter(6, progressPrefix(options), options.progressSink)
+  const progress = new InitProgressReporter(3, progressPrefix(options), options.progressSink)
   if (options.gitRepo ?? gitRepoDisplay) {
     progress.setRepo(options.gitRepo ?? gitRepoDisplay)
   }
@@ -711,56 +731,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     const interviewRounds: InitInterviewRound[] = []
     let topicCoverage = checkpoint.topicCoverage ?? []
 
-    if (!checkpoint.completedCycles.includes('read-inputs')) {
-      progress.start('read-inputs', 'discovering docs…')
-      const readResult = await runReadInputsCycle({
-        cwd: scanDir,
-        baseDir,
-        baseName: base,
-        rescan: options.rescan === true,
-        nonInteractive: options.nonInteractive,
-        detach: options.detach,
-        questionIO,
-        ignoreMatcher,
-        startingRound: 1,
-        maxQuestions: 0,
-        onProgress: snapshot => {
-          progress.update('read-inputs', formatReadInputsProgress(snapshot))
-        },
-      })
-      context = readResult.context
-      topicCoverage = readResult.topicCoverage
-      await persist({
-        context,
-        interviewRounds,
-        topicCoverage,
-        completedCycles: ['read-inputs'],
-      })
-      progress.finish('read-inputs', `${Object.keys(context.sourceFiles).length} files`)
-      if (options.stopAfter === 'read-inputs') throw new InitPausedError('read-inputs')
-    } else {
-      progress.finish('read-inputs', 'reused from checkpoint')
-    }
-
-    if (!context) throw new Error('read-inputs context missing')
-
-    // Ingest cross-repo integration signals (package.json deps, env service refs) so
-    // `reconcileCrossRepoEdges` can later bridge this repo to its siblings.
-    if (gitRepoSlug) {
-      await ingestIntegrationSignals({
-        baseDir,
-        scanDir,
-        gitRepo: gitRepoSlug,
-        gitUrl: primaryRepo?.gitUrl,
-      })
-    }
-
-    const changedSourceFiles = options.rescan
-      ? await selectChangedSourceFiles(baseDir, context.sourceFiles, gitRepoSlug)
-      : context.sourceFiles
-    const totalSourceFileCount = Object.keys(context.sourceFiles).length
-    const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
-
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 1/3: code-index (Deterministic Tree-Sitter AST code indexing)
+    // ─────────────────────────────────────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('code-index')) {
       progress.start('code-index', 'indexing code graph (AST)…')
       try {
@@ -779,6 +752,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           : []
         if (options.rescan && candidateAstFiles.length === 0 && removedAstFiles.length === 0) {
           await writeAstFilesManifest(baseDir, currentAstFiles, gitRepoSlug)
+          progress.finish('code-index', `0 changed, ${unchangedAstFileCount} unchanged | 0 symbols`)
         } else {
           // One AST platform for every language: tree-sitter parses a single file at a time
           // (one WASM tree resident at once), so peak memory is bounded by the largest file
@@ -792,9 +766,11 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             const treeStats = await treeIndexer.indexProject(scanDir, {
               candidateFiles: candidateAstFiles,
               onProgress: s => {
+                const fraction = candidateAstFiles.length > 0 ? s.files / candidateAstFiles.length : 0
                 progress.update(
                   'code-index',
-                  `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols`
+                  `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols`,
+                  fraction
                 )
               },
             })
@@ -817,15 +793,14 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           }
 
           await writeAstFilesManifest(baseDir, currentAstFiles, gitRepoSlug)
-          const s = treeStatsSummary
-          progress.update(
+          const s = treeStatsSummary ?? { files: 0, symbols: 0, errors: 0 }
+          progress.finish(
             'code-index',
             `${s.files} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols${s.errors > 0 ? `, ${s.errors} errors` : ''}`
           )
         }
 
         await persist({ completedCycles: ['code-index'] })
-        progress.finish('code-index', 'done')
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         await persist({ completedCycles: ['code-index'] })
@@ -836,15 +811,67 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       progress.finish('code-index', 'reused from checkpoint')
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 2/3: document-index (Discovery, Markdown Ingest, Entity Harvest, Write)
+    // ─────────────────────────────────────────────────────────────────────────
+    let writtenDocIds: string[] | undefined
     if (!checkpoint.completedCycles.includes('document-index')) {
-      const hasAnySourceFiles = Object.keys(context.sourceFiles).length > 0
+      progress.start('document-index', 'discovering and indexing documents…')
+
+      // Sub-step: Discover source files (read-inputs)
+      if (!context) {
+        const readResult = await runReadInputsCycle({
+          cwd: scanDir,
+          baseDir,
+          baseName: base,
+          rescan: options.rescan === true,
+          nonInteractive: options.nonInteractive,
+          detach: options.detach,
+          questionIO,
+          ignoreMatcher,
+          startingRound: 1,
+          maxQuestions: 0,
+          onProgress: snapshot => {
+            progress.update('document-index', formatReadInputsProgress(snapshot), 0.05)
+          },
+        })
+        context = readResult.context
+        topicCoverage = readResult.topicCoverage
+        await persist({
+          context,
+          interviewRounds,
+          topicCoverage,
+          completedCycles: ['read-inputs'],
+        })
+        if (options.stopAfter === 'read-inputs') throw new InitPausedError('read-inputs')
+      }
+
+      if (!context) throw new Error('document-index context missing')
+
+      // Ingest cross-repo integration signals (package.json deps, env service refs) so
+      // `reconcileCrossRepoEdges` can later bridge this repo to its siblings.
+      if (gitRepoSlug) {
+        await ingestIntegrationSignals({
+          baseDir,
+          scanDir,
+          gitRepo: gitRepoSlug,
+          gitUrl: primaryRepo?.gitUrl,
+        })
+      }
+
+      const changedSourceFiles = options.rescan
+        ? await selectChangedSourceFiles(baseDir, context.sourceFiles, gitRepoSlug)
+        : context.sourceFiles
+      const totalSourceFileCount = Object.keys(context.sourceFiles).length
+      const unchangedSourceFileCount = totalSourceFileCount - Object.keys(changedSourceFiles).length
+
+      const hasAnySourceFiles = totalSourceFileCount > 0
       if (!hasAnySourceFiles) {
         await persist({
-          completedCycles: ['document-index'],
+          completedCycles: ['document-index', 'import-docs', 'write'],
         })
         progress.finish('document-index', 'skipped (no markdown documents found)')
       } else {
-        progress.start('document-index', '📄 indexing markdown documents…')
         const endScanDocs = makeCycleTimer('document-index', provider, options.collector, counter)
         let purged = 0
         if (options.rescan) {
@@ -856,212 +883,196 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             if (purged > 0) {
               progress.update(
                 'document-index',
-                `purged ${purged} document(s) from deleted source file(s)`
+                `purged ${purged} document(s) from deleted source file(s)`,
+                0.1
               )
             }
           } finally {
             purgeIndexer.close()
           }
         }
+
+        // Sub-step: Index markdown files as documents linked to AST code symbols
         const ingestStats = await indexSourceMarkdownFilesAsDocuments({
           baseDir,
           files: changedSourceFiles,
           matchAstNodes: true,
           gitRepo: gitRepoSlug,
           onProgress: snapshot => {
+            const fileFraction =
+              snapshot.filesConsidered > 0 ? snapshot.filesCompleted / snapshot.filesConsidered : 0
             progress.update(
               'document-index',
               formatDocumentIndexProgress(snapshot, {
                 rescan: options.rescan === true,
                 unchangedCount: unchangedSourceFileCount,
-              })
+              }),
+              0.1 + 0.3 * fileFraction
             )
           },
         })
         endScanDocs()
+
+        // Sub-step: Harvest entity ontology
+        progress.update('document-index', 'harvesting entity ontology…', 0.45)
+        try {
+          const entityStats = await runEntityIndexCycle({
+            baseDir,
+            scanDir,
+            ...(gitRepoSlug ? { gitRepo: gitRepoSlug } : {}),
+          })
+          const droppedNote =
+            entityStats.edgesDropped > 0 ? `, ${entityStats.edgesDropped} edges dropped` : ''
+          progress.update(
+            'document-index',
+            `${entityStats.entitiesUpserted} entities, ${entityStats.edgesWritten} edges, ${entityStats.factsLinked} fact links, ${entityStats.collisions} collisions${droppedNote}`,
+            0.6
+          )
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          progress.update('document-index', `entities skipped (${message.slice(0, 40)})`, 0.6)
+        }
+
+        // Stamp the pipeline version
+        try {
+          const stampIndexer = new SqliteKbIndexer({
+            dbPath: path.join(baseDir, '.kb-index.sqlite'),
+          })
+          try {
+            writePipelineVersion(stampIndexer, gitRepoSlug)
+          } finally {
+            stampIndexer.close()
+          }
+        } catch {
+          // Best-effort provenance — never fail a scan over the stamp.
+        }
+
+        // Sub-step: Import original markdown & evaluate topic coverage
+        progress.update('document-index', 'importing original markdown…', 0.65)
+        const endImport = makeCycleTimer('import-docs', provider, options.collector, counter)
+        candidateDocs = normalizeInitDocs(
+          buildOriginalDocumentsFromSourceFiles(changedSourceFiles, base, snapshot => {
+            const fraction =
+              snapshot.itemsConsidered > 0 ? snapshot.docsBuilt / snapshot.itemsConsidered : 0
+            progress.update(
+              'document-index',
+              formatImportDocsBuildProgress(snapshot, {
+                rescan: options.rescan === true,
+                unchangedCount: unchangedSourceFileCount,
+              }),
+              0.65 + 0.15 * fraction
+            )
+          }),
+          {
+            minWords: 0,
+            onProgress: snapshot => {
+              progress.update('document-index', formatImportDocsNormalizeProgress(snapshot), 0.8)
+            },
+          }
+        )
+        endImport()
+        topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
+        const finalCoverageSummary = summariseCoverage(topicCoverage)
         await persist({
-          completedCycles: ['document-index'],
+          candidateDocs,
+          topicCoverage,
+          finalCoverageSummary,
+          completedCycles: ['import-docs'],
+        })
+        if (options.stopAfter === 'import-docs') throw new InitPausedError('import-docs')
+
+        if (!candidateDocs) throw new Error('document-index candidateDocs missing')
+
+        // Sub-step: Write documents & source files manifest
+        progress.update('document-index', 'writing docs…', 0.85)
+        if (options.rescan) {
+          let originalWritten: string[] = []
+          {
+            const originals = candidateDocs.filter(doc => doc.isOriginal)
+            if (originals.length > 0) {
+              originalWritten = await writeDocs(originals, baseDir, base, snapshot => {
+                progress.update(
+                  'document-index',
+                  formatWriteDocsProgress(snapshot, {
+                    label: 'writing original docs',
+                    rescan: true,
+                    unchangedCount: unchangedSourceFileCount,
+                  }),
+                  0.85
+                )
+              })
+            }
+          }
+          const planResult = await runRescanApplyOrchestrator({
+            base,
+            baseDir,
+            cwd: scanDir,
+            apply: false,
+            sourceFiles: context.sourceFiles,
+            candidateDocs,
+            onProgress: snapshot => {
+              progress.update('document-index', formatRescanWriteProgress(snapshot), 0.9)
+            },
+          })
+          let mutationWritten: string[] = []
+          const safeguards = planResult.plan.safeguards?.triggered ?? []
+          if (safeguards.length > 0) {
+            questionIO.write?.(`[kb scan] safeguards triggered: ${safeguards.join(', ')}\n`)
+          }
+          const applyResult = await runRescanApplyOrchestrator({
+            base,
+            baseDir,
+            cwd: scanDir,
+            apply: true,
+            sourceFiles: context.sourceFiles,
+            candidateDocs,
+            onProgress: snapshot => {
+              progress.update('document-index', formatRescanWriteProgress(snapshot), 0.95)
+            },
+          })
+          mutationWritten = applyResult.writtenDocIds
+          if (
+            applyResult.plan.apply.appliedMutations > 0 ||
+            applyResult.plan.apply.noopMutations > 0
+          ) {
+            questionIO.write?.(
+              `[kb scan] applied ${applyResult.plan.apply.appliedMutations} action(s) (${applyResult.plan.apply.noopMutations} noop).\n`
+            )
+          }
+          writtenDocIds = [...originalWritten, ...mutationWritten]
+        } else {
+          writtenDocIds = await writeDocs(candidateDocs, baseDir, base, snapshot => {
+            progress.update(
+              'document-index',
+              formatWriteDocsProgress(snapshot, {
+                label: 'writing docs',
+                rescan: false,
+              }),
+              0.9
+            )
+          })
+        }
+
+        await writeSourceFilesManifest(
+          baseDir,
+          buildSourceFileHashes(context.sourceFiles),
+          gitRepoSlug
+        )
+        await persist({
+          completedCycles: ['document-index', 'write'],
+          finalCoverageSummary,
         })
         const purgeNote = purged > 0 ? `, ${purged} stale document(s) purged` : ''
-        progress.finish(
-          'document-index',
-          options.rescan
-            ? `${ingestStats.documentsUpserted} documents from ${ingestStats.filesScanned} changed, ${unchangedSourceFileCount} unchanged file(s), ${ingestStats.linksWritten} code link(s)${purgeNote}`
-            : `${ingestStats.documentsUpserted} documents from ${ingestStats.filesScanned} files, ${ingestStats.linksWritten} code link(s)${purgeNote}`
-        )
+        const linksNote = ingestStats.linksWritten > 0 ? `, ${ingestStats.linksWritten} code link(s)` : ''
+        progress.finish('document-index', `${writtenDocIds.length} doc(s) written${linksNote}${purgeNote}`)
+        if (options.stopAfter === 'write') throw new InitPausedError('write')
       }
       if (options.stopAfter === 'document-index') throw new InitPausedError('document-index')
     } else {
       progress.finish('document-index', 'reused from checkpoint')
     }
 
-    // Entity ontology harvest + fact linking (packages/kb-core/src/tools/ECOSYSTEM_HARVESTERS.spec.md). Runs after
-    // document-index so both code and doc units exist for linking. Best-effort and
-    // idempotent — a failed harvest never fails init/scan, and empty registries leave
-    // query behavior untouched.
-    progress.start('entity-index', 'harvesting entity ontology…')
-    try {
-      const entityStats = await runEntityIndexCycle({
-        baseDir,
-        scanDir,
-        ...(gitRepoSlug ? { gitRepo: gitRepoSlug } : {}),
-      })
-      // Edge counts are part of the headline: a harvest that upserts entities but writes
-      // no relationship edges is a broken graph, and printing only entity counts is what
-      // let that go unnoticed. `dropped` is the alarm — it means an edge named a
-      // container nothing harvested.
-      const droppedNote =
-        entityStats.edgesDropped > 0 ? `, ${entityStats.edgesDropped} edges dropped` : ''
-      progress.finish(
-        'entity-index',
-        `${entityStats.entitiesUpserted} entities, ${entityStats.edgesWritten} edges, ${entityStats.factsLinked} fact links, ${entityStats.collisions} collisions${droppedNote}`
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      progress.finish('entity-index', `skipped (${message.slice(0, 80)})`)
-    }
-
-    // Stamp the pipeline that produced this repo's index. `auto-sync` reads it back to
-    // rebuild bases whose upstream never moved but whose extraction is out of date.
-    try {
-      const stampIndexer = new SqliteKbIndexer({
-        dbPath: path.join(baseDir, '.kb-index.sqlite'),
-      })
-      try {
-        writePipelineVersion(stampIndexer, gitRepoSlug)
-      } finally {
-        stampIndexer.close()
-      }
-    } catch {
-      // Best-effort provenance — never fail a scan over the stamp.
-    }
-
-    if (!checkpoint.completedCycles.includes('import-docs')) {
-      progress.start('import-docs', 'importing original markdown…')
-      const endImport = makeCycleTimer('import-docs', provider, options.collector, counter)
-      candidateDocs = normalizeInitDocs(
-        buildOriginalDocumentsFromSourceFiles(changedSourceFiles, base, snapshot => {
-          progress.update(
-            'import-docs',
-            formatImportDocsBuildProgress(snapshot, {
-              rescan: options.rescan === true,
-              unchangedCount: unchangedSourceFileCount,
-            })
-          )
-        }),
-        {
-          minWords: 0,
-          onProgress: snapshot => {
-            progress.update('import-docs', formatImportDocsNormalizeProgress(snapshot))
-          },
-        }
-      )
-      endImport()
-      topicCoverage = assessTopicCoverage(context, candidateDocs, options.nonInteractive)
-      const finalCoverageSummary = summariseCoverage(topicCoverage)
-      await persist({
-        candidateDocs,
-        topicCoverage,
-        finalCoverageSummary,
-        completedCycles: ['import-docs'],
-      })
-      progress.finish(
-        'import-docs',
-        options.rescan
-          ? `${candidateDocs.length} changed, ${unchangedSourceFileCount} unchanged original doc(s)`
-          : `${candidateDocs.length} original doc(s)`
-      )
-      if (options.stopAfter === 'import-docs') throw new InitPausedError('import-docs')
-    } else {
-      progress.finish('import-docs', 'reused from checkpoint')
-    }
-
-    if (!candidateDocs) throw new Error('import-docs candidateDocs missing')
-
-    let writtenDocIds: string[] | undefined
-    if (!checkpoint.completedCycles.includes('write')) {
-      progress.start('write', baseDir)
-      if (options.rescan) {
-        let originalWritten: string[] = []
-        {
-          const originals = candidateDocs.filter(doc => doc.isOriginal)
-          if (originals.length > 0) {
-            originalWritten = await writeDocs(originals, baseDir, base, snapshot => {
-              progress.update(
-                'write',
-                formatWriteDocsProgress(snapshot, {
-                  label: 'writing original docs',
-                  rescan: true,
-                  unchangedCount: unchangedSourceFileCount,
-                })
-              )
-            })
-          }
-        }
-        const planResult = await runRescanApplyOrchestrator({
-          base,
-          baseDir,
-          cwd: scanDir,
-          apply: false,
-          sourceFiles: context.sourceFiles,
-          candidateDocs,
-          onProgress: snapshot => {
-            progress.update('write', formatRescanWriteProgress(snapshot))
-          },
-        })
-        let mutationWritten: string[] = []
-        const safeguards = planResult.plan.safeguards?.triggered ?? []
-        if (safeguards.length > 0) {
-          questionIO.write?.(`[kb scan] safeguards triggered: ${safeguards.join(', ')}\n`)
-        }
-        const applyResult = await runRescanApplyOrchestrator({
-          base,
-          baseDir,
-          cwd: scanDir,
-          apply: true,
-          sourceFiles: context.sourceFiles,
-          candidateDocs,
-          onProgress: snapshot => {
-            progress.update('write', formatRescanWriteProgress(snapshot))
-          },
-        })
-        mutationWritten = applyResult.writtenDocIds
-        if (
-          applyResult.plan.apply.appliedMutations > 0 ||
-          applyResult.plan.apply.noopMutations > 0
-        ) {
-          questionIO.write?.(
-            `[kb scan] applied ${applyResult.plan.apply.appliedMutations} action(s) (${applyResult.plan.apply.noopMutations} noop).\n`
-          )
-        }
-        writtenDocIds = [...originalWritten, ...mutationWritten]
-      } else {
-        writtenDocIds = await writeDocs(candidateDocs, baseDir, base, snapshot => {
-          progress.update(
-            'write',
-            formatWriteDocsProgress(snapshot, {
-              label: 'writing docs',
-              rescan: false,
-            })
-          )
-        })
-      }
-      const finalCoverageSummary =
-        checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
-      await writeSourceFilesManifest(baseDir, buildSourceFileHashes(context.sourceFiles), gitRepoSlug)
-      await persist({
-        completedCycles: ['write'],
-        finalCoverageSummary,
-      })
-      progress.finish('write', `${writtenDocIds.length} docs written`)
-      if (options.stopAfter === 'write') throw new InitPausedError('write')
-    } else {
-      progress.finish('write', 'reused from checkpoint')
-    }
-
-    // Multi-repo init: index the remaining repos into this same base. (Additional repos reuse
-    // the rescan path and tag their own rows with their slug; each repo is self-describing via
-    // its clone, so nothing is persisted here.)
+    // Multi-repo init: index the remaining repos into this same base.
     if (!options.rescan && additionalRepos.length > 0) {
       for (const repo of additionalRepos) {
         await runKbInit({
@@ -1079,35 +1090,92 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         })
       }
     }
-    if (!options.rescan) {
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 3/3: create-embeddings (Real neural embeddings with batch progress)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (!checkpoint.completedCycles.includes('create-embeddings')) {
       const embedder = createEmbedder()
-      // Real embeddings for the neural retrieval lane. Best-effort: any failure (no embedder,
-      // offline, model unavailable) leaves the lexical lane to carry retrieval on its own, so
-      // init never blocks on it.
-      if (embedder) {
+      if (!embedder) {
+        progress.start('create-embeddings', 'skipped (no embedder configured)')
+        progress.finish('create-embeddings', 'skipped (no embedder configured)')
+        await persist({ completedCycles: ['create-embeddings'] })
+      } else {
         const embedIndexer = new SqliteKbIndexer({
           dbPath: path.join(baseDir, '.kb-index.sqlite'),
           embedder,
         })
+        progress.start('create-embeddings', `embedding with ${embedder.modelId}…`)
         try {
-          const documents = await embedIndexer.embedAllDocuments()
-          const symbols = await embedIndexer.embedAllCodeSymbols()
-          const facts = await embedIndexer.embedAllFacts()
-          if (documents + symbols + facts > 0) {
-            options.progressSink?.(
-              `[kb init] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s) with ${embedder.modelId}.`
+          const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
+          if (counts.total === 0) {
+            progress.finish(
+              'create-embeddings',
+              `up to date (0 items to embed) with ${embedder.modelId}`
+            )
+          } else {
+            const tableLabels: Record<string, string> = {
+              documents: 'docs',
+              code_symbols: 'symbols',
+              facts: 'facts',
+            }
+            const res = await embedIndexer.embedAll({
+              onProgress: p => {
+                const label = tableLabels[p.table] ?? p.table
+                const fraction = p.totalItems > 0 ? p.itemsDone / p.totalItems : 0
+                if (p.status === 'retry') {
+                  const waitSec = Math.round((p.retryWaitMs ?? 0) / 1000)
+                  progress.update(
+                    'create-embeddings',
+                    `${p.itemsDone}/${p.totalItems} (${p.remaining} left) | batch ${p.batchIndex}/${p.totalBatches} retry ${p.retryAttempt}/${p.maxRetries}: ${clipProgressItem(p.retryReason, 40)} (waiting ${waitSec}s)`,
+                    fraction
+                  )
+                } else if (p.status === 'success') {
+                  progress.update(
+                    'create-embeddings',
+                    `${p.itemsDone}/${p.totalItems} (${p.remaining} left) | batch ${p.batchIndex}/${p.totalBatches} done (${p.batchSize} ${label}) with ${p.modelId}`,
+                    fraction
+                  )
+                } else if (p.status === 'start') {
+                  progress.update(
+                    'create-embeddings',
+                    `${p.itemsDone}/${p.totalItems} (${p.remaining} left) | batch ${p.batchIndex}/${p.totalBatches} (${p.batchSize} ${label}) with ${p.modelId}`,
+                    fraction
+                  )
+                }
+              },
+            })
+            progress.finish(
+              'create-embeddings',
+              `Embedded ${res.documents} doc(s), ${res.symbols} symbol(s), ${res.facts} fact(s) with ${embedder.modelId}.`
             )
           }
+          await persist({ completedCycles: ['create-embeddings'] })
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
-          options.progressSink?.(`[kb init] Embedding skipped (${message.slice(0, 80)}).`)
+          if (options.requireEmbeddings) {
+            throw new Error(
+              `kb init embedding failed (${embedder.modelId}): ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
+            )
+          }
+          progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
+          await persist({ completedCycles: ['create-embeddings'] })
         } finally {
           embedIndexer.close()
         }
       }
+      if (options.stopAfter === 'create-embeddings') throw new InitPausedError('create-embeddings')
+    } else {
+      progress.finish('create-embeddings', 'reused from checkpoint')
     }
 
-    const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
+    writeInitNotice(
+      options.progressSink,
+      `[${progressPrefix(options)}] Finishing touches: base "${base}" ready.`
+    )
+
+    const finalCoverageSummary =
+      checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
     return {
       status: 'accepted',
       base,
@@ -1817,9 +1885,10 @@ async function readCheckpoint(filePath: string): Promise<InitCheckpoint | undefi
 }
 
 const VALID_V3_CYCLES = new Set<InitCycle>([
-  'read-inputs',
   'code-index',
   'document-index',
+  'create-embeddings',
+  'read-inputs',
   'import-docs',
   'write',
 ])

@@ -22,7 +22,7 @@ tests:
   - ../../../../tests/tools/hybrid-retriever.test.ts
 description: Behavioral specification for KB Tools
 tags: [spec, kb]
-timestamp: 2026-08-08T22:45:00Z
+timestamp: 2026-08-16T00:00:00Z
 ---
 
 ### Intro
@@ -128,6 +128,8 @@ See companion doc for full vocabulary where applicable.
 | TC-71 | FR-3 | hybrid retrieval detail reports docs/symbols/facts/hops counts | pass |
 | TC-72 | FR-3 | one-hop join surfaces symbols linked from a top document | pass |
 | TC-73 | FR-1 | upsertDocument invalidates the stale embedding on content change so only changed docs are re-embedded | pass |
+| TC-74 | FR-1 | countUnembeddedRows reports pending counts, and embedAll emits a per-batch start and success event that counts remaining down to zero | pass |
+| TC-75 | FR-1 | embedAll emits a retry event when the embedder backs off, and restores the embedder retry hook after it finishes | pass |
 
 ### Related docs
 

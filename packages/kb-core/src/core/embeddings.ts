@@ -18,10 +18,46 @@ export interface Embedder {
   readonly dimensions: number
   /** Embed a batch of texts; returns one unit-normalized vector per input, in order. */
   embed(texts: string[]): Promise<number[][]>
+  /** Optional callback invoked on transient retry backoff attempts. */
+  onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
 }
 
 /** Max texts per Gemini batchEmbedContents request. */
 const GEMINI_BATCH_SIZE = 100
+
+/**
+ * Transient HTTP statuses worth retrying: rate limit (429), request timeout (408), and the
+ * 5xx family. Everything else (auth, bad request) is a hard failure — retrying can't fix it.
+ */
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
+
+/** Retry budget for a single embed request. `0` disables retries. Env-overridable for tests/tuning. */
+function embedMaxRetries(): number {
+  const raw = Number(process.env.KB_EMBED_MAX_RETRIES)
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 5
+}
+
+/** Cap on any single backoff wait, so an absurd `Retry-After` can't stall a run for minutes. */
+function embedMaxBackoffMs(): number {
+  const raw = Number(process.env.KB_EMBED_MAX_BACKOFF_MS)
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 30_000
+}
+
+/**
+ * Parse a `Retry-After` header into milliseconds. The header is either delta-seconds
+ * (`"12"`) or an HTTP-date; both forms are honored, negative/unparseable → undefined so the
+ * caller falls back to exponential backoff.
+ */
+function retryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined
+  const secs = Number(header)
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000)
+  const when = Date.parse(header)
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now())
+  return undefined
+}
+
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 function normalize(vector: number[]): number[] {
   let norm = 0
@@ -35,6 +71,7 @@ export class GeminiEmbedder implements Embedder {
   readonly modelId: string
   readonly dimensions: number
   private readonly model: string
+  onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
 
   constructor(
     private readonly apiKey: string,
@@ -62,34 +99,78 @@ export class GeminiEmbedder implements Embedder {
   }
 
   private async embedBatch(texts: string[]): Promise<number[][]> {
-    const body = {
+    const body = JSON.stringify({
       requests: texts.map(text => ({
         model: `models/${this.model}`,
         content: { parts: [{ text }] },
         outputDimensionality: this.dimensions,
       })),
-    }
-    const response = await fetch(
-      `${this.apiBase()}/v1beta/models/${this.model}:batchEmbedContents?key=${this.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+    })
+    const url = `${this.apiBase()}/v1beta/models/${this.model}:batchEmbedContents?key=${this.apiKey}`
+    const maxRetries = embedMaxRetries()
+    let lastError = ''
+    // Rate limits (429) and transient 5xx/network hiccups are absorbed here with bounded
+    // exponential backoff (honoring `Retry-After`) so a busy provider degrades to a slower
+    // run, not a crash — both under eval load and in a live server. The budget is finite:
+    // once it's spent the request throws, so a truly exhausted quota fails fast instead of
+    // looping forever.
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      let response: Response
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        })
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err)
+        if (attempt >= maxRetries) {
+          throw new Error(
+            `[gemini-embed] request failed after ${attempt + 1} attempt(s): ${lastError.slice(0, 200)}`
+          )
+        }
+        await this.backoff(attempt, undefined, lastError)
+        continue
       }
-    )
-    if (!response.ok) {
+
+      if (response.ok) {
+        const data = (await response.json()) as { embeddings?: Array<{ values?: number[] }> }
+        const embeddings = data.embeddings ?? []
+        if (embeddings.length !== texts.length) {
+          throw new Error(
+            `[gemini-embed] expected ${texts.length} embeddings, got ${embeddings.length}`
+          )
+        }
+        // Truncated MRL vectors must be re-normalized to unit length before cosine comparison.
+        return embeddings.map(e => normalize(e.values ?? []))
+      }
+
       const detail = await response.text().catch(() => response.statusText)
-      throw new Error(`[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`)
+      lastError = `${response.status}: ${detail.slice(0, 200)}`
+      const retryable = RETRYABLE_STATUS.has(response.status)
+      if (!retryable || attempt >= maxRetries) {
+        throw new Error(`[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`)
+      }
+      await this.backoff(attempt, retryAfterMs(response.headers.get('retry-after')), lastError)
     }
-    const data = (await response.json()) as { embeddings?: Array<{ values?: number[] }> }
-    const embeddings = data.embeddings ?? []
-    if (embeddings.length !== texts.length) {
-      throw new Error(
-        `[gemini-embed] expected ${texts.length} embeddings, got ${embeddings.length}`
-      )
-    }
-    // Truncated MRL vectors must be re-normalized to unit length before cosine comparison.
-    return embeddings.map(e => normalize(e.values ?? []))
+    // Unreachable: the loop either returns or throws on the final attempt. Guards the type.
+    throw new Error(`[gemini-embed] request failed: ${lastError.slice(0, 200)}`)
+  }
+
+  /**
+   * Wait before the next attempt: `Retry-After` when the provider sent one, otherwise
+   * exponential backoff (1s, 2s, 4s, …) with jitter, capped so a single wait stays bounded.
+   */
+  private async backoff(attempt: number, retryAfter: number | undefined, reason: string): Promise<void> {
+    const maxRetries = embedMaxRetries()
+    const exponential = 1000 * 2 ** attempt
+    const jitter = Math.floor(Math.random() * 250)
+    const waitMs = Math.min(retryAfter ?? exponential + jitter, embedMaxBackoffMs())
+    this.onRetry?.(attempt + 1, maxRetries, reason, waitMs)
+    console.warn(
+      `[gemini-embed] transient error (${reason.slice(0, 120)}); retrying in ${Math.round(waitMs)}ms`
+    )
+    await sleep(waitMs)
   }
 }
 
@@ -132,20 +213,19 @@ export class LocalEmbedder implements Embedder {
 }
 
 /**
- * Select the embedding backend. Local (on-device, no API) is the default; set
- * `KB_EMBEDDER=gemini` to opt into hosted Gemini embeddings. Returns `undefined` when the chosen
- * backend is unavailable (no local dependency and no Gemini key), so every caller degrades
- * gracefully to the deterministic vector.
+ * Select the embedding backend. `KB_EMBEDDER` pin wins (`local`/`onnx`/`gemini`/`none`).
+ * When unset, a present `GEMINI_API_KEY` selects Gemini so Darwin hosts without
+ * `onnxruntime-node` do not load MiniLM. Otherwise Local ONNX. Returns `undefined` when
+ * the chosen backend is unavailable, so callers can degrade to the deterministic vector.
  */
 export function createEmbedder(): Embedder | undefined {
-  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase()
-  if (backend === 'gemini') {
-    const geminiKey = process.env.GEMINI_API_KEY?.trim()
+  const backend = process.env.KB_EMBEDDER?.trim().toLowerCase() ?? ''
+  if (backend === 'none') return undefined
+  const geminiKey = process.env.GEMINI_API_KEY?.trim()
+  if (backend === 'gemini' || (backend === '' && geminiKey)) {
     if (geminiKey) return new GeminiEmbedder(geminiKey)
     return undefined
   }
-  if (backend === 'none') return undefined
-  // Default: local, on-device weights.
   return new LocalEmbedder()
 }
 

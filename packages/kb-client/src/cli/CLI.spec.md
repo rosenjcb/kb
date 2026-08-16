@@ -239,7 +239,7 @@ See companion doc for full vocabulary where applicable.
 | TC-220 | FR-20 | Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt | pass |
 | TC-221 | FR-20 | Given rescan with an active base, uses it in non-interactive mode | pass |
 | TC-222 | FR-20 | Given rescan without --base and no selected base in non-interactive mode, throws guidance | pass |
-| TC-223 | FR-20 | Given a full init cycle, then progress counter shows 6/6 (not 7) | pass |
+| TC-223 | FR-20 | Given a full init cycle, then progress counter shows 3/3 (not more) | pass |
 | TC-224 | FR-20 | Given a TypeScript-only project, then AST code-index uses no LLM tokens | pass |
 | TC-225 | FR-20 | Given an active base, uses it without prompting | pass |
 | TC-227 | FR-20 | Given --base flag, uses it directly without prompting | pass |

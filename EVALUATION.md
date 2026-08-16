@@ -88,7 +88,7 @@ pnpm run eval -- --all-suites --control-agent cursor --control-model composer-2.
 pnpm run eval -- --all-suites --skip-control --skip-scan   # reuse indexes, kb-only
 pnpm run eval -- --all-suites --sequential          # one suite at a time
 pnpm run eval -- --all-suites --parallel 4          # cap concurrency
-pnpm run eval -- --all-suites --per-suite-server    # legacy: one kb-server per suite
+pnpm run eval -- --all-suites --keep-going          # run every suite even if one fails (default: fast-fail)
 ```
 
 | npm script | Maps to |
@@ -193,7 +193,7 @@ as `-` rather than erroring.
 
 `--all-suites` runs the ten benchmark suites above (everything except `generic` and the retired-from-default `nifi`/`duckdb` packs).
 
-**Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. The parent starts **one shared multi-base `kb-server`**; each child attaches (`KB_EVAL_SERVER_URL`) and selects its `eval-{suite}` base per request via `--base` / `X-KB-Base` (and probes `/healthz?base=`). Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. Legacy isolation: `--per-suite-server` (one ephemeral port per suite). Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
+**Multi-suite parallelism.** Passing more than one suite (`--suites a,b`, repeated `--suite`, or `--all-suites`) runs a **Node-native** batch: one child `eval-run` process per suite, **parallel by default**. The parent starts **one shared multi-base `kb-server`** that stays up for the whole batch (never restarted per suite); each child attaches (`KB_EVAL_SERVER_URL`) and selects its `eval-{suite}` base per request via `--base` / `X-KB-Base` (and probes `/healthz?base=`). Cap with `--parallel N` or `KB_EVAL_PARALLEL`; force serial with `--sequential`. The batch **fast-fails** by default — the first suite failure aborts the rest; pass `--keep-going` to run every suite regardless. Do not combine multi-suite mode with single-suite-only flags (`--repo`, `--base`, `--run-dir`, `--out`, `--suite-yaml`, `--questions-file`).
 
 Override questions with `--questions-file path.json` (JSON array of strings matching suite length; single-suite only).
 
@@ -545,8 +545,8 @@ The `init_result` object should contain:
 - `written_doc_ids`
 - `init_run_id`
 - `init_run_id_note`
-- `docs_list`
-- `graph_summary`
+- `docs_list` — in 2.0 this is `{ count }` from `SELECT COUNT(*) FROM documents` on the session SQLite (the `kb docs` CLI was removed); not a live `kb docs list` dump
+- `graph_summary` — document↔symbol map counts from `kb graph` (flat links; not the retired fact-graph triplets)
 
 If a field is unavailable, include it with `null` and explain why in a sibling `*_note` field when appropriate.
 

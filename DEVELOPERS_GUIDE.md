@@ -130,7 +130,7 @@ pnpm run eval -- --suite raylib --auto-score   # canonical external benchmark
 pnpm run eval -- --suite kb --auto-score       # dogfood smoke on this repo
 ```
 
-`eval-run.mjs` orchestrates init/scan via `scripts/eval-index.ts` (offline `@kb/core`), then remote queries against a live `kb-server`. Multi-suite batches share **one multi-base `kb-server`** (children attach with `--base` / `X-KB-Base`); `--per-suite-server` restores one process per suite. Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
+`eval-run.mjs` orchestrates init/scan via `scripts/eval-index.ts` (offline `@kb/core`), then remote queries against a live `kb-server`. Multi-suite batches share **one long-lived multi-base `kb-server`** that stays up for the whole batch (children attach with `--base` / `X-KB-Base`); the batch fast-fails on the first suite failure (`--keep-going` runs them all). Artifacts land under `~/.kb/evaluations/`. Override bases, repos, and scoring in suite YAML under `eval/suites/`.
 
 | Doc | Contents |
 |-----|----------|

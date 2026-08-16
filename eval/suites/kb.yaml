@@ -3,35 +3,33 @@ schema_version: 1
 id: kb
 display_name: kb
 repo_url: https://github.com/rosenjcb/kb.git
-rubric_focus: the **kb** local-first knowledge CLI/repo
+rubric_focus: the **kb** client/server knowledge CLI — 2.0 document + symbol index and hybrid retrieval
 questions:
   - What problem does kb solve, and what is the normal workflow for setting up indexing and querying a knowledge base?
   - What are the main phases when kb-server boot-builds or refreshes a knowledge base, and what kinds of data does each phase add to the local store?
   - How does a scan refresh an existing base, and how is that different from the initial bootstrap that creates a base?
-  - How are markdown documents turned into import_doc facts during indexing?
+  - How are markdown documents stored during indexing, and how are they linked to code symbols?
   - How does code indexing work at a high level, including the role of the tree-sitter indexer?
-  - How does kb query retrieve evidence from facts, FTS/vector scoring, and graph relationships?
+  - How does kb query retrieve evidence from documents, code symbols, and facts?
   - How are kb skills packaged and installed into supported agent environments?
   - How does the eval runner exercise kb, from suite selection through indexing, query harvest, and automatic scoring?
   - Does kb send my repository's code or documents to a remote server to build the knowledge base, or does indexing happen locally?
-  - What is the default maximum number of passes for the deep facts-query retrieval loop, and which environment variable overrides it?
+  - What is the default discovery depth for kb query, and how does a deep retrieval differ from a single hybrid pass?
   - How do I use kb to provision and deploy a Kubernetes cluster for my application?
-  - At what retrieved-fact pool size does the fact curator start running, and what happens to facts the judge does not keep?
-  - Walk through a single kb query in order, from the deep retrieval loop to the final answer — what does each stage (retrieval orchestrator, sufficiency judge, fact curator, synthesis) receive and produce?
+  - At what retrieved-unit pool size does the fact curator start running, and what happens to units the judge does not keep?
+  - Walk through a single kb query in order, from hybrid retrieval to the final answer — what does each stage (intent loop, retrieveHybrid, curator, synthesis) receive and produce?
   - Step by step, how does one interactive chat turn work, from the user's message through retrieval to the synthesized reply?
-  - How would I add support for a new programming language to kb's code indexing, from grammar to queryable facts?
+  - How would I add support for a new programming language to kb's code indexing, from grammar to queryable symbols?
   # Ambiguity / competing-hypothesis probes (inquiry lanes + common-word alias precision).
   # These are easy to answer wrongly from a false entity landing or stale docs.
   - What is the role of the tree-sitter indexer in code indexing?
-  - How does kb turn TypeScript and JavaScript source into code-graph facts today — is there a separate TypeScript-compiler indexer, or one AST path for those languages too?
+  - How does kb turn TypeScript and JavaScript source into code symbols today — is there a separate TypeScript-compiler indexer, or one AST path for those languages too?
   - "Who actually builds the knowledge-base index in normal use: the kb client CLI, or kb-server — and what does the client send on each query?"
   - 'When operators talk about a kb "base", what is that object on disk, how does a multi-base kb-server choose which base to serve, and how is that different from a git working tree?'
   - For a long, vague question about how the tree-sitter indexer fits into code indexing end-to-end, does kb still only expand short questions with an LLM, or can it fan out targeted sub-queries from a resolved entity without a length gate?
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Product probes on query-time scope — still kb-domain questions, not meta-eval riddles.
   - What is the role of the entity registry in query-time scope inference?
-  - "For a long, vague question about how the facts-query research orchestrator fits into deep retrieval, sufficiency judging, fact curation, and final synthesis end-to-end — does resolving that entity still trigger ontology-typed sub-queries with no query-length gate?"
+  - Walk through how hybrid retrieval, the fact curator, and one-shot synthesis fit together on a kb query — and if an entity resolves, do ontology-typed sub-queries still run with no query-length gate?
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -41,19 +39,21 @@ answers:
     `KB_HOST` / `KB_PORT` / `KB_CONNECTION_STRING` and asks natural-language questions via `kb query` or
     interactive chat (`kb`). Bases are managed with `kb base`; repo membership and ignore patterns
     are declared on the server via `KB_SERVER_BASE_GIT_REPOS` and `KB_SERVER_IGNORE`. Supporting
-    commands expose facts, documents, graph, publishing, and installed skills. The core user loop
+    commands expose documents, graph, publishing, and installed skills. The core user loop
     is: start/configure kb-server → connect the client → query or chat.
 
   - >
     Indexing runs inside **@kb/core** on kb-server (or in the eval harness via
     `scripts/eval-index.ts`). Bootstrap clones or registers git repo(s) into
     `~/.kb/sessions/<base>/repos/<slug>/` and runs checkpointed phases **per repo**:
-    **read-inputs** discovers markdown and repo signals; **code-index** writes import_code facts
-    and structural edges from AST indexers; **document-facts** segments markdown into deterministic
-    import_doc facts; **import-docs** / **write** preserve original markdown in SQLite (scan also
-    plans claim mutations in write). After the per-repo loop, **integration-ingest** reconciles
-    cross-repo relationships (`depends_on_repo`, `cross_repo_symbol`, `references_repo`) so one base
-    can connect facts across multiple git repos.
+    **read-inputs** discovers markdown and repo signals; **code-index** writes `code_symbols` from
+    AST indexers; **document-facts** segments markdown into sentence facts (OKF frontmatter stripped;
+    a doc's `resource:` field scopes which exported symbol each segment anchors to);
+    **import-docs** / **write** store each markdown file as a verbatim document in SQLite and
+    record **doc_code_links** between documents and the symbols they describe. After the per-repo
+    loop, **integration-ingest** reconciles cross-repo relationships (`depends_on_repo`,
+    `cross_repo_symbol`, `references_repo`). 2.0 retrieval is primarily **documents + symbols**;
+    sentence facts remain a third unit type, not the whole index.
 
   - >
     A **scan** refreshes an existing base rather than creating one. It works over repos already
@@ -66,37 +66,42 @@ answers:
     repos from the env on boot and folds in any newly-declared ones.
 
   - >
-    Markdown fact ingest is deterministic (`packages/kb-core/src/core/scan-fact-ingest.ts`).
-    **document-facts** reads markdown source files, strips OKF frontmatter when present, splits the
-    body into sentence-like segments, and upserts each segment as an import_doc fact with a stable
-    source reference such as `path.md#s0`. A doc's `resource:` field scopes which exported symbol
-    each segment anchors to. This runs after code facts are available during indexing. Existing
-    segment facts for a changed file are purged or tombstoned before re-ingest so removed text does
-    not linger in retrieval.
+    Markdown ingest is deterministic. **import-docs** writes one original document per discovered
+    markdown file into the `documents` table. **document-facts** (`scan-fact-ingest.ts`) strips OKF
+    frontmatter when present, splits the body into sentence-like segments, and upserts each segment
+    as an import_doc fact with a stable source reference such as `path.md#s0`. Documents are linked
+    to the code symbols they describe via **`doc_code_links`**. Existing segment facts for a changed
+    file are purged or tombstoned before re-ingest so removed text does not linger. Query-time
+    retrieval treats the stored **document** as a first-class unit; the sentence facts are an extra
+    lane, not the only way to find the file.
 
   - >
     Code indexing is deterministic and does not depend on an LLM. Every language — including
     TypeScript/JavaScript — goes through a single `TreeSitterIndexer`
     (`packages/kb-core/src/tools/tree-sitter-indexer.ts`) that parses one file at a time with a
     WASM grammar (`web-tree-sitter`), so peak memory is bounded by the largest file rather than the
-    whole project. It writes import_code facts for symbols, imports, and structural relationships
-    (including constant-value and EXTENDS/IMPLEMENTS edges), and records a per-file content_hash in
-    `code_file_state` to skip unchanged code on future scans. Languages without a wired WASM grammar
-    are simply not indexed — there is no LLM fallback. The resulting code facts participate in
-    graph edges and doc-fact anchoring.
+    whole project. It writes **`code_symbols`** (and related structural edges) and records a per-file
+    content_hash in `code_file_state` to skip unchanged code on future scans. Languages without a
+    wired WASM grammar are simply not indexed — there is no LLM fallback. Those symbols participate
+    in `doc_code_links` and in hybrid retrieval.
 
   - |
-    `kb query` (HTTP to kb-server in normal use) is facts-first: the server retrieves fact rows plus
-    graph context, then asks the configured LLM to answer from that evidence. Retrieval blends
-    several signals:
+    `kb query` (HTTP to kb-server in normal use) runs **hybrid retrieval**, then asks the configured
+    LLM to answer from that evidence. `runQueryTruthRetrieval()` → `runIntentLoop` →
+    `FactsDocumentReader.queryDocuments()` → **`retrieveHybrid`**. The fused pool has three unit
+    types — **documents**, **code symbols**, and **facts** — not facts alone:
 
-    - **Lexical** — SQLite FTS over the `facts` table.
-    - **Semantic** — deterministic hash-based cosine scoring (a lexical proxy, not neural embeddings).
-    - **Graph** — BFS neighbor expansion over `fact_edges`, with repo-aware ordering for multi-repo bases.
-    - **Query expansion** — related terms drawn from graph and fact relationships before search.
+    - **Lexical** — SQLite FTS5/BM25 over each unit type (`LANE_DEPTH = 40`).
+    - **Neural** — embedding cosine that re-ranks the lexical pool when an embedder is configured
+      (`KB_EMBEDDER`; Gemini when `GEMINI_API_KEY` is set and the embedder is unpinned). With
+      `KB_EMBEDDER=none`, neural lanes fall back to a deterministic hash vector.
+    - **Fusion** — Reciprocal Rank Fusion (`RRF_K = 60`) across the six ranked lists.
+    - **Hop** — a depth-1 walk over `doc_code_links` (`HOP_LIMIT = 8`) so a hit document pulls the
+      symbols it describes and a hit symbol pulls the docs that describe it.
 
-    Deep discovery uses the facts-query research orchestrator (exploration ponds, sufficiency judge).
-    Output reports retrieval method, facts considered, provenance ids, and the synthesized answer.
+    There is no facts-only multi-pond BFS and no `FactsQueryResearchOrchestrator`. Deep mode fans
+    out extra `retrieveHybrid` passes and then curates; output reports
+    `hybrid:docs=…,symbols=…,facts=…,hops=…`.
 
   - >
     kb skills are markdown skill documents loaded from **@kb/core** (`loadSkill`). The client
@@ -113,10 +118,12 @@ answers:
     - **Resolve repo** — clone or locate the target repository named by the suite (default `repo_url`).
     - **Ensure base** — session name defaults to `eval-{suiteId}`; if empty, `scripts/eval-index.ts init`
       calls **@kb/core** directly from the kb checkout (not the cloned target's cwd).
-    - **Refresh index** — every harvest runs `eval-index scan` (core scan) before queries.
+    - **Refresh index** — the default harvest runs `eval-index scan` before queries; `--skip-scan`
+      reuses the existing `eval-{suite}` session, and `--force-init` wipes it and inits from scratch.
     - **Ask questions** — pose each suite question with `kb query` and save per-question outputs.
-    - **Auto-score** — optionally batch-grade via a judge model (Gemini via `GEMINI_API_KEY` or OpenAI
-      fallback) on correctness, usefulness, relevance, specificity, and evidence handling.
+    - **Auto-score** — batch-grade via a judge model (Gemini via `GEMINI_API_KEY` or OpenAI
+      fallback) on correctness, usefulness, relevance, specificity, and evidence handling, using the
+      suite YAML `answers` as factual ground truth (not a style template).
 
     Artifacts land under `~/.kb/evaluations/<run>/` (artifact.json, auto-scores.json, telemetry,
     optional control comparison).
@@ -124,20 +131,23 @@ answers:
   - >
     Indexing runs on **kb-server** (or locally in the eval harness) — it clones/reads repos into
     `KB_HOME` and builds a local SQLite base (`.kb-index.sqlite`) on that host. Code indexing
-    (tree-sitter AST) and markdown doc-fact ingest are deterministic with no LLM and no bulk upload
-    of your source to a third party for indexing. The **kb client** sends natural-language questions
-    (and chat context) to kb-server over HTTP; it does not ship your repository on each query.
-    Outbound LLM calls happen at **query/chat synthesis** time (and optional judge/curator steps) —
-    not as a remote "send us your repo" SaaS ingest. With no provider key, retrieval still works;
-    only synthesized natural-language answers are unavailable.
+    (tree-sitter AST into `code_symbols`) and markdown document ingest are deterministic with no LLM
+    and no bulk upload of your source to a third party for indexing. The **kb client** sends
+    natural-language questions (and chat context) to kb-server over HTTP; it does not ship your
+    repository on each query. Outbound LLM calls happen at **query/chat synthesis** time (and
+    optional judge/curator steps) — not as a remote "send us your repo" SaaS ingest. With no
+    provider key, retrieval still works; only synthesized natural-language answers are unavailable.
 
   - >
-    The deep facts-query retrieval loop defaults to a maximum of 24 passes, overridden by the
-    `KB_FACTS_QUERY_MAX_ITERS` environment variable (clamped 1–24; `-1` lifts it toward the absolute
-    safety cap of 512 passes). It is one of three deep-loop knobs: the others are
-    `KB_FACTS_QUERY_MAX_HOPS` (graph hops, default 20) and `KB_FACTS_QUERY_MAX_PONDS` (exploration
-    ponds, default 6). A correct answer must give the number 24 and the `KB_FACTS_QUERY_MAX_ITERS`
-    variable specifically, not a vague "it is configurable."
+    `kb query` defaults to **deep** discovery. A **shallow** query is a single `retrieveHybrid` pass
+    over the user string. **Deep** (the default) keeps that base pass and adds fan-out sub-queries —
+    ontology-typed inquiry lanes when stage-0 resolved an entity, otherwise the short-question LLM
+    expander — each another `retrieveHybrid` pass, then RRF-merges the lists (`mergeRetrievals`) and
+    runs the fact curator. The intent loop's iteration cap defaults to **3**, overridden by
+    `KB_INTENT_LOOP_MAX_ITERATIONS`. There is no `KB_FACTS_QUERY_MAX_ITERS`, no pond count, and no
+    24-pass facts-query orchestrator. `KB_QUERY_TRACE=true` is a diagnostic dump flag, not the
+    iteration override. A correct answer must distinguish deep vs shallow hybrid retrieval and
+    must not cite the removed facts-query loop.
 
   - >
     This is out of scope for kb. kb is a knowledge system — kb-server indexes repositories into a
@@ -148,32 +158,30 @@ answers:
     inside an indexed repository — it has no cluster-provisioning capability of its own.
 
   - >
-    The fact curator runs only when the retrieved pool exceeds 12 facts
-    (`DEFAULT_MIN_RESULTS_TO_CURATE`). Facts with high token overlap are auto-kept with no LLM call;
+    The fact curator runs only when the retrieved **unit** pool exceeds 12
+    (`DEFAULT_MIN_RESULTS_TO_CURATE`). Units with high token overlap are auto-kept with no LLM call;
     the remainder go to a single structured judge verdict (`{keep, gaps, sufficient}`) keyed on the
-    raw user question. Facts the judge does not keep are hard-dropped — there is no 15% floor. When the
-    judge reports gaps and the set is not yet sufficient, the curator issues bounded shallow
+    raw user question. Units the judge does not keep are hard-dropped — there is no 15% floor. When
+    the judge reports gaps and the set is not yet sufficient, the curator issues bounded shallow
     re-discovery queries (excluding what is already known) to refill those gaps. It fails safe to the
     unfiltered pool on any LLM/parse error and guards against ever returning an empty set. Curator
     decisions are recorded out-of-band on `retrieval.curation` and are not injected into the synthesis
     context.
 
   - >
-    A kb query runs the shared `runQueryTruthRetrieval` path and answers facts-first, in order:
-    (1) the query string is optionally graph-expanded (`expandQueryWithGraph`) to widen terms via
-    `fact_edges`; (2) the **FactsQueryResearchOrchestrator** deep loop runs adaptive passes over
-    exploration "ponds", each pass merging BFS edge-neighbors over `fact_edges`, lexical FTS, and
-    concept-frontier rows, then scoring facts (doc facts weight text overlap; code facts weight
-    graph proximity); (3) each iteration checks early exit — a heuristic (≥20 facts scoring ≥0.5),
-    an LLM **sufficiency judge** every 3 iterations, or a plateau / frontier-exhausted stop; (4) it
-    produces a ranked pool above `MIN_FACT_SCORE` (0.20); (5) when that pool exceeds 12 facts the
-    **fact curator** runs — auto-keeping high-overlap facts, sending the rest to one structured
-    verdict `{keep, gaps, sufficient}` keyed on the raw question, hard-dropping non-kept facts, and
-    issuing bounded re-discovery to refill gaps; (6) surviving facts are formatted with
-    `formatRetrievedFactsForLLM` (~2000 chars/fact); (7) `enrichReadDocumentsAnswerWithLLM` makes a
-    single synthesis call to write the answer. Curator decisions are recorded out-of-band on
-    `retrieval.curation` and never injected into synthesis. A correct answer should give the stages
-    in order and note the >12-fact curator trigger and the one-shot synthesis.
+    A kb query runs the shared `runQueryTruthRetrieval` path, in order:
+    (1) `runIntentLoop` / `DefaultIntentRouter` hands the question to `read_facts` /
+    `FactsDocumentReader.queryDocuments()`; (2) **`retrieveHybrid`** scores documents, symbols, and
+    facts on lexical FTS + neural (or hash) lanes, fuses them with RRF, and does a depth-1
+    `doc_code_links` hop; (3) in **deep** mode, inquiry-lane / expander sub-queries run more
+    `retrieveHybrid` passes and `mergeRetrievals` fuses them; (4) when the fused pool exceeds 12
+    units the **fact curator** runs — auto-keeping high-overlap units, sending the rest to one
+    structured verdict `{keep, gaps, sufficient}`, hard-dropping non-kept units, and issuing bounded
+    re-discovery to refill gaps; (5) surviving units are formatted with
+    `formatRetrievedFactsForLLM`; (6) `enrichReadDocumentsAnswerWithLLM` makes a **single** synthesis
+    call to write the answer. There is no `FactsQueryResearchOrchestrator`, no exploration ponds,
+    and no every-3-iteration sufficiency judge on a facts-query loop. A correct answer should give
+    the hybrid stages in order and note the >12-unit curator trigger and one-shot synthesis.
 
   - >
     An interactive chat turn is handled by `runChatSynthesis` — a multi-turn loop whose only tool is
@@ -181,15 +189,14 @@ answers:
     `SYNTHESIS_QUERY_RE`) a lightweight **decompose** pre-step splits the message into 1–4
     sub-queries that run in parallel and are injected as synthetic tool turns for grounding; (2) an
     **agentic while loop** calls the LLM with the `query_kb` tool, up to `MAX_CHAT_TURNS` (12); (3)
-    when the model calls `query_kb` the query is graph-expanded and retrieved through the same
-    `executeChatQueryTruthRetrieval` → `runQueryTruthRetrieval` path as `kb query` (deep orchestrator
-    + fact curator), with all tool calls in a round run concurrently; (4) weak-evidence retrieval
-    appends a retry hint telling the model to try different terms; (5) the loop breaks when the model
-    returns no `tool_use` (or the cap is hit) and its final text is the answer. Each turn's retrieval
-    is independent — no fact pool persists across turns; only prior question/answer prose persists in
-    `messages[]`, so relevance is re-decided per query by the curator. A correct answer should cover
-    decompose → agentic `query_kb` loop → shared retrieval/curation → final synthesis, and note that
-    there is no cross-turn fact pool.
+    when the model calls `query_kb` the query is retrieved through the same
+    `executeChatQueryTruthRetrieval` → `runQueryTruthRetrieval` path as `kb query` (hybrid
+    retrieveHybrid + curator on the deep path), with all tool calls in a round run concurrently; (4)
+    weak-evidence retrieval appends a retry hint telling the model to try different terms; (5) the
+    loop breaks when the model returns no `tool_use` (or the cap is hit) and its final text is the
+    answer. Each turn's retrieval is independent — no unit pool persists across turns; only prior
+    question/answer prose persists in `messages[]`. A correct answer should cover decompose →
+    agentic `query_kb` loop → shared hybrid retrieval/curation → final synthesis.
 
   - >
     kb code indexing is deterministic and runs every language through a single `TreeSitterIndexer`
@@ -199,17 +206,17 @@ answers:
     `LANG_CONFIGS`, giving its grammar require-spec via `resolveWasm('tree-sitter-<lang>',
     '<lang>.wasm')` (resolved at use-time, not eagerly at startup); (3) map the language's file
     extensions to that language key in `EXT_MAP` so code-index knows which files to parse; (4) ensure
-    the grammar's AST nodes map to import_code facts (symbols, imports) and structural edges — the
-    JS/TS family shares node-navigation, other grammars may need their node kinds handled; (5)
-    rebuild and run `kb scan` (or `kb init`) so files of the new extension are parsed into facts and
-    edges, with a per-file `content_hash` recorded in `code_file_state` to skip unchanged files
-    later. A language without a wired grammar is simply not indexed. A correct answer should name the
-    `LANG_CONFIGS` / `EXT_MAP` wiring and the rescan step, and note the deterministic no-LLM path.
+    the grammar's AST nodes map to exported symbols and structural edges — the JS/TS family shares
+    node-navigation, other grammars may need their node kinds handled; (5) rebuild and run `kb scan`
+    (or `kb init`) so files of the new extension are parsed into `code_symbols`, with a per-file
+    `content_hash` recorded in `code_file_state` to skip unchanged files later. A language without a
+    wired grammar is simply not indexed. A correct answer should name the `LANG_CONFIGS` / `EXT_MAP`
+    wiring and the rescan step, and note the deterministic no-LLM path.
 
   - >
     The tree-sitter indexer (`TreeSitterIndexer` in
     `packages/kb-core/src/tools/tree-sitter-indexer.ts`) is the deterministic AST code-index path:
-    it parses one file at a time with a WASM grammar (`web-tree-sitter`), writes import_code facts
+    it parses one file at a time with a WASM grammar (`web-tree-sitter`), writes `code_symbols`
     for symbols/imports/structural edges, and records per-file `content_hash` in `code_file_state`
     so unchanged files are skipped on scan. It is not a database schema concept. A correct answer
     must describe that indexer role and must not pivot to a Prisma/TypeORM `Role` enum, a generic
@@ -220,7 +227,7 @@ answers:
     Live TypeScript/JavaScript code indexing goes through `TreeSitterIndexer` only
     (`packages/kb-core/src/tools/tree-sitter-indexer.ts` + `web-tree-sitter` WASM grammars) — the same
     AST path as other wired languages. There is no separate TypeScript-compiler / type-checker
-    indexer on the ingest path and no LLM fallback for code-graph facts. A correct answer names
+    indexer on the ingest path and no LLM fallback for code symbols. A correct answer names
     `TreeSitterIndexer` as the TS/JS writer and must not invent a second live TS-only indexer.
 
   - >
@@ -245,20 +252,23 @@ answers:
     When stage-0 resolves an entity (and `KB_ENTITY_SCOPE` is on), kb builds deterministic
     ontology-typed sub-queries from the entity graph — ownership, locus, dependency, composition, and
     kind-conditioned mechanism probes — with **no query-length gate**, so a long vague question about
-    the tree-sitter indexer still gets targeted probes. The older LLM expander's short-question gate
-    remains only as the fallback when no entity resolves. A correct answer must not claim expansion
-    only runs for ≤2-token questions when an entity is resolved; it should separate entity-grounded
-    fan-out (no length gate) from the LLM expander fallback.
+    the tree-sitter indexer still gets targeted `retrieveHybrid` probes. The older LLM expander's
+    short-question gate remains only as the fallback when no entity resolves. A correct answer must
+    not claim expansion only runs for ≤2-token questions when an entity is resolved; it should
+    separate entity-grounded fan-out (no length gate) from the LLM expander fallback.
+
   - >
     `EntityRegistry` (`packages/kb-core/src/tools/entity-registry.ts`) stores canonical
-    entities, aliases, typed edges, and fact links so stage-0 scope inference can partition the
-    fact pool (`KB_ENTITY_SCOPE`). A correct answer must describe that registry role and must
+    entities, aliases, typed edges, and links so stage-0 scope inference can partition the
+    retrieval pool (`KB_ENTITY_SCOPE`). A correct answer must describe that registry role and must
     not pivot lowercase "role" to the Prisma `Role` enum / `user_role`, or reduce the answer to
     "there is an entities SQL table" without the query-time scope use.
+
   - >
-    `FactsQueryResearchOrchestrator` owns the deep adaptive retrieval loop (ponds, graph hops,
-    sufficiency) used by `kb query` / chat before curator and synthesis. A correct answer must
-    name that orchestrator path, separate entity-grounded fan-out (no length gate) from the
-    short-question LLM expander fallback, and must not claim long vague entity-resolved
-    questions skip fan-out. Watch the common-word trap: lowercase "facts" must not falsely land
-    the answer on the SQL `facts` model alone.
+    Hybrid retrieval (`retrieveHybrid`) fuses documents, symbols, and facts; the fact curator
+    filters that pool on the deep path; `enrichReadDocumentsAnswerWithLLM` writes one-shot prose.
+    The removed `FactsQueryResearchOrchestrator` is not on this path. When stage-0 resolves an
+    entity, ontology-typed inquiry lanes still fan out with **no query-length gate**; the
+    short-question LLM expander is only the unresolved fallback. A correct answer must describe the
+    hybrid → curator → synthesis stack and must not claim the deleted ponds/orchestrator loop is
+    how kb query works today.

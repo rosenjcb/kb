@@ -2,7 +2,7 @@
 schema_version: 1
 id: generic
 display_name: generic
-rubric_focus: the **target software repository** knowledge base (facts + docs in SQLite)
+rubric_focus: the **target software repository** knowledge base (documents + symbols in SQLite)
 questions:
   - What is this project for, and what are its main capabilities?
   - How does this project's architecture work, including major modules and platform support?
@@ -12,8 +12,6 @@ questions:
   - What are the coding conventions and style guidelines for contributing?
   - What are the main gotchas, constraints, and known limitations?
   - What does the roadmap or changelog say about future plans and recent version history?
-  # Alias / inquiry-lane landing probes — spaced/hyphenated prose for harvested
-  # CamelCase entities (or best landable cli/library/repo on thin registries),
-  # plus a long vague question that should fan out without a length gate.
+  # Alias / landing probes — product questions about the target repo, not kb internals.
   - What is the role of the main entrypoint or core library type this repository is named for?
-  - "For a long, vague question about how that core named component fits into the project end-to-end, can retrieval fan out from a resolved entity without a query-length gate?"
+  - How does that core named component fit into the rest of the project end-to-end — architecture, build, and the main operator loop?
