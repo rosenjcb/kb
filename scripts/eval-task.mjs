@@ -67,7 +67,7 @@ const TASKS_DIR = path.join(KB_REPO, 'eval', 'tasks')
 
 export const DEFAULT_MAX_TURNS = 30
 
-const KB_ARM_DISALLOWED = null // kb arm gets everything, including kb MCP tools
+const _KB_ARM_DISALLOWED = null // kb arm gets everything, including kb MCP tools
 const CONTROL_ARM_DISALLOWED =
   'Skill,Bash(kb:*),mcp__kb__query,mcp__kb__get_feedback_requests,mcp__kb__submit_feedback'
 const CONTROL_ARM_SYSTEM_PROMPT_APPEND =
@@ -221,8 +221,7 @@ export function buildKbArmArgv({ maxTurns, server }) {
   const argv = [
     '-p',
     '--append-system-prompt',
-    loadDevWorkflowSkillBody() +
-      `\n\nWhenever you call the kb MCP tool, always pass base: '${server.base}' explicitly.`,
+    `${loadDevWorkflowSkillBody()}\n\nWhenever you call the kb MCP tool, always pass base: '${server.base}' explicitly.`,
     '--mcp-config',
     kbMcpConfigJson(server),
     '--strict-mcp-config',
@@ -269,7 +268,7 @@ export function runAgentArm({ cwd, prompt, argv, label }) {
   let json
   try {
     json = extractJsonObject(res.stdout || '')
-  } catch (e) {
+  } catch (_e) {
     throw new Error(
       `[eval-task] ${label}: could not parse agent JSON output (exit ${res.status}): ${
         (res.stderr || '').slice(0, 500)
