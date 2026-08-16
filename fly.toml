@@ -36,6 +36,10 @@ primary_region = "iad"
   # Frozen serve: no git, no reindex. Refresh comes only from adopting a new
   # snapshot (published daily by the builder), never from in-process rescans.
   KB_SERVER_BOOTSTRAP_POLICY = "snapshot-only"
+  # Must match fly.builder.toml's KB_EMBEDDER: query-time embedding has to use
+  # the same backend the builder used, or query vectors land in the wrong
+  # space for the stored model_id rows and cosine similarity is meaningless.
+  KB_EMBEDDER = "gemini"
   # Pages + local `pnpm run demo` (http://localhost:8000 → this Fly host).
   KB_SERVER_ALLOWED_ORIGINS = "https://rosenjcb.github.io,http://localhost:8000"
   LOG_LEVEL = "info"

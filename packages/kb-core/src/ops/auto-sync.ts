@@ -90,11 +90,11 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
 /**
  * Embed whatever the re-index just wrote. The per-repo rescan path skips embedding (it has no
  * view of the whole base), so without this the newly indexed documents and symbols would only
- * be reachable through the lexical lane. Best-effort — retrieval still works unembedded.
+ * be reachable through the lexical lane. Throws on failure — a rescan that reports success
+ * without vectors would leave the base's semantic lane silently stale.
  */
 async function embedNewRows(baseDir: string, onProgress?: (line: string) => void): Promise<void> {
   const embedder = createEmbedder()
-  if (!embedder) return
   const indexer = new SqliteKbIndexer({
     dbPath: path.join(baseDir, '.kb-index.sqlite'),
     embedder,
@@ -108,9 +108,6 @@ async function embedNewRows(baseDir: string, onProgress?: (line: string) => void
         `[kb] Embedded ${documents} document(s), ${symbols} symbol(s), ${facts} fact(s).`
       )
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    onProgress?.(`[kb] Embedding skipped (${msg.slice(0, 80)}).`)
   } finally {
     indexer.close()
   }
@@ -120,7 +117,9 @@ async function embedNewRows(baseDir: string, onProgress?: (line: string) => void
  * Pull every git clone on the base's volume and re-index any with new commits, then embed
  * whatever changed. The clones under `<baseDir>/repos/*` are the tracked-repo registry
  * (see `discoverBaseRepos`); nothing is persisted about sync state — the reindex scheduler
- * owns cadence, and each clone's HEAD is its own source of truth. Never throws.
+ * owns cadence, and each clone's HEAD is its own source of truth. The per-repo sync loop
+ * itself never throws (`syncRepo` catches and reports failures per repo), but the trailing
+ * embed step does: a caller must not treat a successful return as "vectors are current."
  */
 export async function scanBaseRepos(baseDir: string, opts: ScanOptions = {}): Promise<number> {
   const repos = await discoverBaseRepos(baseDir)
