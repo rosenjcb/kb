@@ -178,6 +178,8 @@ describe('cloneAtCommit + branchOffCommit + inspectArmOutcome (local repo, no ne
     const dest = path.join(tmpDir(), 'clone4')
     cloneAtCommit({ url: source, dest, commit })
     branchOffCommit(dest, 'eval-task/test-branch')
+    spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dest })
+    spawnSync('git', ['config', 'user.name', 'Test'], { cwd: dest })
     fs.writeFileSync(path.join(dest, 'b.txt'), 'new file\n')
     spawnSync('git', ['add', 'b.txt'], { cwd: dest })
     spawnSync('git', ['commit', '-q', '-m', 'add b.txt'], { cwd: dest })
