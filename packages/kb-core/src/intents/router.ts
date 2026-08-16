@@ -1,4 +1,4 @@
-import { type EvidenceLabel, isEvidenceLabel } from '../core/evidence-label'
+import { type EvidenceLabel, assessResultCount, isEvidenceLabel } from '../core/evidence-label'
 import dayjs from 'dayjs'
 import type { RunCollector } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
@@ -107,8 +107,13 @@ function extractProvenance(result: unknown): string[] {
 
 /**
  * Carry the last retrieval checkpoint's evidence label onto the intent result.
- * A tool result that reports no checkpoints (a non-retrieval intent) is treated
- * as `strong` — it did the work it was asked to do; there is nothing weak about it.
+ *
+ * `read_facts` — the only intent this router executes — never populates
+ * `retrieval.checkpoints` (nothing in the deep facts-loop path calls
+ * `buildCheckpointRecord`), so this always fell through to a hardcoded
+ * `'strong'` regardless of what was actually retrieved. Fall back to a real
+ * measurement — the result count already on the tool result — instead of a
+ * constant.
  */
 function deriveToolResultEvidence(result: unknown): EvidenceLabel {
   if (!result || typeof result !== 'object') return 'strong'
@@ -118,5 +123,7 @@ function deriveToolResultEvidence(result: unknown): EvidenceLabel {
     }
   ).retrieval?.checkpoints
   const last = checkpoints?.[checkpoints.length - 1]?.evidence
-  return isEvidenceLabel(last) ? last : 'strong'
+  if (isEvidenceLabel(last)) return last
+  const results = (result as { results?: unknown[] }).results
+  return assessResultCount(Array.isArray(results) ? results.length : 0)
 }

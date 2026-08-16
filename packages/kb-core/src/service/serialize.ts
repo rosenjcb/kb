@@ -4,7 +4,11 @@
  * retrieval representation.
  */
 
-import { type EvidenceLabel, isEvidenceAtLeast } from '@kb/core/core/evidence-label.js'
+import {
+  type EvidenceLabel,
+  isEvidenceAtLeast,
+  weakestEvidence,
+} from '@kb/core/core/evidence-label.js'
 import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
@@ -208,14 +212,23 @@ const NON_FILE_TOKENS = new Set([
 ])
 
 /**
- * File-looking tokens in `answer` whose basename matches none of the evidence
- * paths. These are the "prose cites `dto.ts`, evidence says `reversal.ts`"
- * mismatches — the caller should trust the sources list, not the prose path.
+ * File-looking tokens in `answer` that don't match any evidence path. These are
+ * the "prose cites `dto.ts`, evidence says `reversal.ts`" mismatches — the
+ * caller should trust the sources list, not the prose path.
+ *
+ * A token with a directory component (`src/dto.ts`) must match a known path
+ * exactly or as a path suffix — basename-only would let `src/dto.ts` pass as
+ * grounded off of an unrelated `lib/dto.ts` source. A bare filename (`dto.ts`,
+ * no `/`) still matches on basename alone since prose commonly omits the path.
  */
 export function findUngroundedFileReferences(answer: string, sourcePaths: string[]): string[] {
   const knownBasenames = new Set<string>()
+  const knownPaths = new Set<string>()
   for (const p of sourcePaths) {
-    const base = p.trim().toLowerCase().split('/').pop()
+    const normalizedPath = p.trim().toLowerCase()
+    if (!normalizedPath) continue
+    knownPaths.add(normalizedPath)
+    const base = normalizedPath.split('/').pop()
     if (base) knownBasenames.add(base)
   }
   const tokens = answer.match(/[\w@][\w.@/-]*\.[A-Za-z]+/g) ?? []
@@ -226,10 +239,14 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
     if (NON_FILE_TOKENS.has(normalized)) continue
     const ext = normalized.split('.').pop()
     if (!ext || !FILE_REF_EXTENSIONS.has(ext)) continue
-    const base = normalized.split('/').pop() ?? normalized
-    if (seen.has(base)) continue
-    seen.add(base)
-    if (!knownBasenames.has(base)) ungrounded.push(token)
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    const hasPath = normalized.includes('/')
+    const grounded = hasPath
+      ? knownPaths.has(normalized) ||
+        [...knownPaths].some(p => p.endsWith(`/${normalized}`))
+      : knownBasenames.has(normalized)
+    if (!grounded) ungrounded.push(token)
   }
   return ungrounded
 }
@@ -259,6 +276,7 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
   const full = serializeQueryResult(result)
   const sources = formatMcpSources(full.results)
   const notes: string[] = []
+  let evidence = full.evidence
 
   if (full.evidence && !isEvidenceAtLeast(full.evidence, MCP_VERIFY_EVIDENCE_FLOOR)) {
     notes.push(
@@ -273,6 +291,10 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
       notes.push(
         `The answer names file(s) not in the cited sources (${ungrounded.join(', ')}) — trust the sources list for exact paths.`
       )
+      // An answer that cites a file the retrieval never surfaced isn't "strong"
+      // evidence no matter how many results came back — downgrade rather than
+      // let a note-only warning coexist with an unchanged top-level label.
+      if (evidence) evidence = weakestEvidence([evidence, 'weak'])
     }
   } else if (full.answerError) {
     // Lead with the failure. "Open the cited sources directly" reads as a retrieval
@@ -294,7 +316,7 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
     status: full.status,
     answer: full.answer,
     sources,
-    ...(full.evidence ? { evidence: full.evidence } : {}),
+    ...(evidence ? { evidence } : {}),
     ...(notes.length > 0 ? { notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
   }

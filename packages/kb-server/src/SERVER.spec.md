@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-08T19:40:00Z
+timestamp: 2026-08-16T00:15:00Z
 ---
 
 ### Intro
@@ -36,7 +36,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-3 | KbService reads facts, reports health (`indexing` / `bootstrapProgress` / `reindexing`), and serializes reindex |
 | FR-4 | [UPDATED] Expose an answer-first MCP tool (`query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true`; an optional `base` argument overrides the MCP session's default base for that one call, the same per-call override FR-14's body `base` already offers over REST — an unresolvable slug is an error result (not a 404, MCP has no status codes) and a single-base server (no registry) ignores it |
 | FR-5 | Parse and run periodic reindex scheduler |
-| FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`) |
+| FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`); an answer that cites a file not among the retrieved sources downgrades `evidence` (not just a note), matching a path-qualified citation against the full source path (or a path suffix) and a bare filename against basename only |
 | FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
@@ -245,6 +245,11 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-177 | FR-4 | query base argument resolves the named base via the registry instead of the session default | pass |
 | TC-178 | FR-4 | query errors (not a 404) when base names a slug the registry can't resolve | pass |
 | TC-179 | FR-4 | query ignores a base argument when no registry is configured (single-base server) | pass |
+| TC-180 | FR-6 | answer cites a file not in the sources | evidence downgrades from strong to weak, not just a note |
+| TC-181 | FR-6 | every citation in the answer is grounded | evidence is left unchanged |
+| TC-182 | FR-6 | path-qualified citation's directory does not match a source with the same basename | reported as ungrounded |
+| TC-183 | FR-6 | path-qualified citation matches a source path suffix | not reported as ungrounded |
+| TC-184 | FR-6 | bare filename citation with no directory component | still grounds by basename alone |
 
 ### Related docs
 

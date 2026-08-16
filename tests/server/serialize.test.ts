@@ -213,6 +213,34 @@ describe('serializeMcpQueryResult', () => {
       'No synthesized answer was produced — open the cited sources directly.',
     ])
   })
+
+  it('[TC-180] downgrades evidence when the answer cites a file not in the sources', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'The schema lives in `dto.ts`.',
+        results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+        retrieval: {},
+      },
+    })
+    // A note alone isn't enough — the top-level label an agent scans for must
+    // reflect the same mismatch the note describes.
+    expect(body.evidence).toBe('weak')
+  })
+
+  it('[TC-181] leaves evidence untouched when every citation is grounded', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'The schema lives in `reversal.ts`.',
+        results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+        retrieval: {},
+      },
+    })
+    expect(body.evidence).toBe('strong')
+  })
 })
 
 describe('findUngroundedFileReferences', () => {
@@ -237,6 +265,25 @@ describe('findUngroundedFileReferences', () => {
       'src/real.ts',
     ])
     expect(refs).toEqual(['dto.ts', 'other.py'])
+  })
+
+  it('[TC-182] flags a path-qualified citation whose directory does not match, even when the basename does', () => {
+    const refs = findUngroundedFileReferences('The type lives in `src/dto.ts`.', ['lib/dto.ts'])
+    expect(refs).toEqual(['src/dto.ts'])
+  })
+
+  it('[TC-183] grounds a path-qualified citation that matches a source path suffix', () => {
+    const refs = findUngroundedFileReferences('The type lives in `src/dto.ts`.', [
+      'packages/common/src/dto.ts',
+    ])
+    expect(refs).toEqual([])
+  })
+
+  it('[TC-184] still grounds a bare filename (no path) by basename alone', () => {
+    const refs = findUngroundedFileReferences('The type lives in `dto.ts`.', [
+      'packages/common/src/dto.ts',
+    ])
+    expect(refs).toEqual([])
   })
 })
 
