@@ -87,6 +87,17 @@ const JS_KIND_LABEL: Record<string, string> = {
 }
 
 /**
+ * Grammar node types for a function-shaped initializer (`const x = () => {}`,
+ * `const x = function () {}`, `const x = function* () {}`). Used only for embedded
+ * Vue/Svelte scripts — see the `isEmbeddedScript` pass in `indexProject`.
+ */
+const JS_FUNCTION_VALUE_TYPES = new Set([
+  'arrow_function',
+  'function_expression',
+  'generator_function',
+])
+
+/**
  * Returns a concise string for simple literal initializers (numbers, strings, booleans,
  * short arithmetic/template expressions). Returns undefined for complex expressions —
  * so constant symbols only capture genuinely literal values.
@@ -645,6 +656,9 @@ export class TreeSitterIndexer implements LanguageIndexer {
       // back to the same text-only path as everything else.
       let compiled = langKey ? this.langCache.get(langKey) : undefined
       let parseSrc = src
+      // Set once an embedded <script> block is actually parsed — gates the export-free
+      // symbol pass below, since only .vue/.svelte scripts lack module export syntax.
+      let isEmbeddedScript = false
       if (!compiled && EMBEDDED_SCRIPT_EXTENSIONS.has(ext)) {
         const embedded = extractEmbeddedScript(src)
         if (embedded) {
@@ -652,6 +666,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
             await this.ensureLang(embedded.lang)
             compiled = this.langCache.get(embedded.lang)
             parseSrc = embedded.code
+            isEmbeddedScript = true
           } catch {
             compiled = undefined
           }
@@ -722,19 +737,65 @@ export class TreeSitterIndexer implements LanguageIndexer {
 
           // Top-level non-exported constants with literal values are still worth indexing —
           // they are how configuration defaults are discovered.
+          //
+          // Embedded Vue/Svelte scripts (`<script setup>`) get a second, wider pass below:
+          // that block has no `export` syntax at all — everything declared at its top level is
+          // implicitly the component's public surface, read directly by the template — so every
+          // `exportQueries` match above is structurally guaranteed to be empty for it. Without
+          // this, an entire SFC's handlers (`const onSubmit = () => {...}`) are invisible to
+          // symbol search even though tree-sitter parsed them fine. Gated on `isEmbeddedScript`
+          // only: an ordinary .ts/.js module has a real private/public split, and capturing every
+          // unexported helper there would flood the symbol graph with implementation detail.
           if (jsFamily) {
             for (const node of tree.rootNode.namedChildren) {
+              if (isEmbeddedScript && node?.type === 'function_declaration') {
+                const fnName = node.childForFieldName('name')?.text
+                if (fnName && !stats.symbolKeys.has(codeSymbolKey(rel, fnName))) {
+                  stats.symbolKeys.add(codeSymbolKey(rel, fnName))
+                  const rawText = parseSrc.slice(node.startIndex, node.endIndex)
+                  upsertCodeSymbol(
+                    this.symbolIndexer,
+                    rel,
+                    fnName,
+                    'function',
+                    rawText.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                      ? `${rawText.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                      : rawText,
+                    this.gitRepo
+                  )
+                  stats.symbols++
+                }
+                continue
+              }
+
               if (node?.type !== 'lexical_declaration') continue
               if (node.firstChild?.text !== 'const') continue
               for (const decl of node.namedChildren) {
                 if (decl?.type !== 'variable_declarator') continue
                 const constName = decl.childForFieldName('name')?.text
                 if (!constName) continue
-                const valueText = extractSimpleInitializerText(
-                  decl.childForFieldName('value')?.text
-                )
-                if (!valueText) continue
                 if (stats.symbolKeys.has(codeSymbolKey(rel, constName))) continue
+
+                const valueNode = decl.childForFieldName('value')
+                if (isEmbeddedScript && valueNode && JS_FUNCTION_VALUE_TYPES.has(valueNode.type)) {
+                  stats.symbolKeys.add(codeSymbolKey(rel, constName))
+                  const rawText = decl.text
+                  upsertCodeSymbol(
+                    this.symbolIndexer,
+                    rel,
+                    constName,
+                    'function',
+                    rawText.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                      ? `${rawText.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                      : rawText,
+                    this.gitRepo
+                  )
+                  stats.symbols++
+                  continue
+                }
+
+                const valueText = extractSimpleInitializerText(valueNode?.text)
+                if (!valueText) continue
                 stats.symbolKeys.add(codeSymbolKey(rel, constName))
                 upsertCodeSymbol(
                   this.symbolIndexer,

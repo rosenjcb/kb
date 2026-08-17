@@ -41,6 +41,13 @@ function queryCodeFileState(db: Database, filePath: string): boolean {
   return db.prepare('SELECT 1 FROM code_file_state WHERE file_path = ?').get(filePath) !== undefined
 }
 
+function querySymbolKind(db: Database, name: string, filePath: string): string | undefined {
+  const row = db
+    .prepare('SELECT kind FROM code_symbols WHERE name = ? AND rel_path = ?')
+    .get(name, filePath) as { kind: string } | undefined
+  return row?.kind
+}
+
 describe('TreeSitterIndexer — Go', () => {
   it('[TC-QXNY] indexes exported functions and types', async () => {
     await writeFile(
@@ -109,7 +116,7 @@ describe('TreeSitterIndexer — Go', () => {
   it('[TC-P4LY] does not emit structural import edges (v1 indexes symbols only)', async () => {
     await mkdir(join(repoRoot, 'pkg'), { recursive: true })
     await writeFile(join(repoRoot, 'pkg', 'util.go'), 'package pkg\nfunc Helper() {}')
-    await writeFile(join(repoRoot, 'main.go'), 'package main\nimport \"./pkg\"\nfunc main() {}')
+    await writeFile(join(repoRoot, 'main.go'), 'package main\nimport "./pkg"\nfunc main() {}')
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
@@ -255,8 +262,12 @@ export const DEBUG = false`
       .prepare('SELECT name, source_text FROM code_symbols WHERE rel_path = ?')
       .all('src/limits.ts') as Array<{ name: string; source_text: string | null }>
     db.close()
-    expect(texts.some(r => r.name === 'MAX_RETRIES' && (r.source_text ?? '').includes('5'))).toBe(true)
-    expect(texts.some(r => r.name === 'VERSION' && (r.source_text ?? '').includes('v1.2.3'))).toBe(true)
+    expect(texts.some(r => r.name === 'MAX_RETRIES' && (r.source_text ?? '').includes('5'))).toBe(
+      true
+    )
+    expect(texts.some(r => r.name === 'VERSION' && (r.source_text ?? '').includes('v1.2.3'))).toBe(
+      true
+    )
   })
 
   it('[TC-HAEK] indexes top-level non-exported constants with literal values as symbols', async () => {
@@ -373,7 +384,7 @@ describe('TreeSitterIndexer — TSX', () => {
   it('[TC-ESY9] indexes exported functions from .jsx files', async () => {
     await writeFile(
       join(repoRoot, 'src', 'Widget.jsx'),
-      "export function Widget() { return null }\nlet hidden = 1\n"
+      'export function Widget() { return null }\nlet hidden = 1\n'
     )
 
     const { indexer, factIndexer } = makeIndexer()
@@ -574,7 +585,10 @@ describe('TreeSitterIndexer — text fallback', () => {
     // No <script> block at all — nothing to extract, falls back to text.
     await writeFile(join(repoRoot, 'src', 'Empty.vue'), '<template><div>flow</div></template>')
     // .astro and the .svlete typo alias never attempt embedded-script extraction.
-    await writeFile(join(repoRoot, 'src', 'Page.astro'), '---\nconst title = "Hello";\n---\n<h1>{title}</h1>')
+    await writeFile(
+      join(repoRoot, 'src', 'Page.astro'),
+      '---\nconst title = "Hello";\n---\n<h1>{title}</h1>'
+    )
     await writeFile(join(repoRoot, 'src', 'Legacy.svlete'), '<script>let bad = true;</script>')
 
     const { indexer, factIndexer } = makeIndexer()
@@ -591,6 +605,76 @@ describe('TreeSitterIndexer — text fallback', () => {
     expect(queryCodeFileState(db, 'src/Empty.vue')).toBe(true)
     expect(queryCodeFileState(db, 'src/Page.astro')).toBe(true)
     expect(queryCodeFileState(db, 'src/Legacy.svlete')).toBe(true)
+    db.close()
+  })
+
+  it('[TC-VUEF] indexes non-exported top-level functions and function-valued constants from .vue/.svelte <script setup> blocks', async () => {
+    // Realistic <script setup> shape: nothing is exported (the whole block is implicitly the
+    // component's public surface), so this exercises the export-free symbol pass directly.
+    await writeFile(
+      join(repoRoot, 'src', 'FlowCreate.vue'),
+      [
+        '<script setup lang="ts">',
+        'const MAX_ITEMS = 10',
+        'const showImport = ref(false)', // call-expression value — must NOT be captured
+        'const handleImportSubmit = async ({yaml}: {yaml: string}) => {',
+        '  console.log(yaml)',
+        '}',
+        'function retrySetup() {',
+        '  return true',
+        '}',
+        '</script>',
+        '<template><div>{{ MAX_ITEMS }}</div></template>',
+      ].join('\n')
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(1)
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'MAX_ITEMS', 'src/FlowCreate.vue')).toBe(true)
+    expect(querySymbolKind(db, 'MAX_ITEMS', 'src/FlowCreate.vue')).toBe('constant')
+    expect(querySymbol(db, 'handleImportSubmit', 'src/FlowCreate.vue')).toBe(true)
+    expect(querySymbolKind(db, 'handleImportSubmit', 'src/FlowCreate.vue')).toBe('function')
+    expect(querySymbol(db, 'retrySetup', 'src/FlowCreate.vue')).toBe(true)
+    expect(querySymbolKind(db, 'retrySetup', 'src/FlowCreate.vue')).toBe('function')
+    // A composable call (`ref(false)`) is neither a literal nor a function expression —
+    // stays out of the index, same as before this fix.
+    expect(querySymbol(db, 'showImport', 'src/FlowCreate.vue')).toBe(false)
+    db.close()
+  })
+
+  it('[TC-VUEN] does not extend non-exported function capture to plain .ts/.js modules', async () => {
+    // The export-free pass is scoped to embedded Vue/Svelte scripts only. An ordinary module
+    // still has a real private/public split — un-exported helpers must stay out of the index.
+    await writeFile(
+      join(repoRoot, 'src', 'helpers.ts'),
+      [
+        'export function publicFn() { return 1 }',
+        'const privateHandler = () => { return 2 }',
+        'function privateFn() { return 3 }',
+      ].join('\n')
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(1)
+    expect(stats.errors).toBe(0)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'publicFn', 'src/helpers.ts')).toBe(true)
+    expect(querySymbol(db, 'privateHandler', 'src/helpers.ts')).toBe(false)
+    expect(querySymbol(db, 'privateFn', 'src/helpers.ts')).toBe(false)
     db.close()
   })
 })

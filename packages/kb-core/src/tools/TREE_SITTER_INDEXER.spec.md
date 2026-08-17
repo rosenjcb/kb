@@ -6,7 +6,7 @@ tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-16T20:00:00Z
+timestamp: 2026-08-16T21:10:00Z
 ---
 
 ### Intro
@@ -42,6 +42,21 @@ functions, classes, top-level constants, and the rest of the JS/TS symbol
 set (see FR-1). This reuses the existing JS/TS extraction pipeline; it does
 not add a second symbol pipeline.
 
+**Non-exported functions in an embedded script (.vue, .svelte only).**
+A Vue `<script setup>` block, and its Svelte equivalent, has no `export`
+syntax. Every top-level declaration in the block is already the component's
+public surface, read directly by the template. The indexer treats a
+function-shaped top-level declaration in an embedded script as a symbol
+even when it has no `export` keyword — a plain `function name() {}`, or a
+`const name = () => {}` / `const name = function () {}` assignment (see
+FR-4). This applies only to the embedded-script path. A standalone `.ts` or
+`.js` file keeps the export-only rule in FR-1: an unexported helper there is
+still not a symbol. A non-exported top-level constant with a literal value
+(FR-1) is indexed the same way as before, in both a standalone script and
+an embedded one. A non-exported constant whose value is neither a literal
+nor a function shape — for example a composable call like `ref(false)` — is
+still not indexed, in either case.
+
 **Text-state fallback.** A `.vue` or `.svelte` file with no inline script,
 or whose extracted script fails to parse, gets a `code_file_state` row and
 no `code_symbols`. This is the same text-only treatment the indexer gives
@@ -59,6 +74,7 @@ them.
 | FR-1 | Tree-sitter indexer parses ASTs and indexes code symbols with source text (no structural edge facts in v1) |
 | FR-2 | Parses inline `<script>` blocks in .vue/.svelte files through the JS/TS grammar and indexes their exported symbols |
 | FR-3 | Falls back to text-state indexing for .vue/.svelte with no parseable inline script, and always for .astro and the .svlete alias |
+| FR-4 | Indexes a non-exported top-level function or function-valued constant in an embedded .vue/.svelte script, without extending that rule to standalone .ts/.js files |
 
 ### QA Test Cases
 
@@ -89,6 +105,8 @@ them.
 | TC-ESY9 | FR-1 | indexes exported functions from .jsx files | pass |
 | TC-T083 | FR-2 | indexes exported symbols from .vue/.svelte inline script blocks | pass |
 | TC-FBSK | FR-3 | falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases | pass |
+| TC-VUEF | FR-4 | indexes non-exported top-level functions and function-valued constants from .vue/.svelte script setup blocks | pass |
+| TC-VUEN | FR-4 | does not extend non-exported function capture to plain .ts/.js modules | pass |
 
 ### Related docs
 
