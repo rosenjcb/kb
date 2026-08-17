@@ -94,6 +94,7 @@ See companion doc for full vocabulary where applicable.
 | FR-40 | [NEW] Answer synthesis never fails silently: a provider error or an empty completion records a structured `answerError` on the result (retrieval results preserved, `status` still `accepted` so downstream source handling is unaffected) instead of returning an answerless success, and a curator that fell back contributes no research note claiming the evidence was focused |
 | FR-41 | Session CLI groups run reports by sessionId and summarizes the most recent (or a named) session, listing each run for `kb logs show` follow-up |
 | FR-42 | Bare `kb skills` reports install status per agent (installed / update available / not installed) without writing any files |
+| FR-43 | `--skip-embed` on `kb init`/`kb scan` sets `skipEmbeddings` (default `false`); when set, `create-embeddings` completes without writing any vectors, and a multi-repo scan skips the embedder for both the per-repo reindex and the trailing embed pass |
 
 ### QA Test Cases
 
@@ -434,6 +435,9 @@ See companion doc for full vocabulary where applicable.
 | TC-64CG | FR-27 | logs list with no --command | per-turn chat reports are hidden from the listing |
 | TC-Q8Q8 | FR-27 | logs list --command chat | chat reports are shown |
 | TC-LEYK | FR-27 | logs show on a chat run with turns | renders the turn transcript |
+| TC-SKEB | FR-43 | --skip-embed parsing | sets skipEmbeddings true; absent it defaults false |
+| TC-EMSK | FR-43 | init with skipEmbeddings | create-embeddings completes without writing any vectors |
+| TC-9FQW | FR-43 | scanBaseRepos with skipEmbeddings | skips the embedder for both the per-repo reindex and the trailing embed pass |
 
 ### Related docs
 

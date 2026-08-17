@@ -424,6 +424,11 @@ async function applySampledFeedbackAsk(
     }
     if (outcome.kind === 'dismissed') {
       body.feedback = { status: outcome.action, via: 'elicitation' }
+      // The client dismissed the form (or auto-declined because it has no UI to render one in
+      // this session) rather than a human weighing in — either way, don't lose the sample.
+      // Queue it so a later checkpoint (get_feedback_requests) can still close the loop, without
+      // re-nudging the agent mid-call via AGENT_INSTRUCTION.
+      if (opts.requestId) resolvePendingFeedbackStore(opts).add(opts.requestId, query)
       return
     }
     // unavailable → fall through to AGENT_INSTRUCTION

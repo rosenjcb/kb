@@ -6,7 +6,7 @@ tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-16T21:41:00Z
+timestamp: 2026-08-16T20:00:00Z
 ---
 
 ### Intro
@@ -25,11 +25,40 @@ See companion doc for full vocabulary where applicable.
 ## Out of Scope
 - Code→code structural edges (imports/extends/implements) in v1 — symbols and source text only
 
+### Frontend Language Support
+
+Vue and Svelte files mix a template with a script. The indexer treats each
+frontend format differently, based on how well it can parse the file.
+
+**Embedded-script extraction (.vue, .svelte).** The indexer finds every
+inline `<script>` block in the file. It skips a block that loads its code
+from an external file (`src="..."`). It joins the remaining blocks into one
+buffer. It picks the TypeScript grammar when any block declares `lang="ts"`
+or `lang="typescript"`. Otherwise it picks the JavaScript grammar. It parses
+that buffer with the same grammar and query pipeline used for standalone
+`.ts` and `.js` files. A `.vue` or `.svelte` file with a `<script>` block
+yields the same exported symbols as a script file with the same code —
+functions, classes, top-level constants, and the rest of the JS/TS symbol
+set (see FR-1). This reuses the existing JS/TS extraction pipeline; it does
+not add a second symbol pipeline.
+
+**Text-state fallback.** A `.vue` or `.svelte` file with no inline script,
+or whose extracted script fails to parse, gets a `code_file_state` row and
+no `code_symbols`. This is the same text-only treatment the indexer gives
+any unsupported extension, so a template-only file is never dropped.
+
+**Astro and the Svelte typo alias.** `.astro` files, and files with the
+`.svlete` extension (a legacy typo alias for `.svelte`), always get
+text-state indexing. The indexer does not attempt script extraction for
+them.
+
 ### Functional Requirements
 
 | ID | Requirement |
 |------|------------|
 | FR-1 | Tree-sitter indexer parses ASTs and indexes code symbols with source text (no structural edge facts in v1) |
+| FR-2 | Parses inline `<script>` blocks in .vue/.svelte files through the JS/TS grammar and indexes their exported symbols |
+| FR-3 | Falls back to text-state indexing for .vue/.svelte with no parseable inline script, and always for .astro and the .svlete alias |
 
 ### QA Test Cases
 
@@ -58,7 +87,8 @@ See companion doc for full vocabulary where applicable.
 | TC-M54E | FR-1 | finds exported symbols matching query terms via FTS (CodeGraphStore) | pass |
 | TC-VJA3 | FR-1 | getSummary returns symbol and file counts (CodeGraphStore) | pass |
 | TC-ESY9 | FR-1 | indexes exported functions from .jsx files | pass |
-| TC-T083 | FR-1 | indexes .vue/.svelte/.svlete/.astro as text-state entries | pass |
+| TC-T083 | FR-2 | indexes exported symbols from .vue/.svelte inline script blocks | pass |
+| TC-FBSK | FR-3 | falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases | pass |
 
 ### Related docs
 

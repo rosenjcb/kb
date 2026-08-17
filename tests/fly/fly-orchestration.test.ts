@@ -23,7 +23,7 @@ describe('Fly build-to-serve orchestration contracts', () => {
     expect(lib).toMatch(/s3_push_prefix/)
   })
 
-  it('[TC-8KCV][TC-2PNL][TC-IHL1][TC-MHQN] Given pull_latest, when required objects are incomplete, then it retries or fails without progress on stdout', () => {
+  it('[TC-8KCV][TC-2PNL][TC-IHL1][TC-MHQN][TC-OUBI] Given pull_latest, when required objects are incomplete or genuinely absent, then it retries or fails without progress on stdout', () => {
     const lib = read('scripts/fly/lib.sh')
     expect(lib).toMatch(/pull_latest|s3_pull_prefix/)
     // Progress logs go to stderr so `version="$(pull...)"` stays clean.

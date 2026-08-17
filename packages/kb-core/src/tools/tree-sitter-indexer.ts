@@ -442,13 +442,14 @@ export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
   '.sql',
   '.tf',
   '.hcl',
-  // Frontend single-file/component formats without a wired tree-sitter grammar:
-  // index as plain files so retrieval can cite them even without AST symbols.
+  // Vue/Svelte fall back to text-state here only when their inline <script> block can't be
+  // extracted or parsed (see EMBEDDED_SCRIPT_EXTENSIONS) — the normal case is AST symbols.
   '.vue',
   '.svelte',
-  // Keep the common typo to avoid silent misses in mixed repos.
-  '.svlete',
+  // Astro templates remain text-indexed (no embedded-script extraction wired up).
   '.astro',
+  // Svelte typo alias (legacy support, text-indexed)
+  '.svlete',
   '', // extensionless files (Makefile, Dockerfile, etc.)
 ])
 
@@ -527,6 +528,36 @@ export function isTreeSitterIndexablePath(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/')
   const ext = path.extname(normalized).toLowerCase()
   return Boolean(EXT_MAP[ext]) || TREE_SITTER_TEXT_EXTENSIONS.has(ext)
+}
+
+/**
+ * Extensions whose inline <script> blocks get re-parsed through the JS/TS grammar (see
+ * `extractEmbeddedScript`). Falls back to plain text-state indexing when no inline script
+ * block is found or the extracted code fails to parse.
+ */
+const EMBEDDED_SCRIPT_EXTENSIONS = new Set(['.vue', '.svelte'])
+
+const SCRIPT_BLOCK_RE = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi
+
+/**
+ * Extracts and concatenates inline (non-`src=`) <script> block bodies from a .vue/.svelte
+ * file so they can be re-parsed through the existing JS/TS extraction pipeline. Multiple
+ * blocks (Vue's `setup` + plain, Svelte's `context="module"` + instance) are concatenated;
+ * TypeScript is picked whenever any block declares `lang="ts"`, since the TS grammar parses
+ * plain JS too. Returns null when there is no inline script to parse.
+ */
+function extractEmbeddedScript(src: string): { code: string; lang: 'ts' | 'js' } | null {
+  const parts: string[] = []
+  let lang: 'ts' | 'js' = 'js'
+  for (const match of src.matchAll(SCRIPT_BLOCK_RE)) {
+    const attrs = match[1] ?? ''
+    if (/\bsrc\s*=/.test(attrs)) continue
+    const langAttr = /\blang\s*=\s*["']?(\w+)["']?/i.exec(attrs)?.[1]?.toLowerCase()
+    if (langAttr === 'ts' || langAttr === 'typescript') lang = 'ts'
+    parts.push(match[2] ?? '')
+  }
+  if (parts.length === 0) return null
+  return { code: parts.join('\n'), lang }
 }
 
 // ---------------------------------------------------------------------------
@@ -609,8 +640,23 @@ export class TreeSitterIndexer implements LanguageIndexer {
 
       stats.files++
 
-      // Text-only files — no AST, no symbols, just record state
-      const compiled = langKey ? this.langCache.get(langKey) : undefined
+      // Text-only files — no AST, no symbols, just record state. .vue/.svelte get one shot at
+      // an embedded-script extraction first; if that fails to find/load a grammar they fall
+      // back to the same text-only path as everything else.
+      let compiled = langKey ? this.langCache.get(langKey) : undefined
+      let parseSrc = src
+      if (!compiled && EMBEDDED_SCRIPT_EXTENSIONS.has(ext)) {
+        const embedded = extractEmbeddedScript(src)
+        if (embedded) {
+          try {
+            await this.ensureLang(embedded.lang)
+            compiled = this.langCache.get(embedded.lang)
+            parseSrc = embedded.code
+          } catch {
+            compiled = undefined
+          }
+        }
+      }
       if (!compiled) {
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
         return
@@ -620,7 +666,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
       const parser = this.parser as Parser
       try {
         parser.setLanguage(compiled.language)
-        tree = parser.parse(src)
+        tree = parser.parse(parseSrc)
       } catch {
         stats.errors++
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
@@ -654,7 +700,7 @@ export class TreeSitterIndexer implements LanguageIndexer {
               if (!isExported(name, compiled.config.goExportConvention)) continue
               const nameNode = capture.node
               const declNode = getDeclNode(nameNode)
-              const rawText = src.slice(declNode.startIndex, declNode.endIndex)
+              const rawText = parseSrc.slice(declNode.startIndex, declNode.endIndex)
               const sourceText =
                 rawText.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
                   ? `${rawText.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`

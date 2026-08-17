@@ -10,8 +10,7 @@ sources:
   - ../../../kb-server/src/chat-stream.ts
   - ../../../kb-client/src/cli/remote-commands.ts
 tests:
-  - ../../../../tests/server/serialize.test.ts
-  - ../../../../tests/ui/printer.test.ts
+  - ../../../../tests/service/query-response-parity.test.ts
 description: Shared query payload semantics across REST, MCP, CLI, TUI, and chat surfaces
 tags: [spec, query, parity, serialization]
 timestamp: 2026-08-16T21:29:00Z

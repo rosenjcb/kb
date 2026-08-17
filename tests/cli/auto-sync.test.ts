@@ -14,7 +14,16 @@ vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(),
 }))
 
+vi.mock('@kb/core/core/embeddings.js', () => ({
+  createEmbedder: vi.fn(() => ({
+    modelId: 'test:fake:3',
+    dimensions: 3,
+    embed: vi.fn(async (texts: string[]) => texts.map(() => [1, 0, 0])),
+  })),
+}))
+
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
+import { createEmbedder } from '@kb/core/core/embeddings.js'
 import { getCurrentBranch, getHeadSha, getRemoteUrl, pullRepo } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 
@@ -23,6 +32,7 @@ const mockGetHeadSha = vi.mocked(getHeadSha)
 const mockGetRemoteUrl = vi.mocked(getRemoteUrl)
 const mockGetCurrentBranch = vi.mocked(getCurrentBranch)
 const mockRunKbInit = vi.mocked(runKbInit)
+const mockCreateEmbedder = vi.mocked(createEmbedder)
 
 let baseDir: string
 
@@ -40,7 +50,9 @@ beforeEach(async () => {
     completedCycles: [],
   })
   mockGetCurrentBranch.mockResolvedValue('main')
-  mockGetRemoteUrl.mockImplementation(async (dir: string) => `https://github.com/org/${path.basename(dir)}`)
+  mockGetRemoteUrl.mockImplementation(
+    async (dir: string) => `https://github.com/org/${path.basename(dir)}`
+  )
 })
 
 afterEach(async () => {
@@ -88,12 +100,25 @@ describe('scanBaseRepos', () => {
   it('[TC-VI0W] Given multiple repos, then only the changed repo is re-indexed', async () => {
     await addClone('org-a')
     await addClone('org-b')
-    mockPullRepo.mockImplementation(async (dir: string) => dir.endsWith(path.join('repos', 'org-a')))
+    mockPullRepo.mockImplementation(async (dir: string) =>
+      dir.endsWith(path.join('repos', 'org-a'))
+    )
     mockGetHeadSha.mockResolvedValue('sha')
 
     expect(await scanBaseRepos(baseDir)).toBe(2)
     expect(mockRunKbInit).toHaveBeenCalledOnce()
     expect(mockRunKbInit).toHaveBeenCalledWith(expect.objectContaining({ gitRepo: 'org-a' }))
+  })
+
+  it('[TC-9FQW] Given skipEmbeddings, then the per-repo reindex and the trailing embed pass both skip the embedder', async () => {
+    await addClone('org-repo')
+    mockPullRepo.mockResolvedValue(true)
+    mockGetHeadSha.mockResolvedValue('newshanewshanewshanewshanewshanewsha')
+
+    await scanBaseRepos(baseDir, { skipEmbeddings: true })
+
+    expect(mockRunKbInit).toHaveBeenCalledWith(expect.objectContaining({ skipEmbeddings: true }))
+    expect(mockCreateEmbedder).not.toHaveBeenCalled()
   })
 
   it("[TC-R0QY] Given one repo's pull fails, then the other repos still sync", async () => {

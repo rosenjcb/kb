@@ -382,12 +382,20 @@ describe('stripCliBanner', () => {
 
 describe('buildCoverageAudit', () => {
   it('[TC-GF88] returns coverage_ratio between 0 and 1', () => {
-    const result = buildCoverageAudit('What are the main capabilities?', 'capabilities listed here', '')
+    const result = buildCoverageAudit(
+      'What are the main capabilities?',
+      'capabilities listed here',
+      ''
+    )
     expect(result.coverage_ratio).toBeGreaterThanOrEqual(0)
     expect(result.coverage_ratio).toBeLessThanOrEqual(1)
   })
   it('[TC-MEHJ] returns full coverage when answer contains all facets', () => {
-    const result = buildCoverageAudit('raylib graphics platform', 'raylib graphics platform support', '')
+    const result = buildCoverageAudit(
+      'raylib graphics platform',
+      'raylib graphics platform support',
+      ''
+    )
     expect(result.coverage_ratio).toBe(1)
     expect(result.missing_facets).toHaveLength(0)
   })
@@ -432,7 +440,10 @@ describe('scoreMetric', () => {
 
 describe('computeSuccessScore', () => {
   it('[TC-KCB4] weights default to 0.6 quality / 0.3 tokens / 0.1 speed summing to 1', () => {
-    expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(1, 6)
+    expect(SUCCESS_WEIGHTS.quality + SUCCESS_WEIGHTS.tokens + SUCCESS_WEIGHTS.speed).toBeCloseTo(
+      1,
+      6
+    )
   })
 
   it('[TC-CTRY] maps perfect quality, zero tokens, zero time to 1.0', () => {
@@ -506,9 +517,9 @@ describe('computeSuccessScore', () => {
     })
     expect(kb.success_score).toBe(0.888)
     expect(control.success_score).toBe(0.76)
-    expect(kbControlVerdict({ success: kb.success_score }, { success: control.success_score })).toBe(
-      'ahead of control'
-    )
+    expect(
+      kbControlVerdict({ success: kb.success_score }, { success: control.success_score })
+    ).toBe('ahead of control')
   })
 
   it('[TC-LACV] treats rubric scores at τ as adequate with diminishing returns above', () => {
@@ -525,7 +536,7 @@ describe('kbControlVerdict — success-driven', () => {
     expect(kbControlVerdict({ success: 0.78 }, { success: 0.74 })).toBe('ahead of control')
   })
   it('[TC-MDEB] reports behind when kb success trails control by >= 0.02', () => {
-    expect(kbControlVerdict({ success: 0.70 }, { success: 0.80 })).toBe('behind control')
+    expect(kbControlVerdict({ success: 0.7 }, { success: 0.8 })).toBe('behind control')
   })
   it('[TC-EN3T] reports on par within the 0.02 band', () => {
     expect(kbControlVerdict({ success: 0.751 }, { success: 0.75 })).toBe('on par with control')
@@ -824,7 +835,10 @@ describe('writeResearchResultsTex', () => {
       created_at: '2026-07-15T12:00:00.000Z',
       run_label: 'raylib-new-k',
       repository: { name: 'raylib', commit: 'bbbbbbb1234567890' },
-      run: { suite: 'raylib', init_result: { written_docs: 0, graph_summary: { entities: 9, relationships: 8 } } },
+      run: {
+        suite: 'raylib',
+        init_result: { written_docs: 0, graph_summary: { entities: 9, relationships: 8 } },
+      },
       query_scoring: { mode: 'llm_judge_avg_3', provider: 'gemini', model: 'gemini-2.5-flash' },
       aggregate_scores: {
         query: {
@@ -1000,7 +1014,9 @@ describe('multi-suite parallel batch', () => {
     expect(resolveParallelism({ suiteCount: 10, parallel: null, sequential: false, env: {} })).toBe(
       10
     )
-    expect(resolveParallelism({ suiteCount: 10, parallel: null, sequential: true, env: {} })).toBe(1)
+    expect(resolveParallelism({ suiteCount: 10, parallel: null, sequential: true, env: {} })).toBe(
+      1
+    )
     expect(resolveParallelism({ suiteCount: 10, parallel: 4, sequential: false, env: {} })).toBe(4)
     expect(resolveParallelism({ suiteCount: 10, parallel: 0, sequential: false, env: {} })).toBe(10)
     expect(
@@ -1081,5 +1097,18 @@ describe('multi-suite parallel batch', () => {
     })
     expect(argv).toContain('--skip-scan')
     expect(argv).toContain('--skip-control')
+  })
+
+  it('[TC-VYQ2] parseArgs accepts --skip-embed, defaulting to false', () => {
+    expect(
+      parseArgs(['node', 'eval-run.mjs', '--suite', 'raylib', '--skip-embed']).skipEmbeddings
+    ).toBe(true)
+    expect(parseArgs(['node', 'eval-run.mjs', '--suite', 'raylib']).skipEmbeddings).toBe(false)
+  })
+
+  it('[TC-ZKD3] buildChildArgv forwards --skip-embed to every multi-suite child', () => {
+    const argv = buildChildArgv('raylib', { skipEmbeddings: true, autoScore: true })
+    expect(argv).toContain('--skip-embed')
+    expect(buildChildArgv('raylib', { autoScore: true })).not.toContain('--skip-embed')
   })
 })

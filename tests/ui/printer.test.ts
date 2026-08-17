@@ -6,22 +6,6 @@ import {
 } from '@kb/client/ui/printer.js'
 
 describe('ui/printer', () => {
-  it('[TC-YO2A] sourceCitation renders grouped symbols on the same source line', () => {
-    const lines: string[] = []
-    const printer = createPrinter(
-      {
-        log: line => lines.push(line),
-        write: line => lines.push(line),
-        error: line => lines.push(line),
-      },
-      'cli'
-    )
-
-    printer.sourceCitation('src/a.ts', { symbols: ['alpha', 'beta'] })
-
-    expect(lines).toEqual(['source> src/a.ts · alpha, beta'])
-  })
-
   it('[TC-3ECA] Given tui mode, chat metadata keeps routing prefixes', () => {
     const lines: string[] = []
     const printer = createPrinter(

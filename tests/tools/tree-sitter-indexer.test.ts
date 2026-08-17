@@ -542,27 +542,55 @@ describe('TreeSitterIndexer — text fallback', () => {
     expect(stats.errors).toBe(0)
   })
 
-  it('[TC-T083] indexes Vue/Svelte frontend files as text-state entries', async () => {
-    await writeFile(join(repoRoot, 'src', 'FlowCreate.vue'), '<template><div>flow</div></template>')
-    await writeFile(join(repoRoot, 'src', 'App.svelte'), '<script>let n = 1;</script>')
-    await writeFile(join(repoRoot, 'src', 'Legacy.svlete'), '<script>let bad = true;</script>')
-    await writeFile(join(repoRoot, 'src', 'Page.astro'), '---\nconst title = "Hello";\n---\n<h1>{title}</h1>')
+  it('[TC-T083] indexes exported symbols from .vue/.svelte inline <script> blocks', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'FlowCreate.vue'),
+      '<script setup lang="ts">\nexport function computeTotal(x: number): number { return x * 2 }\nexport const MAX_ITEMS = 10\n</script>\n<template><div>{{ MAX_ITEMS }}</div></template>'
+    )
+    await writeFile(
+      join(repoRoot, 'src', 'App.svelte'),
+      '<script>\nexport function greet(name) { return `hi ${name}` }\nexport const GREETING = "hello"\n</script>\n<div>{GREETING}</div>'
+    )
 
     const { indexer, factIndexer } = makeIndexer()
     const stats = await indexer.indexProject(repoRoot)
     indexer.close()
     factIndexer.close()
 
-    expect(stats.files).toBe(4)
+    expect(stats.files).toBe(2)
+    expect(stats.errors).toBe(0)
+    expect(stats.symbols).toBeGreaterThanOrEqual(4)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'computeTotal', 'src/FlowCreate.vue')).toBe(true)
+    expect(querySymbol(db, 'MAX_ITEMS', 'src/FlowCreate.vue')).toBe(true)
+    expect(querySymbol(db, 'greet', 'src/App.svelte')).toBe(true)
+    expect(querySymbol(db, 'GREETING', 'src/App.svelte')).toBe(true)
+    db.close()
+  })
+
+  it('[TC-FBSK] falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases', async () => {
+    // No <script> block at all — nothing to extract, falls back to text.
+    await writeFile(join(repoRoot, 'src', 'Empty.vue'), '<template><div>flow</div></template>')
+    // .astro and the .svlete typo alias never attempt embedded-script extraction.
+    await writeFile(join(repoRoot, 'src', 'Page.astro'), '---\nconst title = "Hello";\n---\n<h1>{title}</h1>')
+    await writeFile(join(repoRoot, 'src', 'Legacy.svlete'), '<script>let bad = true;</script>')
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(3)
     expect(stats.symbols).toBe(0)
     expect(stats.errors).toBe(0)
 
     const db = new Database(dbPath)
     runMigrations(db)
-    expect(queryCodeFileState(db, 'src/FlowCreate.vue')).toBe(true)
-    expect(queryCodeFileState(db, 'src/App.svelte')).toBe(true)
-    expect(queryCodeFileState(db, 'src/Legacy.svlete')).toBe(true)
+    expect(queryCodeFileState(db, 'src/Empty.vue')).toBe(true)
     expect(queryCodeFileState(db, 'src/Page.astro')).toBe(true)
+    expect(queryCodeFileState(db, 'src/Legacy.svlete')).toBe(true)
     db.close()
   })
 })

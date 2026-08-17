@@ -466,7 +466,7 @@ describe('submit_feedback and feedback nudge', () => {
     expect(record.notes).toBe('missed the retry path')
   })
 
-  it('[TC-M9E1] elicitFeedback decline/cancel skips recording, AGENT_INSTRUCTION, and pending', async () => {
+  it('[TC-M9E1] elicitFeedback decline/cancel skips recording and AGENT_INSTRUCTION but still queues pending', async () => {
     const pendingFeedbackStore = new PendingFeedbackStore()
     const { dir, store: feedbackStore } = makeTempStore()
     const declined = await dispatchMcpToolCall(
@@ -485,7 +485,12 @@ describe('submit_feedback and feedback nudge', () => {
     const body = JSON.parse(declined.content[0].text)
     expect(body.AGENT_INSTRUCTION).toBeUndefined()
     expect(body.feedback).toEqual({ status: 'decline', via: 'elicitation' })
-    expect(pendingFeedbackStore.list()).toEqual([])
+    // Dismissed (whether a genuine human decline or a client auto-declining because it has no
+    // UI to render a form in this session) must not lose the sample — it stays discoverable via
+    // get_feedback_requests so a later checkpoint can still close the loop.
+    expect(pendingFeedbackStore.list()).toEqual([
+      expect.objectContaining({ requestId: 'req-elicit-2', query: 'auth' }),
+    ])
     const date = new Date().toISOString().slice(0, 10)
     expect(() => readFileSync(path.join(dir, `${date}.jsonl`), 'utf-8')).toThrow()
   })

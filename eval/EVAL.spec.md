@@ -9,7 +9,7 @@ tests:
   - ../tests/eval-task.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-08-16T00:35:00Z
+timestamp: 2026-08-16T20:45:00Z
 ---
 
 ### Intro
@@ -45,11 +45,10 @@ See companion doc for full vocabulary where applicable.
 | FR-11 | Behaviors in summary.test.ts |
 | FR-12 | Behaviors in trajectory-loss.test.ts |
 | FR-13 | Behaviors in eval-run.test.ts; `--force-init` wipes `~/.kb/sessions/<base>` on disk (not via `kb base delete`) before offline `eval-index` init |
-| FR-14 | [REMOVED] Behaviors in eval-snapshot.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
-| FR-15 | [REMOVED] Behaviors in eval-task-artifact.test.ts — agent-compare-eval skill retired, folded into kb:evaluation-run |
 | FR-16 | Multi-suite harvest shares one long-lived multi-base kb-server: the parent boots placeholder default base `_eval-batch` (not an `eval-{suite}`), children keep `KB_EVAL_SERVER_URL`, select `eval-{suite}` via `--base` / `X-KB-Base`, probe `/healthz?base=`; the server stays up for the whole batch and is never restarted per suite; the eval server env scrubs operator `KB_GIT_REPOS` / `KB_BASE`; `--skip-scan` is forwarded to children |
 | FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
 | FR-18 | `scripts/eval-task.mjs` (`pnpm run eval:task`) runs a real coding task twice in isolated clones pinned to the same commit — kb arm (MCP + kb:dev-workflow skill inlined, base forced) vs control arm (no MCP/kb tools, full Edit/Write/commit access) — with the identical verbatim task prompt (from `eval/tasks/<id>.yaml` or `--issue`/`--prompt-file`), then inspects each clone's git state for whether it committed and writes a `TASK_EVALUATION.md`-schema artifact; no correctness judging, cost/completion only |
+| FR-19 | `--skip-embed` is accepted by `parseArgs` (default `false`) and forwarded to every multi-suite child by `buildChildArgv`; the underlying skip-during-rebuild behavior is CLI-level and specified in [CLI.spec.md](../packages/kb-client/src/cli/CLI.spec.md) FR-43 |
 
 ### QA Test Cases
 
@@ -279,14 +278,7 @@ See companion doc for full vocabulary where applicable.
 | TC-PBQB | FR-13 | returns null when command is absent | pass |
 | TC-ECV9 | FR-13 | maps kb condition to K and control to N | pass |
 | TC-OI8L | FR-13 | writes LaTeX macros from scored artifacts | pass |
-| TC-4IU4 | FR-14 | [REMOVED] parses valid codeburn status JSON | n/a |
-| TC-EWD1 | FR-14 | [REMOVED] throws on malformed JSON | n/a |
-| TC-1MNC | FR-15 | [REMOVED] computes today delta when no midnight crossing | n/a |
-| TC-YUTZ | FR-15 | [REMOVED] falls back to month delta when today delta is negative (midnight crossing) | n/a |
-| TC-F4BQ | FR-15 | [REMOVED] rounds cost delta to 4 decimal places | n/a |
-| TC-NLHF | FR-15 | [REMOVED] builds artifact with correct structure | n/a |
-| TC-Z2H8 | FR-15 | [REMOVED] sets base to null for raw agent | n/a |
-| TC-S0NU | FR-15 | [REMOVED] generates correct path | n/a |
+| TC-4IU4 | FR-13 | preserves prior N macros when latest run skips or partially completes control | pass |
 | TC-1FC6 | FR-13 | classifyStageTokens splits thinking (:llm) from synthesis (:answer-enrichment) | pass |
 | TC-3SYS | FR-13 | parseRetrievalDetailTrace lifts loop counters from a retrieval detail line | pass |
 | TC-SF77 | FR-13 | buildQuestionTimeline joins stages with the trace and derives retrieval_ms | pass |
@@ -313,6 +305,8 @@ See companion doc for full vocabulary where applicable.
 | TC-6XLE | FR-13 | wipeEvalBaseSession is a no-op when the session dir is missing | pass |
 | TC-LNYU | FR-16 | SHARED_EVAL_BATCH_BASE is the placeholder `_eval-batch` | pass |
 | TC-TPFS | FR-16 | buildEvalServerChildEnv scrubs operator git/base bootstrap env | pass |
+| TC-GEM1 | FR-16 | buildEvalOfflineEnv defaults KB_EMBEDDER=gemini when GEMINI_API_KEY is set | pass |
+| TC-GEM2 | FR-16 | buildEvalOfflineEnv keeps an explicit KB_EMBEDDER pin | pass |
 | TC-QLHE | FR-18 | lists the kestra-18144 example task | pass |
 | TC-TRLS | FR-18 | loadTaskYaml reads the required fields from a real task file | pass |
 | TC-NRYD | FR-18 | loadTaskYaml throws a clear error for an unknown task id | pass |
@@ -334,6 +328,8 @@ See companion doc for full vocabulary where applicable.
 | TC-Y7OR | FR-18 | buildArtifact status is partial when only one arm ran, complete when at least one did | pass |
 | TC-NXXF | FR-18 | buildArtifact comparison is null unless both arms ran, computed correctly when both did | pass |
 | TC-24AP | FR-18 | buildArtifact task block carries the resolved prompt, not just the task id | pass |
+| TC-VYQ2 | FR-19 | parseArgs accepts --skip-embed, defaulting to false | pass |
+| TC-ZKD3 | FR-19 | buildChildArgv forwards --skip-embed to every multi-suite child | pass |
 
 ### Related docs
 

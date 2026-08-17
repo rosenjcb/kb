@@ -155,9 +155,7 @@ describe('init-cli interview checkpoints', () => {
     const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    const questionIO = createQuestionIO([
-      'fresh-base',
-    ])
+    const questionIO = createQuestionIO(['fresh-base'])
 
     const result = await runKbInit({
       nonInteractive: false,
@@ -177,40 +175,46 @@ describe('init-cli interview checkpoints', () => {
     expect(activeBase).toBe('fresh-base')
   })
 
-  it('[TC-UBCD] Given init without --base and config activeBase, then prompt suggests the first git remote slug', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
-    await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    const questionIO = createQuestionIO([''])
+  it(
+    '[TC-UBCD] Given init without --base and config activeBase, then prompt suggests the first git remote slug',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nThis project has a CLI.\n',
+      })
+      await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
+      await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nThis project has a CLI.\n',
+      })
+      const questionIO = createQuestionIO([''])
 
-    const result = await runKbInit({
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: questionIO.io,
-    })
+      const result = await runKbInit({
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: questionIO.io,
+      })
 
-    expect(questionIO.prompts[0]).not.toContain('[dogfood]')
-    expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
-    expect(result.base).toBe(repoSlugFromGitUrl(repo))
-    expect(result.checkpointFile).toBe(
-      path.join(
-        kbHomeDir,
-        'sessions',
-        repoSlugFromGitUrl(repo).toLowerCase(),
-        'checkpoints',
-        'init-latest.checkpoint.json'
+      expect(questionIO.prompts[0]).not.toContain('[dogfood]')
+      expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
+      expect(result.base).toBe(repoSlugFromGitUrl(repo))
+      expect(result.checkpointFile).toBe(
+        path.join(
+          kbHomeDir,
+          'sessions',
+          repoSlugFromGitUrl(repo).toLowerCase(),
+          'checkpoints',
+          'init-latest.checkpoint.json'
+        )
       )
-    )
-    const activeBase = (await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')).trim()
-    expect(activeBase).toBe(repoSlugFromGitUrl(repo))
-  })
+      const activeBase = (
+        await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')
+      ).trim()
+      expect(activeBase).toBe(repoSlugFromGitUrl(repo))
+    }
+  )
 
   it('[TC-KWC3] Given detach and resume flags, then parses them into init options', () => {
     const parsed = parseInitCommand(['--base', 'dogfood', '--detach', '--resume'])
@@ -234,14 +238,15 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.stopAfter).toBe('document-index')
   })
 
+  it('[TC-SKEB] Given --skip-embed, then parsing sets skipEmbeddings; absent it defaults false', () => {
+    expect(parseInitCommand(['--base', 'dogfood', '--skip-embed']).skipEmbeddings).toBe(true)
+    expect(parseInitCommand(['--base', 'dogfood']).skipEmbeddings).toBe(false)
+  })
+
   it('[TC-HOLS] Given init cycle validation, then exactly 5 phases are defined without pass-graph', () => {
-    const expectedCycles: Array<'read-inputs' | 'document-index' | 'import-docs' | 'write' | 'ast-facts'> = [
-      'read-inputs',
-      'document-index',
-      'import-docs',
-      'write',
-      'ast-facts',
-    ]
+    const expectedCycles: Array<
+      'read-inputs' | 'document-index' | 'import-docs' | 'write' | 'ast-facts'
+    > = ['read-inputs', 'document-index', 'import-docs', 'write', 'ast-facts']
 
     expect(expectedCycles).toHaveLength(5)
     expect(expectedCycles).not.toContain('pass-graph')
@@ -320,6 +325,82 @@ describe('init-cli interview checkpoints', () => {
     stderrSpy.mockRestore()
   })
 
+  it('[TC-EMSK] Given skipEmbeddings, then create-embeddings completes without writing any vectors', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
+    const provider = createProvider([
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify({
+        title: 'Project Overview',
+        type: 'introduction',
+        tags: ['overview'],
+        content: 'Overview content',
+      }),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+    ])
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
+    const lines: string[] = []
+
+    const result = await runKbInit({
+      base: 'skip-embed-test',
+      nonInteractive: true,
+      cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
+      provider,
+      skipEmbeddings: true,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(result.completedCycles).toContain('create-embeddings')
+    expect(lines.some(line => line.includes('skipped (--skip-embed)'))).toBe(true)
+
+    const baseDir = resolveBaseToDir('skip-embed-test', cwd)
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      // Nothing was embedded — every document/symbol/fact row is still unembedded under the
+      // model the (mocked) embedder would have used.
+      expect(indexer.countUnembeddedRows('test:fake:3').total).toBeGreaterThan(0)
+    } finally {
+      indexer.close()
+    }
+  })
+
   it('[TC-6HEV] Given interactive init, then read-inputs does not ask deprecated interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
@@ -357,49 +438,53 @@ describe('init-cli interview checkpoints', () => {
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
-  it('[TC-3OB0] Given resume after import-docs pause, then finishes init without re-asking read-inputs', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
-    })
+  it(
+    '[TC-3OB0] Given resume after import-docs pause, then finishes init without re-asking read-inputs',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
+      })
 
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
-    })
-    const firstQuestionIO = createQuestionIO([])
-    const provider = createProvider([])
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
+      })
+      const firstQuestionIO = createQuestionIO([])
+      const provider = createProvider([])
 
-    const firstRun = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      stopAfter: 'import-docs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: firstQuestionIO.io,
-      provider,
-    })
+      const firstRun = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        stopAfter: 'import-docs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: firstQuestionIO.io,
+        provider,
+      })
 
-    expect(firstRun.status).toBe('paused')
-    const firstCp = firstRun.checkpointFile
-    if (!firstCp) throw new Error('expected checkpointFile')
-    const mid = JSON.parse(await readFile(firstCp, 'utf8')) as {
-      completedCycles: string[]
-      candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+      expect(firstRun.status).toBe('paused')
+      const firstCp = firstRun.checkpointFile
+      if (!firstCp) throw new Error('expected checkpointFile')
+      const mid = JSON.parse(await readFile(firstCp, 'utf8')) as {
+        completedCycles: string[]
+        candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+      }
+      expect(mid.completedCycles).toContain('import-docs')
+      expect(mid.candidateDocs?.some(d => d.title === 'README.md' && d.isOriginal)).toBe(true)
+
+      const resumedRun = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: true,
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        resumeFrom: firstRun.checkpointFile,
+        questionIO: createQuestionIO([]).io,
+        provider,
+      })
+
+      expect(resumedRun.status).toBe('accepted')
     }
-    expect(mid.completedCycles).toContain('import-docs')
-    expect(mid.candidateDocs?.some(d => d.title === 'README.md' && d.isOriginal)).toBe(true)
-
-    const resumedRun = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: true,
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      resumeFrom: firstRun.checkpointFile,
-      questionIO: createQuestionIO([]).io,
-      provider,
-    })
-
-    expect(resumedRun.status).toBe('accepted')
-  })
+  )
 
   it('[TC-YNOA] Given version 1 checkpoint, then resume migrates it to version 3 without reviving deprecated answers', async () => {
     const cwd = await createTempProject({
@@ -554,40 +639,44 @@ describe('init-cli interview checkpoints', () => {
     expect(migrated.version).toBe(3)
   })
 
-  it('[TC-30HB] Given resume after read-inputs, then deprecated interview prompting does not resume', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nTiny overview only.\n',
-    })
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nTiny overview only.\n',
-    })
+  it(
+    '[TC-30HB] Given resume after read-inputs, then deprecated interview prompting does not resume',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nTiny overview only.\n',
+      })
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nTiny overview only.\n',
+      })
 
-    const initial = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: createQuestionIO([]).io,
-    })
+      const initial = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: createQuestionIO([]).io,
+      })
 
-    expect(initial.status).toBe('paused')
+      expect(initial.status).toBe('paused')
 
-    const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
+      const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
 
-    await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      resume: true,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: sequentialQuestionIO.io,
-    })
+      await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        resume: true,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: sequentialQuestionIO.io,
+      })
 
-    // git targets supplied → no git prompt; categories removed → no category prompt
-    expect(sequentialQuestionIO.prompts).toHaveLength(0)
-  })
+      // git targets supplied → no git prompt; categories removed → no category prompt
+      expect(sequentialQuestionIO.prompts).toHaveLength(0)
+    }
+  )
 
   it('[TC-ND14] Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
     const cwd = await createTempProject({
@@ -726,18 +815,19 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('document-index') &&
-          line.includes('skipped (no markdown documents found)')
+          line.includes('document-index') && line.includes('skipped (no markdown documents found)')
       )
     ).toBe(true)
   })
 
   it('[TC-HBHQ] Given multiple markdown sources, then iterable init phases emit current-item progress', async () => {
     const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+      'README.md':
+        '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
     })
     const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+      'README.md':
+        '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
       'docs/guide.md':
         '# Guide\n\nThis guide sentence is also intentionally long enough for fact ingest.\n',
     })
@@ -755,9 +845,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     // All sub-steps (read-inputs, import-docs, write) now report under 'document-index'
-    expect(
-      lines.some(line => line.includes('document-index') && line.includes('README.md'))
-    ).toBe(true)
+    expect(lines.some(line => line.includes('document-index') && line.includes('README.md'))).toBe(
+      true
+    )
   })
 
   it('[TC-1NBT] Given rescan, then write cycle writes originals and any resulting mutations', async () => {
@@ -805,7 +895,9 @@ describe('init-cli interview checkpoints', () => {
       lines.some(
         line =>
           line.includes('document-index') &&
-          (line.includes('writing original docs') || line.includes('mutations processed') || line.includes('doc(s) written'))
+          (line.includes('writing original docs') ||
+            line.includes('mutations processed') ||
+            line.includes('doc(s) written'))
       )
     ).toBe(true)
   })
@@ -899,9 +991,7 @@ describe('init-cli interview checkpoints', () => {
     expect(originals[0]?.title).toBe('docs/README.md')
   })
 
-  it(
-    'Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest',
-    async () => {
+  it('Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest', async () => {
     const cwd = await createTempProject({
       'tsconfig.json': JSON.stringify({
         compilerOptions: { target: 'ES2020', module: 'commonjs', strict: true },
@@ -931,9 +1021,7 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(lines.some(line => line.includes('code-index') && line.includes('0 changed'))).toBe(true)
-    },
-    10000
-  )
+  }, 10000)
 
   it('[TC-9Z33] Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
     const cwd = await createTempProject({
@@ -1332,7 +1420,6 @@ describe('kb scan — base resolution', () => {
       })
     ).rejects.toThrow(/No base selected/)
   })
-
 })
 
 // ---------------------------------------------------------------------------
