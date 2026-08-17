@@ -49,12 +49,6 @@ export interface KbConfig {
     missHintMinOccurrences?: number
     intentLlmAnswer?: boolean
     laneRouting?: boolean
-    /**
-     * Weight each hybrid-retrieval RRF lane by candidate kind (symbol > fact > document) so a
-     * whole document no longer competes at equal weight against a single code symbol. Off by
-     * default — A/B against a subset of bases before a global rollout (issue #216).
-     */
-    hybridKindWeight?: boolean
   }
   createdAt?: string
   updatedAt?: string
@@ -135,7 +129,6 @@ export const DEFAULT_FEATURES: Required<NonNullable<KbConfig['features']>> = {
   missHintMinOccurrences: 3,
   intentLlmAnswer: true,
   laneRouting: true,
-  hybridKindWeight: false,
 }
 
 async function migrateLegacyConfigJsonOnce(): Promise<void> {
@@ -560,7 +553,6 @@ export interface ResolvedFeatureFlags {
   missHintMinOccurrences: number
   intentLlmAnswer: boolean
   laneRouting: boolean
-  hybridKindWeight: boolean
 }
 
 export function resolveFactRetrievalMethod(config: KbConfig): FactRetrievalMethod {
@@ -602,7 +594,6 @@ export function resolveFeatureFlags(config: KbConfig): ResolvedFeatureFlags {
       f.missHintMinOccurrences ?? parseEnvInt(process.env.KB_MISS_HINT_MIN_OCCURRENCES, 3),
     intentLlmAnswer: f.intentLlmAnswer ?? process.env.KB_INTENT_LLM_ANSWER !== 'false',
     laneRouting: f.laneRouting ?? process.env.KB_LANE_ROUTING_ENABLED !== 'false',
-    hybridKindWeight: f.hybridKindWeight ?? process.env.KB_HYBRID_KIND_WEIGHT === 'true',
   }
 }
 
@@ -652,8 +643,6 @@ export function applyConfigToEnv(config: KbConfig): void {
     process.env.KB_LANE_ROUTING_ENABLED = booleanEnvString(f.laneRouting)
   if (f?.intentLlmAnswer !== undefined && !process.env.KB_INTENT_LLM_ANSWER)
     process.env.KB_INTENT_LLM_ANSWER = booleanEnvString(f.intentLlmAnswer)
-  if (f?.hybridKindWeight !== undefined && !process.env.KB_HYBRID_KIND_WEIGHT)
-    process.env.KB_HYBRID_KIND_WEIGHT = booleanEnvString(f.hybridKindWeight)
 }
 
 // ─── Normalization ────────────────────────────────────────────────────────────
@@ -729,8 +718,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
       f.intentLlmAnswer = Boolean(input.features.intentLlmAnswer)
     if (input.features.laneRouting !== undefined)
       f.laneRouting = Boolean(input.features.laneRouting)
-    if (input.features.hybridKindWeight !== undefined)
-      f.hybridKindWeight = Boolean(input.features.hybridKindWeight)
     if (Object.keys(f).length > 0) normalized.features = f
   }
 

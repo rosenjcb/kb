@@ -77,7 +77,7 @@ describe('hybrid-retriever', () => {
     expect(result.counts.hops + result.counts.symbol).toBeGreaterThan(0)
   })
 
-  it('[TC-O0JK] KB_HYBRID_KIND_WEIGHT lets a narrow symbol outrank a broad document tied on rank (#216)', () => {
+  it('[TC-O0JK] kind weighting lets a narrow symbol outrank a broad document tied on rank (#216)', () => {
     indexer.upsertDocument({
       gitRepo: 'demo',
       relPath: 'docs/gizmo-guide.md',
@@ -95,17 +95,9 @@ describe('hybrid-retriever', () => {
     const rankOf = (units: ReturnType<typeof retrieveHybrid>['units'], tag: 'document' | 'symbol') =>
       units.findIndex(u => u.metadata.tags?.includes(tag))
 
-    delete process.env.KB_HYBRID_KIND_WEIGHT
-    const unweighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
-    // Both lanes match at rank 0, so plain RRF ties them — the doc (fused first) wins the tie.
-    expect(rankOf(unweighted.units, 'document')).toBeLessThan(rankOf(unweighted.units, 'symbol'))
-
-    process.env.KB_HYBRID_KIND_WEIGHT = 'true'
-    try {
-      const weighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
-      expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
-    } finally {
-      delete process.env.KB_HYBRID_KIND_WEIGHT
-    }
+    // Both lanes match at rank 0, so plain RRF would tie them — kind weighting always applies,
+    // so the symbol (1.15x) outranks the document (0.9x) even at an equal rank position.
+    const weighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
+    expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
   })
 })
