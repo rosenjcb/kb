@@ -30,6 +30,16 @@ questions:
   # Product probes on query-time scope — still kb-domain questions, not meta-eval riddles.
   - What is the role of the entity registry in query-time scope inference?
   - Walk through how hybrid retrieval, the fact curator, and one-shot synthesis fit together on a kb query — and if an entity resolves, do ontology-typed sub-queries still run with no query-length gate?
+  # Investigative probes (epic #230: retrieval quality — ranking, evidence, curation, reasoning).
+  # Unlike the conceptual "what is X" questions above, these are multi-hop / causal / decoy-laden
+  # and some require CONFIRMING AN ABSENCE. They are the kb-suite analogue of kestra Q11-Q13 and
+  # exist so this class of regression (right vocabulary, wrong causal target) cannot hide (#229).
+  - "Trace the causal chain: when a kb query result reports `evidence: strong`, which function on the live path assigns that label, and what does it actually measure — the relevance of the retrieved units, or merely how many came back? Name the function that computes it and the similarly-named one that looks like it should but historically did not run."
+  - "In RRF fusion, does a whole markdown document contribute to the fused ranking with the same weight as a single exported code symbol, or are they weighted differently? Point to where that per-kind weighting is decided, and say which of the two is boosted."
+  - "Follow the multi-hop path: when the top hit for a query is a document, how do the specific code symbols that document describes end up in the evidence set, how many hops deep does that traversal go, and where do those hopped-in units land relative to the directly-matched ones?"
+  - "When the retrieved pool is large enough to trigger the fact curator, what decides which units survive — and does the curator guarantee that any code symbols remain, or can the kept set legitimately end up 100% documents with zero symbols? Distinguish the keep decision's actual inputs from any kind-composition constraint."
+  - "Confirm an absence: if a user asks kb to verify a negative claim — 'X does not affect Y' — does today's retrieval have any step that confirms the absence by inspecting Y's actual code, or does it only ever surface positive matches? Do not describe a mechanism that is not there."
+  - "The candidate pool for a query contains two near-duplicate targets that share almost all their vocabulary — e.g. a backend `/flows/import` REST endpoint and a frontend `FlowCreate.vue` import handler. Does kb have a step that detects the near-duplicate and verifies which one actually answers the question before synthesis writes the answer? Confirm whether such a decoy-disambiguation step exists today."
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -272,3 +282,63 @@ answers:
     short-question LLM expander is only the unresolved fallback. A correct answer must describe the
     hybrid → curator → synthesis stack and must not claim the deleted ponds/orchestrator loop is
     how kb query works today.
+
+  - >
+    The live label is assigned by `deriveToolResultEvidence` in `packages/kb-core/src/intents/router.ts`,
+    which carries the last retrieval checkpoint's evidence onto the intent result. It must reflect the
+    **relevance** of the retrieved units — the mean cosine/FTS score of the top-ranked results (`avgTop`)
+    blended with how many query concepts the kept set covers (`conceptCoverage`) — via
+    `assessRetrievalEvidence` in `core/evidence-label.ts`. The similarly-named trap is
+    `assessResultCount`, a bare count heuristic (0→none, 1→weak, 2→moderate, ≥3→strong) that ignores
+    relevance entirely; treating "3+ results came back" as `strong` is exactly the bug this path must not
+    have. A correct answer names `deriveToolResultEvidence` as the live site, says the label is derived
+    from retrieval relevance (not a raw result count), and does not claim a bare count still decides it.
+
+  - >
+    Differently. Plain rank-position RRF would treat a whole markdown document and a single code symbol
+    as equal-weight candidates, but `hybrid-retriever.ts` applies a per-kind multiplier `KIND_WEIGHT`
+    inside `fuseLane` (`document: 0.9`, `symbol: 1.15`, `fact: 1.0`): symbols are narrower and more often
+    the literal answer to an implementation question, so they are **boosted**, while whole documents — the
+    coarsest unit — are **discounted**. A correct answer must say the weighting is per-kind (not uniform),
+    locate it in `KIND_WEIGHT`/`fuseLane`, and identify the code symbol as the boosted unit; it must not
+    claim RRF fusion weights documents and symbols equally.
+
+  - >
+    Via a single depth-1 hop over `doc_code_links` in `retrieveHybrid`. After the six FTS+neural lanes are
+    RRF-fused and ranked, the top ~3 documents seed `listLinkedSymbols` and the top ~3 symbols seed
+    `listLinkingDocuments`, pulling in the code a hit document describes (and the docs a hit symbol
+    describes), capped at `HOP_LIMIT = 8`. It is not a graph walk: `doc_code_links` is a flat table and the
+    hop is depth-1 by construction, so cost is bounded by the candidate pool, not graph density. The hopped
+    units are appended **below** every directly-matched unit (scored at roughly half the ranking floor) so
+    they enrich rather than displace the direct hits. A correct answer must say depth-1 (one hop, not a
+    multi-hop BFS), name `doc_code_links`, and note the hopped units rank beneath the direct matches.
+
+  - >
+    The curator (`fact-curator.ts`) runs only when the retrieved unit pool exceeds the curate threshold
+    (`DEFAULT_MIN_RESULTS_TO_CURATE`, 12). It keys on the **raw** user question: units with high query-token
+    overlap (`overlapFraction`) are auto-kept with no LLM call; the remainder go to a single structured
+    verdict `{keep, gaps, sufficient}`. Non-kept units are hard-dropped, gaps trigger bounded shallow
+    re-discovery, and it fails safe to the unfiltered pool (never empty) on any LLM/parse error. Crucially,
+    every keep decision is **relevance-only** — there is no kind-composition constraint, so the surviving
+    set can legitimately be 100% documents with zero code symbols (the gap #218 targets). A correct answer
+    must say the keep decision looks only at relevance/overlap and that no rule guarantees symbols survive;
+    it must not invent a per-kind quota the curator does not have.
+
+  - >
+    No — today's retrieval only surfaces positive matches. Hybrid retrieval plus the curator find and keep
+    units whose text matches the query; there is no step that confirms a negative claim by going and
+    inspecting the actual code of the named subsystem to establish that a mechanism is genuinely **absent**.
+    So a question like "does X affect Y?" is answered from whatever Y-related evidence happened to rank, not
+    from a verification that Y's code contains no such coupling — that absence-verification capability is
+    exactly the open gap #228 describes. A correct answer must confirm the absence of the capability rather
+    than describe a verification step that does not exist.
+
+  - >
+    No such decoy-disambiguation step exists today. Once both near-duplicate targets are in the fused pool,
+    ranking and the curator can keep either or both, and one-shot synthesis can confuse the plausible
+    same-vocabulary decoy (e.g. answer about the backend `/flows/import` REST endpoint when the question is
+    about the frontend `FlowCreate.vue` import handler) — nothing detects that two candidates are
+    near-duplicates and verifies which one actually answers the question before synthesis. That
+    near-duplicate/decoy detection-and-verify step is the open gap #227 targets. A correct answer must
+    confirm the absence and must not claim retrieval already dedupes or disambiguates competing entities
+    before writing the answer.
