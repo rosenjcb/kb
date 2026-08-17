@@ -106,24 +106,28 @@ function extractProvenance(result: unknown): string[] {
 }
 
 /**
- * Carry the last retrieval checkpoint's evidence label onto the intent result.
+ * Carry the retrieval's evidence label onto the intent result.
  *
  * `read_facts` — the only intent this router executes — never populates
  * `retrieval.checkpoints` (nothing in the deep facts-loop path calls
- * `buildCheckpointRecord`), so this always fell through to a hardcoded
- * `'strong'` regardless of what was actually retrieved. Fall back to a real
- * measurement — the result count already on the tool result — instead of a
- * constant.
+ * `buildCheckpointRecord`), so this used to fall through to a hardcoded
+ * `'strong'` regardless of what was actually retrieved. It now reads, in order:
+ * the last checkpoint's label; the relevance-aware `retrieval.evidence` the
+ * hybrid reader computes (`assessRetrievalEvidence` over top-unit cosine +
+ * concept coverage — #219); and only as a last resort a bare result count, for
+ * paths that carry neither (e.g. the all-facts dump).
  */
 function deriveToolResultEvidence(result: unknown): EvidenceLabel {
   if (!result || typeof result !== 'object') return 'strong'
-  const checkpoints = (
+  const retrieval = (
     result as {
-      retrieval?: { checkpoints?: Array<{ evidence?: unknown }> }
+      retrieval?: { checkpoints?: Array<{ evidence?: unknown }>; evidence?: unknown }
     }
-  ).retrieval?.checkpoints
+  ).retrieval
+  const checkpoints = retrieval?.checkpoints
   const last = checkpoints?.[checkpoints.length - 1]?.evidence
   if (isEvidenceLabel(last)) return last
+  if (isEvidenceLabel(retrieval?.evidence)) return retrieval.evidence
   const results = (result as { results?: unknown[] }).results
   return assessResultCount(Array.isArray(results) ? results.length : 0)
 }

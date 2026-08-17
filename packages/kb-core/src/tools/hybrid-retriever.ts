@@ -45,6 +45,14 @@ const LANE_DEPTH = 40
 /** Cap on units pulled in by the one-hop doc↔symbol join. */
 const HOP_LIMIT = 8
 
+/**
+ * How many top-ranked returned units the `avgTop` relevance measure averages over. The evidence
+ * label reads the strength of the *best* results, not the long tail — a handful of on-topic hits
+ * is what makes a pass answerable, so a low N keeps a few strong hits from being diluted by the
+ * weaker units that fill out the limit.
+ */
+const EVIDENCE_TOP_N = 5
+
 export type RetrievedUnitKind = 'document' | 'symbol' | 'fact'
 
 export interface RetrievedUnit {
@@ -78,6 +86,13 @@ export interface HybridRetrievalResult {
   /** `docs:12,symbols:8,facts:0,hops:4` — surfaced on `retrieval.detail` for --debug. */
   detail: string
   counts: Record<RetrievedUnitKind | 'hops', number>
+  /**
+   * Mean rescaled-cosine relevance of the top {@link EVIDENCE_TOP_N} returned units, in `[0, 1]`.
+   * `undefined` when it cannot be measured (no returned units, or the query was not embedded by a
+   * real embedder so cosine scores are the deterministic hash fallback). Feeds the relevance-aware
+   * evidence label; consumers must fall back to a count heuristic when it is `undefined`.
+   */
+  avgTop?: number
 }
 
 export interface Candidate {
@@ -207,18 +222,18 @@ export function retrieveHybrid(
 
   // Neural lanes re-rank the lexical pool rather than scanning every embedding: cosine over
   // the whole index would be a full table scan per query, and a unit no lane surfaced at all
-  // is not one RRF would have promoted anyway.
-  fuseLane(
-    fused,
-    'document',
-    rankByScore([...documents.keys()], indexer.semanticDocumentScores(query, [...documents.keys()]))
-  )
-  fuseLane(
-    fused,
-    'symbol',
-    rankByScore([...symbols.keys()], indexer.semanticCodeSymbolScores(query, [...symbols.keys()]))
-  )
-  fuseLane(fused, 'fact', rankByScore([...facts.keys()], indexer.semanticFactScores(query, [...facts.keys()])))
+  // is not one RRF would have promoted anyway. The per-kind cosine maps are retained (not just
+  // consumed by `rankByScore`) so the top-unit relevance can feed the evidence label below.
+  const docScores = indexer.semanticDocumentScores(query, [...documents.keys()])
+  const symbolScores = indexer.semanticCodeSymbolScores(query, [...symbols.keys()])
+  const factScores = indexer.semanticFactScores(query, [...facts.keys()])
+  fuseLane(fused, 'document', rankByScore([...documents.keys()], docScores))
+  fuseLane(fused, 'symbol', rankByScore([...symbols.keys()], symbolScores))
+  fuseLane(fused, 'fact', rankByScore([...facts.keys()], factScores))
+  const cosineById = new Map<string, number>()
+  for (const [id, score] of docScores) cosineById.set(id, score)
+  for (const [id, score] of symbolScores) cosineById.set(id, score)
+  for (const [id, score] of factScores) cosineById.set(id, score)
 
   const ranked = [...fused.values()].sort((a, b) => b.score - a.score)
 
@@ -279,5 +294,24 @@ export function retrieveHybrid(
     units,
     detail: `hybrid:docs=${counts.document},symbols=${counts.symbol},facts=${counts.fact},hops=${hops}`,
     counts,
+    avgTop: measureAvgTop(units, cosineById, indexer.hasRealQueryVector(query)),
   }
+}
+
+/**
+ * Mean rescaled-cosine relevance of the top {@link EVIDENCE_TOP_N} returned units. Units without a
+ * cosine score (lexical-only or hopped-in) count as 0 so a pass that ranks such units at the top is
+ * scored as the weak evidence it is. Returns `undefined` when relevance cannot be measured — no
+ * units, or the query was scored against the deterministic hash fallback rather than a real
+ * embedder — so the caller falls back to a count heuristic instead of trusting a meaningless number.
+ */
+function measureAvgTop(
+  units: RetrievedUnit[],
+  cosineById: Map<string, number>,
+  realEmbedder: boolean
+): number | undefined {
+  if (!realEmbedder || units.length === 0) return undefined
+  const top = units.slice(0, EVIDENCE_TOP_N)
+  const sum = top.reduce((acc, unit) => acc + (cosineById.get(unit.metadata.id) ?? 0), 0)
+  return sum / top.length
 }

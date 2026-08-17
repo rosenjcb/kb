@@ -120,6 +120,8 @@ See companion doc for full vocabulary where applicable.
 | TC-44OK | FR-13 | Given a strong hybrid hit, then next action is return | pass |
 | TC-WYD7 | FR-13 | Given a lexical stage with no evidence, then next action advances to rewrite retry | pass |
 | TC-QVTW | FR-13 | Given rewrite retry stage, then next action always returns | pass |
+| TC-EV19 | FR-13 | Given the same result count, then low top-relevance scores below high top-relevance | pass |
+| TC-EV20 | FR-13 | Given no measured relevance, then evidence falls back to the count heuristic | pass |
 | TC-7KN5 | FR-14 | Given a new document input, then should write markdown file and index table entry | pass |
 | TC-ZO2X | FR-14 | Given duplicate document titles without overwrite, then should create a unique suffixed file id | pass |
 | TC-4PM7 | FR-14 | Given overwrite true on an existing id, then should replace the same document path | pass |
@@ -127,6 +129,7 @@ See companion doc for full vocabulary where applicable.
 | TC-0V13 | FR-3 | hybrid retrieval returns ranked documents and code symbols for a natural-language query | pass |
 | TC-DZZT | FR-3 | hybrid retrieval detail reports docs/symbols/facts/hops counts | pass |
 | TC-71GI | FR-3 | one-hop join surfaces symbols linked from a top document | pass |
+| TC-EV21 | FR-3 | Given a real embedder, then avgTop measures top-unit relevance and is higher on-topic | pass |
 | TC-YLGT | FR-1 | upsertDocument invalidates the stale embedding on content change so only changed docs are re-embedded | pass |
 | TC-B37U | FR-1 | countUnembeddedRows reports pending counts, and embedAll emits a per-batch start and success event that counts remaining down to zero | pass |
 | TC-Q5DT | FR-1 | embedAll emits a retry event when the embedder backs off, and restores the embedder retry hook after it finishes | pass |

@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.5
+
+### Patch Changes
+
+- Make the retrieval evidence label relevance-aware (#219). `deriveToolResultEvidence` and `buildCheckpointRecord` now derive the label from `assessRetrievalEvidence` (top-unit cosine relevance + query-concept coverage) instead of the bare `assessResultCount` count heuristic, so three low-relevance results no longer read as unconditionally `strong`. Hybrid retrieval surfaces a gated `avgTop` (undefined when no real embedder is used, falling back to the count heuristic).
+
 ## 2.0.4
 
 ### Patch Changes

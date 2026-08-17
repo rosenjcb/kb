@@ -1,6 +1,7 @@
 import {
   type EvidenceLabel,
   assessResultCount,
+  assessRetrievalEvidence,
   isEvidenceAtLeast,
 } from '../core/evidence-label'
 
@@ -43,13 +44,29 @@ export function buildCheckpointRecord(input: {
   reason: string
   status?: RetrievalCheckpointStatus
   config?: Partial<RetrievalCheckpointConfig>
+  /**
+   * Mean top-unit cosine relevance in `[0, 1]`, when the stage measured it. Present → the label is
+   * the relevance-aware `assessRetrievalEvidence`; absent → it falls back to a bare result count.
+   * This is what lets a stage that returned 3 low-relevance results score below one that returned
+   * 3 strong ones, instead of both being unconditionally `strong` (#219).
+   */
+  avgTop?: number
+  /** Share of query concepts covered by the kept set, paired with `avgTop`. Defaults to 0. */
+  conceptCoverage?: number
 }): RetrievalCheckpointRecord {
   const config: RetrievalCheckpointConfig = {
     ...DEFAULT_CONFIG,
     ...input.config,
   }
 
-  const evidence = assessResultCount(input.totalResults)
+  const evidence =
+    typeof input.avgTop === 'number'
+      ? assessRetrievalEvidence({
+          uniqueFacts: input.totalResults,
+          avgTop: input.avgTop,
+          conceptCoverage: input.conceptCoverage ?? 0,
+        })
+      : assessResultCount(input.totalResults)
   const status = input.status ?? (input.totalResults > 0 ? 'hit' : 'miss')
   const nextAction = decideNextAction(input.stage, status, evidence, config)
 

@@ -389,6 +389,17 @@ export class SqliteKbIndexer {
   }
 
   /**
+   * True when `semanticScores` will score `query` against a *real* embedder vector rather than
+   * the deterministic hash fallback — i.e. an embedder is attached and this query was
+   * pre-embedded by {@link cacheQueryEmbedding}. Callers that turn cosine scores into a
+   * relevance judgement (evidence labelling) must gate on this: hash-vector cosines cluster
+   * around 0.5 and carry no relevance signal.
+   */
+  hasRealQueryVector(query: string): boolean {
+    return this.embedder != null && this.queryVectorCache.has(query.trim())
+  }
+
+  /**
    * Count unembedded rows across documents, code_symbols, and live facts for the active model.
    */
   countUnembeddedRows(modelId?: string): {

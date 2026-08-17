@@ -1,4 +1,8 @@
-import type { EvidenceLabel } from '../core/evidence-label'
+import {
+  type EvidenceLabel,
+  assessResultCount,
+  assessRetrievalEvidence,
+} from '../core/evidence-label'
 import { isEnvTrue } from '../config/env-boolean.js'
 import type { LLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
@@ -72,6 +76,13 @@ export interface QueryResponse {
   retrieval: {
     method: 'lexical' | 'hybrid' | 'lexical-fallback'
     detail?: string
+    /**
+     * Relevance-aware evidence strength for this retrieval, derived from the top-unit cosine
+     * relevance (`avgTop`) and query-concept coverage of the kept set — not a bare result count.
+     * `undefined` on the raw all-facts dump path, where relevance is not meaningful; consumers
+     * then fall back to a count heuristic. See `core/evidence-label`.
+     */
+    evidence?: EvidenceLabel
     /** Per-iteration engine trace — only shown in --debug mode. */
     traceDetail?: string
     clarificationQuestion?: string
@@ -165,6 +176,7 @@ export class FactsDocumentReader {
         retrieval: {
           method: shallow.units.length > 0 ? 'hybrid' : 'lexical-fallback',
           detail: shallow.detail,
+          evidence: deriveEvidenceLabel(shallow.units, shallow.avgTop, baseQuery),
         },
       }
     }
@@ -187,7 +199,23 @@ export class FactsDocumentReader {
       expansions.length,
       typedLanes.length > 0 ? describeTypedLanes(typedLanes) : undefined
     )
-    return this.curateRelevance(merged, baseQuery, includeContent, excludeIdSet, input.collector)
+    const curated = await this.curateRelevance(
+      merged,
+      baseQuery,
+      includeContent,
+      excludeIdSet,
+      input.collector
+    )
+    // Evidence reflects the final kept set's relevance. `avgTop` comes from the base-question pass
+    // (`passes[0]`) — the truest read of "how relevant is what we found for the actual question",
+    // undiluted by expansion lanes — while coverage is measured over the post-curation survivors.
+    return {
+      ...curated,
+      retrieval: {
+        ...curated.retrieval,
+        evidence: deriveEvidenceLabel(curated.results, passes[0]?.avgTop, baseQuery),
+      },
+    }
   }
 
   /**
@@ -263,6 +291,58 @@ export class FactsDocumentReader {
 /** `facets:ownership+mechanism` — which typed probes ran, for --debug / --trace. */
 function describeTypedLanes(lanes: InquiryLane[]): string {
   return `facets:${[...new Set(lanes.map(lane => lane.facet))].join('+')}`
+}
+
+/** Short, low-signal words dropped before measuring query-concept coverage. */
+const EVIDENCE_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'with', 'that', 'this', 'from', 'how', 'does',
+  'what', 'when', 'where', 'which', 'who', 'why', 'into', 'onto', 'over', 'your', 'its', 'their',
+  'has', 'have', 'was', 'were', 'can', 'could', 'would', 'should', 'about', 'than', 'then', 'they',
+])
+
+/** Distinct lowercased content tokens (>2 chars, non-stopword) — the "concepts" coverage measures. */
+function evidenceTokens(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(token => token.length > 2 && !EVIDENCE_STOP_WORDS.has(token))
+    ),
+  ]
+}
+
+/** Share of the query's concept tokens that appear anywhere in the kept set's text. */
+function conceptCoverage(query: string, units: QueryResult[]): number {
+  const queryTokens = evidenceTokens(query)
+  if (queryTokens.length === 0) return 0
+  const covered = new Set<string>()
+  for (const unit of units) {
+    const text = `${unit.content ?? ''} ${unit.metadata.title} ${unit.metadata.symbol ?? ''}`
+    for (const token of evidenceTokens(text)) covered.add(token)
+  }
+  const hit = queryTokens.filter(token => covered.has(token)).length
+  return hit / queryTokens.length
+}
+
+/**
+ * Turn a retrieval pass's measured relevance into a categorical evidence label. When `avgTop` is a
+ * real number, this is the relevance-aware `assessRetrievalEvidence` (top-unit cosine + concept
+ * coverage). Only when relevance cannot be measured — no embedder, so `avgTop` is `undefined` —
+ * does it fall back to the bare count heuristic. This is the fix for #219: `strong` is no longer
+ * guaranteed by "3+ results came back".
+ */
+function deriveEvidenceLabel(
+  units: QueryResult[],
+  avgTop: number | undefined,
+  query: string
+): EvidenceLabel {
+  if (typeof avgTop !== 'number') return assessResultCount(units.length)
+  return assessRetrievalEvidence({
+    uniqueFacts: units.length,
+    avgTop,
+    conceptCoverage: conceptCoverage(query, units),
+  })
 }
 
 /**

@@ -100,4 +100,57 @@ describe('hybrid-retriever', () => {
     const weighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
     expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
   })
+
+  it('[TC-EV21] Given a real embedder, then avgTop measures top-unit relevance and is higher on-topic', async () => {
+    // #219: the evidence label reads retrieval relevance. Without an embedder, cosine is the
+    // deterministic hash fallback and carries no relevance signal, so avgTop is deliberately
+    // not measured — the caller must fall back to a count heuristic.
+    const unmeasured = retrieveHybrid(indexer, { query: 'AuthService login', limit: 10 })
+    expect(unmeasured.avgTop).toBeUndefined()
+
+    // A tiny deterministic embedder: dim0 = "red" topic, dim1 = "blue" topic, dim2 = the shared
+    // lexical anchor "widget", dim3 = a base so no vector has zero norm. Two docs share the
+    // anchor (both retrieved by FTS) but sit on opposite topic axes.
+    const topicVector = (text: string): number[] => {
+      const t = text.toLowerCase()
+      return [t.includes('red') ? 1 : 0, t.includes('blue') ? 1 : 0, t.includes('widget') ? 0.1 : 0, 0.01]
+    }
+    const fakeEmbedder = {
+      modelId: 'fake-topic:4',
+      dimensions: 4,
+      embed: async (texts: string[]) => texts.map(topicVector),
+    }
+
+    const embedded = new SqliteKbIndexer({ dbPath: join(tmpDir, 'embedded.sqlite'), embedder: fakeEmbedder })
+    embedded.upsertDocument({
+      gitRepo: 'demo',
+      relPath: 'docs/red.md',
+      title: 'Red widget guide',
+      body: 'The red widget guide. red widget red widget.',
+    })
+    embedded.upsertDocument({
+      gitRepo: 'demo',
+      relPath: 'docs/blue.md',
+      title: 'Blue widget guide',
+      body: 'The blue widget guide. blue widget blue widget.',
+    })
+    await embedded.embedAll()
+
+    // On-topic query embeds onto the "red" axis → the red doc scores ~1. Off-topic query shares
+    // only the "widget" anchor → every retrieved unit scores near the orthogonal floor.
+    await embedded.cacheQueryEmbedding('red widget')
+    await embedded.cacheQueryEmbedding('green widget')
+    const onTopic = retrieveHybrid(embedded, { query: 'red widget', limit: 10 })
+    const offTopic = retrieveHybrid(embedded, { query: 'green widget', limit: 10 })
+    embedded.close()
+
+    expect(onTopic.units.length).toBeGreaterThan(0)
+    expect(offTopic.units.length).toBeGreaterThan(0)
+    expect(typeof onTopic.avgTop).toBe('number')
+    expect(typeof offTopic.avgTop).toBe('number')
+    // The whole point of #219: relevance, not result count, drives the number.
+    expect(onTopic.avgTop as number).toBeGreaterThan(offTopic.avgTop as number)
+    expect(onTopic.avgTop as number).toBeGreaterThan(0.5)
+    expect(onTopic.avgTop as number).toBeLessThanOrEqual(1)
+  })
 })
