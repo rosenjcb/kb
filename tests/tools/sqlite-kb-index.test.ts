@@ -511,4 +511,35 @@ describe('SQLite KB index integration', () => {
 
     indexer.close()
   })
+
+  it('[TC-K9RW] Given equal-relevance symbols, then a name-column match should rank above a source-text-only match (#217)', async () => {
+    const baseDir = await createTempDir()
+    const dbPath = path.join(baseDir, 'kb-index.sqlite')
+    const indexer = new SqliteKbIndexer({ dbPath })
+
+    // relPath deliberately avoids the keyword (it's indexed alongside `name`). The source-text
+    // match's blob is short and single-hit, which without column weighting outranks the name
+    // match on bm25's own field-length terms alone — so this fixture only passes once `name` is
+    // actually boosted over `source_text`, not from length normalization doing the work for free.
+    indexer.upsertCodeSymbol({
+      gitRepo: 'demo',
+      relPath: 'src/mod-a.ts',
+      name: 'gizmoKeyword',
+      kind: 'function',
+      sourceText:
+        'export function process() { return doUnrelatedWork(); doMoreUnrelatedWork(); doEvenMoreWork(); finalize(); cleanup(); }',
+    })
+    indexer.upsertCodeSymbol({
+      gitRepo: 'demo',
+      relPath: 'src/mod-b.ts',
+      name: 'processHelper',
+      kind: 'function',
+      sourceText: 'export function processHelper() { return gizmoKeyword(); }',
+    })
+
+    const results = indexer.searchCodeSymbolsFts('gizmoKeyword', 10)
+    expect(results[0]?.name).toBe('gizmoKeyword')
+
+    indexer.close()
+  })
 })

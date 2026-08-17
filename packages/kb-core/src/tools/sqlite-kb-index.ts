@@ -1240,13 +1240,22 @@ export class SqliteKbIndexer {
     const ftsQuery = buildFtsQuery(query)
     if (!ftsQuery) return []
     try {
+      // Weight args are positional over ALL fts5 columns including UNINDEXED ones — the table is
+      // (symbol_id UNINDEXED, name, source_text), so the first 1.0 is a no-op placeholder for
+      // symbol_id, and the 3.0 boosts `name` 3x over `source_text`. No closed-form constant
+      // exists for BM25F-style field weighting (every production search engine tunes this by
+      // measurement); 3x sits in the conventional 2x-5x title/name-boost range and is also the
+      // best-scoring ratio from a measured sweep (1:1, 3:1, 5:1, 8:1) against the `kb` eval suite
+      // plus an `eval-kestra` regression check — higher ratios regressed Q_adeq. Validated on two
+      // corpora, not proven universal; revisit if a differently-shaped codebase underperforms
+      // (issue #217).
       return this.db
         .prepare(
           `SELECT ${CODE_SYMBOL_ROW_SELECT_S}
            FROM code_symbols_fts fts
            JOIN code_symbols s ON s.id = fts.symbol_id
            WHERE code_symbols_fts MATCH ?
-           ORDER BY rank
+           ORDER BY bm25(code_symbols_fts, 1.0, 3.0, 1.0)
            LIMIT ?`
         )
         .all(ftsQuery, limit) as unknown as CodeSymbolRow[]

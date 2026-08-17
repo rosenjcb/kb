@@ -12,7 +12,6 @@
  * densely the index happens to be connected.
  */
 
-import { isEnvTrue } from '../config/env-boolean.js'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
 import {
   type CodeSymbolRow,
@@ -29,11 +28,10 @@ export const DEFAULT_FACT_LIMIT = 40
 const RRF_K = 60
 
 /**
- * Per-kind multiplier applied to a lane's RRF contribution, gated behind `KB_HYBRID_KIND_WEIGHT`
- * (see `resolveFeatureFlags().hybridKindWeight`). Plain rank-position RRF treats a whole
- * markdown document and a single code symbol as equal-weight candidates; symbols are narrower
- * and more often the literal answer to an implementation question, so they get a boost while
- * whole documents — the coarsest unit — get a discount (issue #216).
+ * Per-kind multiplier applied to a lane's RRF contribution. Plain rank-position RRF treats a
+ * whole markdown document and a single code symbol as equal-weight candidates; symbols are
+ * narrower and more often the literal answer to an implementation question, so they get a
+ * boost while whole documents — the coarsest unit — get a discount (issue #216).
  */
 const KIND_WEIGHT: Record<RetrievedUnitKind, number> = {
   document: 0.9,
@@ -90,13 +88,8 @@ export interface Candidate {
 }
 
 /** Add one ranked lane's reciprocal-rank contribution to the running fusion. */
-export function fuseLane(
-  fused: Map<string, Candidate>,
-  kind: RetrievedUnitKind,
-  ids: string[],
-  kindWeightEnabled = false
-): void {
-  const weight = kindWeightEnabled ? KIND_WEIGHT[kind] : 1
+export function fuseLane(fused: Map<string, Candidate>, kind: RetrievedUnitKind, ids: string[]): void {
+  const weight = KIND_WEIGHT[kind]
   ids.forEach((id, index) => {
     const existing = fused.get(id)
     const contribution = (1 / (RRF_K + index + 1)) * weight
@@ -191,7 +184,6 @@ export function retrieveHybrid(
   const limit = options.limit && options.limit > 0 ? options.limit : DEFAULT_FACT_LIMIT
   const includeContent = options.includeContent === true
   const exclude = options.excludeIds
-  const kindWeightEnabled = isEnvTrue(process.env.KB_HYBRID_KIND_WEIGHT)
 
   const documents = new Map<string, DocumentIndexRow>()
   const symbols = new Map<string, CodeSymbolRow>()
@@ -209,9 +201,9 @@ export function retrieveHybrid(
   for (const row of lexicalFacts) facts.set(row.id, row)
 
   const fused = new Map<string, Candidate>()
-  fuseLane(fused, 'document', lexicalDocs.map(r => r.id), kindWeightEnabled)
-  fuseLane(fused, 'symbol', lexicalSymbols.map(r => r.id), kindWeightEnabled)
-  fuseLane(fused, 'fact', lexicalFacts.map(r => r.id), kindWeightEnabled)
+  fuseLane(fused, 'document', lexicalDocs.map(r => r.id))
+  fuseLane(fused, 'symbol', lexicalSymbols.map(r => r.id))
+  fuseLane(fused, 'fact', lexicalFacts.map(r => r.id))
 
   // Neural lanes re-rank the lexical pool rather than scanning every embedding: cosine over
   // the whole index would be a full table scan per query, and a unit no lane surfaced at all
@@ -219,21 +211,14 @@ export function retrieveHybrid(
   fuseLane(
     fused,
     'document',
-    rankByScore([...documents.keys()], indexer.semanticDocumentScores(query, [...documents.keys()])),
-    kindWeightEnabled
+    rankByScore([...documents.keys()], indexer.semanticDocumentScores(query, [...documents.keys()]))
   )
   fuseLane(
     fused,
     'symbol',
-    rankByScore([...symbols.keys()], indexer.semanticCodeSymbolScores(query, [...symbols.keys()])),
-    kindWeightEnabled
+    rankByScore([...symbols.keys()], indexer.semanticCodeSymbolScores(query, [...symbols.keys()]))
   )
-  fuseLane(
-    fused,
-    'fact',
-    rankByScore([...facts.keys()], indexer.semanticFactScores(query, [...facts.keys()])),
-    kindWeightEnabled
-  )
+  fuseLane(fused, 'fact', rankByScore([...facts.keys()], indexer.semanticFactScores(query, [...facts.keys()])))
 
   const ranked = [...fused.values()].sort((a, b) => b.score - a.score)
 

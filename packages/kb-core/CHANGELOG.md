@@ -1,5 +1,24 @@
 # @kb/core
 
+## 2.0.4
+
+### Patch Changes
+
+- Remove the `KB_HYBRID_KIND_WEIGHT` flag now that its RRF kind-weight boost (symbols 1.15x,
+  documents 0.9x) is proven and unconditional — the `kb`-suite eval showed a real gain (S
+  0.848→0.875) with no toggle left to remove later (issue #216 follow-up).
+
+  Fix `code_symbols_fts` lexical search: `searchCodeSymbolsFts` ordered by the bare FTS5 `rank`,
+  which weights the `name` and `source_text` columns equally, so a keyword hit buried anywhere in
+  a long `source_text` blob counted exactly as much as a match on the symbol's own name. It now
+  orders by `bm25(code_symbols_fts, 1.0, 3.0, 1.0)`, boosting `name` 3x over `source_text`. The
+  ratio was chosen from a measured sweep (1:1, 3:1, 5:1, 8:1) against the `kb` eval suite — 3:1
+  scored best (S 0.876, Q_adeq 0.995 vs. 0.873/0.988 at 1:1; higher ratios regressed) — and
+  confirmed against an `eval-kestra` regression case where a relevant Vue component's symbol moved
+  from fused rank 15 to rank 10 (issue #217, part 1 of 2; chunking long documents is the
+  structural fix for the remaining document-size bias and is scoped as a separate follow-up
+  requiring hosted-base reindexing).
+
 ## 2.0.3
 
 ### Patch Changes
