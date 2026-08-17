@@ -6,11 +6,11 @@ const user = (content: string): Message => ({ role: 'user', content })
 const assistant = (content: string): Message => ({ role: 'assistant', content })
 
 describe('SessionStore', () => {
-                it('[TC-50] returns empty history for an unknown session', () => {
+                it('[TC-ZVM0] returns empty history for an unknown session', () => {
     expect(new SessionStore().get('nope')).toEqual([])
   })
 
-                it('[TC-51] appends user/assistant turns and reads them back', () => {
+                it('[TC-M11P] appends user/assistant turns and reads them back', () => {
     const store = new SessionStore()
     store.append('s1', user('hi'), assistant('hello'))
     store.append('s1', user('more?'), assistant('sure'))
@@ -18,7 +18,7 @@ describe('SessionStore', () => {
     expect(history.map(m => m.content)).toEqual(['hi', 'hello', 'more?', 'sure'])
   })
 
-                it('[TC-52] trims to the configured turn cap', () => {
+                it('[TC-U3NT] trims to the configured turn cap', () => {
     const store = new SessionStore({ maxTurns: 1 })
     store.append('s1', user('first'), assistant('a1'))
     store.append('s1', user('second'), assistant('a2'))
@@ -27,14 +27,14 @@ describe('SessionStore', () => {
     expect(history.map(m => m.content)).toEqual(['second', 'a2'])
   })
 
-                it('[TC-53] evicts sessions past their TTL', () => {
+                it('[TC-IPPR] evicts sessions past their TTL', () => {
     const store = new SessionStore({ ttlMs: -1 })
     store.append('s1', user('hi'), assistant('hello'))
     expect(store.get('s1')).toEqual([])
     expect(store.size()).toBe(0)
   })
 
-                it('[TC-54] clear removes a single session', () => {
+                it('[TC-K2EH] clear removes a single session', () => {
     const store = new SessionStore()
     store.append('s1', user('hi'), assistant('hello'))
     store.clear('s1')

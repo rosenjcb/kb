@@ -4,6 +4,13 @@ import type { CmdMode } from '../config/cmd-ref.js'
 import type { CliOutput } from './cli-output.js'
 import { formatOrchestrationMetaLine } from './orchestration-meta.js'
 
+/** OSC-8 terminal hyperlink: `ESC ] 8 ; ; URI BEL label ESC ] 8 ; ; BEL`. */
+function terminalHyperlink(label: string, href: string): string {
+  const ESC = '\x1b'
+  const BEL = '\x07'
+  return `${ESC}]8;;${href}${BEL}${label}${ESC}]8;;${BEL}`
+}
+
 export class Printer {
   private spinner: Ora | null = null
   private readonly tty: boolean
@@ -64,6 +71,18 @@ export class Printer {
   source(id: string, title?: string): void {
     const display = title ? `${id} — ${title}` : id
     this.orchestrationMeta('source', display)
+  }
+
+  /**
+   * One source-centric citation line: `label · sym1, sym2`, with the label made a
+   * clickable OSC-8 hyperlink when a blob `href` is known and stdout is a TTY.
+   * Non-TTY (pipes, CI) gets the plain label so captured output stays clean — the
+   * same grouped source the REST/MCP/demo surfaces carry, just rendered for a term.
+   */
+  sourceCitation(label: string, opts: { href?: string; symbols?: string[] } = {}): void {
+    const suffix = opts.symbols && opts.symbols.length > 0 ? ` · ${opts.symbols.join(', ')}` : ''
+    const shown = opts.href && this.tty ? terminalHyperlink(label, opts.href) : label
+    this.orchestrationMeta('Source', `${shown}${suffix}`)
   }
 
   separator(): void {

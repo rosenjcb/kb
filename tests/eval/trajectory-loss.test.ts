@@ -24,11 +24,11 @@ function makeTrajectory(
 }
 
 describe('computeTrajectoryLoss', () => {
-  it('[TC-156] Given an empty trajectory, returns 0', () => {
+  it('[TC-FK33] Given an empty trajectory, returns 0', () => {
     expect(computeTrajectoryLoss(makeTrajectory([]), [], 20)).toBe(0)
   })
 
-  it('[TC-157] Given 5 unique steps within limit, returns expected combined loss', () => {
+  it('[TC-AZK3] Given 5 unique steps within limit, returns expected combined loss', () => {
     const t = makeTrajectory([
       { toolName: 'read_facts', args: { id: '1' } },
       { toolName: 'read_facts', args: { id: '2' } },
@@ -41,7 +41,7 @@ describe('computeTrajectoryLoss', () => {
     expect(computeTrajectoryLoss(t, [], 20)).toBeCloseTo(0.125)
   })
 
-  it('[TC-158] Given same tool called 5 times with identical args, returns high redundancy', () => {
+  it('[TC-7KW4] Given same tool called 5 times with identical args, returns high redundancy', () => {
     const t = makeTrajectory([
       { toolName: 'read_facts', args: { id: 'fact-1' } },
       { toolName: 'read_facts', args: { id: 'fact-1' } },
@@ -54,18 +54,18 @@ describe('computeTrajectoryLoss', () => {
     expect(computeTrajectoryLoss(t, [], 20)).toBeCloseTo(0.525)
   })
 
-  it('[TC-159] Given step count at ceiling, step component equals 1.0', () => {
+  it('[TC-WBJK] Given step count at ceiling, step component equals 1.0', () => {
     const steps = Array.from({ length: 20 }, (_, i) => ({ toolName: `tool_${i}`, args: { i } }))
     // stepDeviation = 20/20 = 1.0, no duplicates → loss = 0.5
     expect(computeTrajectoryLoss(makeTrajectory(steps), [], 20)).toBeCloseTo(0.5)
   })
 
-  it('[TC-160] Given step count exceeding ceiling, loss is clamped at 1.0', () => {
+  it('[TC-PSOG] Given step count exceeding ceiling, loss is clamped at 1.0', () => {
     const steps = Array.from({ length: 30 }, (_, i) => ({ toolName: `tool_${i}`, args: {} }))
     expect(computeTrajectoryLoss(makeTrajectory(steps), [], 20)).toBeLessThanOrEqual(1.0)
   })
 
-  it('[TC-161] Same tool with different args does not count as duplicate', () => {
+  it('[TC-IT3X] Same tool with different args does not count as duplicate', () => {
     const t = makeTrajectory([
       { toolName: 'read_facts', args: { id: 'fact-1' } },
       { toolName: 'read_facts', args: { id: 'fact-2' } },

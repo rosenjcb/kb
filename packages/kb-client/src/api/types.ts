@@ -94,9 +94,16 @@ export interface QueryResponse {
   /** Raw per-fact rows. Present only when `verbose: true`. */
   results?: QuerySource[]
   /** Retrieval telemetry. Present only when `verbose: true`. */
-  retrieval?: { method?: string; detail?: string; degraded?: LLMFailureResponse[] }
+  retrieval?: {
+    method?: string
+    detail?: string
+    degraded?: LLMFailureResponse[]
+    /** Prose claims the opt-in verification pass judged unsupported (#223). */
+    unsupportedClaims?: string[]
+  }
+  /** Evidence label, already downgraded when a grounding check fired. */
   evidence?: EvidenceLabel
-  /** Lean-payload caveats (verify / ungrounded / outage). */
+  /** Caveats (verify / ungrounded / unsupported-claim / degraded), on both payloads. */
   notes?: string[]
   /** Set when synthesis was attempted and failed; `answer` is null and this says why. */
   answerError?: LLMFailureResponse

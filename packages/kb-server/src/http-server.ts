@@ -27,6 +27,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
 import { handleMcpHttpRequest } from './mcp-server.js'
 import { handleAdminRoute } from './admin-routes.js'
+import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
 import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
 import { log } from './logger.js'
 import { resolveServerVersion } from './version.js'
@@ -620,8 +621,13 @@ export function createHttpServer(options: HttpServerOptions): Server {
         timeout,
       ])
       // Lean agent payload by default; full evidence dump only when verbose:true.
+      // Resolve the per-repo registry once so grouped sources carry blob hrefs —
+      // the same links Slack and the demo get, now on REST/MCP too.
+      const sourceRepos = await resolveSourceRepos(svc.baseDir)
       const serialized =
-        body.verbose === true ? serializeQueryResult(result) : serializeMcpQueryResult(result)
+        body.verbose === true
+          ? serializeQueryResult(result, { sourceRepos })
+          : serializeMcpQueryResult(result, { sourceRepos })
       const answerError = serialized.answerError
       const full = body.verbose === true ? (serialized as ReturnType<typeof serializeQueryResult>) : null
       log.info('query complete', {

@@ -7,7 +7,12 @@ import {
 } from '@kb/core/query/intent-cli.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
-import type { ChatStreamEvent, LLMFailureResponse } from '../api/types.js'
+import type {
+  ChatStreamEvent,
+  GroupedSource,
+  LeanSource,
+  LLMFailureResponse,
+} from '../api/types.js'
 import {
   resolveActiveBaseName,
   resolveServerConnection,
@@ -17,6 +22,23 @@ import {
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
+
+/**
+ * Normalize either citation shape (lean `{path}` or full `GroupedSource`) to the
+ * fields the CLI renders. The query command requests `verbose: true`, so it
+ * receives `GroupedSource` (with `label`/`href`), but accept both so the renderer
+ * never breaks if a lean payload arrives.
+ */
+function citationParts(source: LeanSource | GroupedSource): {
+  label: string
+  href?: string
+  symbols?: string[]
+} {
+  if ('label' in source) {
+    return { label: source.label, href: source.href, symbols: source.symbols }
+  }
+  return { label: source.path, symbols: source.symbols }
+}
 
 /**
  * One-line rendering of a server-reported synthesis failure.
@@ -203,17 +225,21 @@ export async function runRemoteIntentCommand(
       }
       return 1
     }
-    for (const degradation of result.retrieval?.degraded ?? []) {
-      out.error(
-        `⚠️  ${degradation.stage} was skipped after an LLM error (${degradation.kind}); results are ranked less precisely than usual.`
-      )
+    // Caveats computed once server-side (verify hints, ungrounded-file /
+    // unsupported-claim warnings, degraded retrieval) — the same `notes` the MCP
+    // and demo surfaces carry, rendered here as ⚠️ lines.
+    for (const note of result.notes ?? []) {
+      out.error(`⚠️  ${note}`)
     }
-    if (results.length > 0) {
+    // Source-centric citations grouped once server-side, with blob hrefs — shown
+    // as clickable OSC-8 links in a TTY, plain paths when piped.
+    const sources = result.sources ?? []
+    if (sources.length > 0) {
       printer.separator()
-      printer.metadata('Sources', String(results.length))
-      for (const source of results.slice(0, 8)) {
-        const label = source.title || source.filePath || source.id || 'source'
-        printer.metadata('Source', label)
+      printer.metadata('Sources', String(sources.length))
+      for (const source of sources.slice(0, 8)) {
+        const { label, href, symbols } = citationParts(source)
+        printer.sourceCitation(label, { href, symbols })
       }
     }
     if (result.retrieval?.method) {

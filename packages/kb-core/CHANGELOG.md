@@ -1,5 +1,18 @@
 # @kb/core
 
+## 2.0.3
+
+### Patch Changes
+
+- Add an opt-in post-synthesis claim-verification pass (issue #223). When enabled
+  (`KB_QUERY_VERIFY_CLAIMS=true` or `verifyClaims: true`, above the
+  `KB_QUERY_VERIFY_MIN_CONFIDENCE` floor, default `strong`), a second LLM call
+  re-reads the synthesized answer against the retrieved evidence and flags prose
+  claims the sources don't support — catching confidently-wrong answers built from
+  real-but-off-target citations that the existing file-name grounding check misses.
+  Flagged claims add a caveat note and downgrade the evidence label. Off by default;
+  best-effort (verify outages record as degraded, never block the answer).
+
 ## 2.0.2
 
 ### Patch Changes

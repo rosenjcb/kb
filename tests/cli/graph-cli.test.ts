@@ -27,7 +27,7 @@ afterEach(async () => {
 })
 
 describe('graph-cli parsing', () => {
-  it('[TC-183] Given graph help flag, then parser returns graph-specific help text', () => {
+  it('[TC-OOKL] Given graph help flag, then parser returns graph-specific help text', () => {
     try {
       parseGraphCommand(['--help'])
       throw new Error('expected help error')
@@ -39,24 +39,24 @@ describe('graph-cli parsing', () => {
     }
   })
 
-  it('[TC-184] Given graph entity flag, then parser returns entity lookup options', () => {
+  it('[TC-UIFR] Given graph entity flag, then parser returns entity lookup options', () => {
     expect(parseGraphCommand(['--entity', 'KB'])).toEqual({ entity: 'KB' })
   })
 
-  it('[TC-185] Given graph path flag, then parser returns path lookup options', () => {
+  it('[TC-P5RI] Given graph path flag, then parser returns path lookup options', () => {
     expect(parseGraphCommand(['--path', 'KB', 'SQLite'])).toEqual({
       pathFrom: 'KB',
       pathTo: 'SQLite',
     })
   })
 
-  it('[TC-186] Given graph format flag, then parser returns export format option', () => {
+  it('[TC-KY82] Given graph format flag, then parser returns export format option', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
 })
 
 describe('graph-cli help', () => {
-  it('[TC-187] prints grouped graph usage and examples', () => {
+  it('[TC-BY2A] prints grouped graph usage and examples', () => {
     const help = printGraphHelp()
     expect(help).toContain('kb graph commands')
     expect(help).toContain('Inspect:')
@@ -65,7 +65,7 @@ describe('graph-cli help', () => {
 })
 
 describe('runGraphCommand — output routing', () => {
-  it('[TC-188] routes default summary output through the out parameter, not console.log', async () => {
+  it('[TC-R3PD] routes default summary output through the out parameter, not console.log', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -78,7 +78,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-189] routes --format dot output through the out parameter', async () => {
+  it('[TC-5W5H] routes --format dot output through the out parameter', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -89,7 +89,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-190] routes --format json output through the out parameter', async () => {
+  it('[TC-I5DI] routes --format json output through the out parameter', async () => {
     const consoleSpy = vi.spyOn(console, 'log')
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
@@ -100,7 +100,7 @@ describe('runGraphCommand — output routing', () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
-  it('[TC-191] reports no-path-found through the out parameter', async () => {
+  it('[TC-8UAF] reports no-path-found through the out parameter', async () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 
@@ -109,7 +109,7 @@ describe('runGraphCommand — output routing', () => {
     expect(lines.some(l => l.includes('Path search over a structural code graph is not available'))).toBe(true)
   })
 
-  it('[TC-192] reports no matching documents/symbols through the out parameter', async () => {
+  it('[TC-HNK2] reports no matching documents/symbols through the out parameter', async () => {
     const lines: string[] = []
     const out = { log: (msg: string) => lines.push(msg) }
 

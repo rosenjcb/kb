@@ -11,7 +11,8 @@ sources:
   - ../../fly.builder.toml
   - ../../.github/workflows/fly-deploy.yml
   - ../../FLY_ORCHESTRATION.md
-tests: []
+tests:
+  - ../../tests/fly/fly-orchestration.test.ts
 description: >-
   Corruption-safe multi-base snapshot publish/adopt for kb-demo on Fly.io,
   including region co-location and incomplete-prefix recovery.
@@ -81,29 +82,38 @@ from crash-looping the public demo. Architecture narrative:
 | FR-5 | [NEW] Optional-base import is best-effort: incomplete/missing snapshots are skipped without exiting the serving process |
 | FR-6 | [NEW] A failed or incomplete default-base adopt exits non-zero (no listen on a half-booted node) |
 | FR-7 | [NEW] Serving roll waits long enough for default-base adopt + listen under normal Tigris latency (configurable, default ≥ 10 minutes) |
+| FR-10 | [NEW] Every `fly machine run` call in `deploy.sh` and the production `fly.toml`/`fly.builder.toml` declares `KB_EMBEDDER=gemini`, so builder and serving apps never fall back to a different embedder |
+| FR-11 | [NEW] `refresh.sh` iterates bases fail-fast: once a base's refresh fails, later bases in the loop do not run and the serving roll is skipped; a failure mid-embed for a base must not flip that base's S3 `latest.json` pointer |
+| FR-12 | [NEW] `build_base` honors `FORCE_COLD=true` by ignoring `latest.json` and rebuilding cold |
+| FR-13 | [NEW] The builder's `ONLY_BASES` env var restricts base iteration to the listed names only |
 
 ### QA Test Cases
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|---------|------------------|
-| TC-1 | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
-| TC-10 | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
-| TC-11 | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
-| TC-12 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
-| TC-13 | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
-| TC-2 | FR-2 | Upload succeeds but `kb-snapshot.json` never becomes head-able within wait budget | `s3_push_prefix` fails; pointer not written |
-| TC-3 | FR-2 | Upload of a complete local snapshot dir | Required objects head-able; caller may flip `latest.json` |
-| TC-4 | FR-3 | Pull of a prefix that temporarily LIST/GETs only `.kb-index.sqlite` | Retries; success only once `kb-snapshot.json` is local too, else non-zero |
-| TC-5 | FR-3 | `version="$(pull_latest …)"` around a multi-file pull | Captured value is the version token only (no aws progress text) |
-| TC-6 | FR-4 | Serving boot with default + large optional bases | `/healthz` reports `ok:true` after default import/start, before optional imports finish |
-| TC-7 | FR-5 | Optional base pointer exists but prefix stays incomplete after retries | Base skipped; process continues; default still served |
-| TC-8 | FR-6 | Default base pointer missing or prefix incomplete after retries | Entrypoint exits non-zero; nothing binds `:PORT` |
-| TC-9 | FR-7 | Builder finishes publish and rolls one serving machine | Roll does not fail solely because optional-base downloads are still in flight |
+| TC-D98R | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
+| TC-PDQD | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
+| TC-4JKB | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
+| TC-IHL1 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
+| TC-OUBI | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
+| TC-MHQN | FR-9 | `pull_latest`/`s3_pull_prefix` retry/refetch path inspected | `lib.sh` implements the retry-then-refetch-by-key sequence |
+| TC-E9O4 | FR-10 | `scripts/fly/deploy.sh` `fly machine run` calls inspected | Every call sets `KB_EMBEDDER=gemini` alongside `--region` |
+| TC-ROM5 | FR-10 | Production `fly.toml` and `fly.builder.toml` inspected | Both the builder and serve app declare `KB_EMBEDDER=gemini` |
+| TC-SH7G | FR-11 | `refresh.sh` fail-fast loop when a base fails | Later bases in the loop do not run and the roll is skipped |
+| TC-RM3X | FR-11 | `refresh.sh` fail-fast loop when a base fails | Same failure short-circuits the loop (paired assertion with TC-SH7G) |
+| TC-HT27 | FR-11 | A base's refresh fails mid-embed | That base's S3 `latest.json` pointer is not flipped |
+| TC-P06Z | FR-12 | `build_base` runs with `FORCE_COLD=true` | `latest.json` is ignored; base rebuilds cold |
+| TC-63GA | FR-13 | Builder iterates bases with `ONLY_BASES` set | Only the listed base names run |
+| TC-U5RT | FR-2 | Upload succeeds but `kb-snapshot.json` never becomes head-able within wait budget | `s3_push_prefix` fails; pointer not written |
+| TC-QMFK | FR-2 | Upload of a complete local snapshot dir | Required objects head-able; caller may flip `latest.json` |
+| TC-8KCV | FR-3 | Pull of a prefix that temporarily LIST/GETs only `.kb-index.sqlite` | Retries; success only once `kb-snapshot.json` is local too, else non-zero |
+| TC-2PNL | FR-3 | `version="$(pull_latest …)"` around a multi-file pull | Captured value is the version token only (no aws progress text) |
+| TC-VJML | FR-4 | Serving boot with default + large optional bases | `/healthz` reports `ok:true` after default import/start, before optional imports finish |
+| TC-B5JP | FR-5 | Optional base pointer exists but prefix stays incomplete after retries | Base skipped; process continues; default still served |
+| TC-UNIF | FR-6 | Default base pointer missing or prefix incomplete after retries | Entrypoint exits non-zero; nothing binds `:PORT` |
+| TC-4KB9 | FR-7 | Builder finishes publish and rolls one serving machine | Roll does not fail solely because optional-base downloads are still in flight |
 
 ### Known issues
 
-- Automated `[TC-N]` unit coverage for these shell helpers is not yet wired
-  (`tests: []`). Acceptance today is ops verification against `kb-demo`
-  (`/healthz`, `/v1/bases`) plus the FR/TC table above.
 - GCP `scripts/gcp/lib.sh` does not yet share the head-object completeness
   helpers; parity is intentional follow-up, not in this change.

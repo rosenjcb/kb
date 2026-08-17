@@ -45,7 +45,7 @@ function createExecutorMock(): ToolExecutor {
 }
 
 describe('DefaultIntentRouter', () => {
-  it('[TC-1] Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
+  it('[TC-Z1H5] Given query_truth without discoveryDepth, then defaults to deep discovery like chat', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -60,7 +60,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.discoveryDepth).toBe('deep')
   })
 
-  it('[TC-2] Given query_truth with high-recall token query, then uses default limit without floor', async () => {
+  it('[TC-GTAJ] Given query_truth with high-recall token query, then uses default limit without floor', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -76,7 +76,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(12)
   })
 
-  it('[TC-3] Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts', async () => {
+  it('[TC-AX85] Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -90,7 +90,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.limit).toBe(40)
   })
 
-  it('[TC-4] Given a collector passed to the constructor, then query_truth operationInput carries it through', async () => {
+  it('[TC-HZOB] Given a collector passed to the constructor, then query_truth operationInput carries it through', async () => {
     const executor = createExecutorMock()
     const collector = { addStage: vi.fn() } as unknown as import('@kb/core/core/telemetry.js').RunCollector
     const router = new DefaultIntentRouter(executor, undefined, undefined, collector)
@@ -103,7 +103,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.collector).toBe(collector)
   })
 
-  it('[TC-5] Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong', async () => {
+  it('[TC-XH9F] Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -116,7 +116,7 @@ describe('DefaultIntentRouter', () => {
     expect(result.evidence).toBe('weak')
   })
 
-  it('[TC-6] Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong', async () => {
+  it('[TC-1YYY] Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong', async () => {
     const executor: ToolExecutor = {
       register: vi.fn(),
       getTools: vi.fn(() => []),

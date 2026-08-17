@@ -5,7 +5,7 @@ import {
 } from '@kb/core/query/retrieval-fallback.js'
 
 describe('retrieval-fallback sources preview', () => {
-  it('[TC-350] Given more than TOP_SOURCE_PREVIEW_LIMIT files, then footer says top N of M', () => {
+  it('[TC-J09B] Given more than TOP_SOURCE_PREVIEW_LIMIT files, then footer says top N of M', () => {
     const results = Array.from({ length: 25 }, (_, index) => ({
       metadata: { id: `fact-${index + 1}`, sourcePath: `src/f${index + 1}.ts` },
     }))
@@ -17,7 +17,7 @@ describe('retrieval-fallback sources preview', () => {
     expect(out).toContain('src/f1.ts')
   })
 
-  it('[TC-351] Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M, folding symbols', () => {
+  it('[TC-XOR5] Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M, folding symbols', () => {
     const results = [
       { metadata: { id: 'fact-a', sourcePath: 'src/a.ts', symbol: 'foo' } },
       { metadata: { id: 'fact-b', sourcePath: 'docs/b.md' } },
@@ -26,7 +26,7 @@ describe('retrieval-fallback sources preview', () => {
     expect(formatReadDocumentSourcesPreview(results)).toBe('all 2 file(s): src/a.ts (foo); docs/b.md')
   })
 
-  it('[TC-352] Given no openable hits, then footer is (none)', () => {
+  it('[TC-5JE4] Given no openable hits, then footer is (none)', () => {
     expect(formatReadDocumentSourcesPreview([])).toBe('(none)')
     // Non-openable refs (fact:// fallback ids) are dropped, leaving nothing to cite.
     expect(

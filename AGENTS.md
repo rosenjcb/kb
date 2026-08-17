@@ -47,6 +47,21 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 - **Exception:** third-party APIs that require numeric booleans — convert at
   the boundary only; KB env vars stay `true`/`false`.
 
+## Feature flags for perf/enhancement work: flag first, then remove
+
+New performance/quality enhancements (a second LLM pass, a reranker, a cache, a
+retrieval tweak — anything whose value is a hypothesis until measured) go behind
+a **temporary** feature-flag env var, default off:
+
+1. Add behind a flag (parse with `@kb/core/config/env-boolean`), default off.
+2. Measure the on-vs-off delta via `pnpm run eval` before deciding.
+3. If it proves out, **remove the flag before merging** — make the behavior
+   unconditional and delete the env var + its plumbing/docs. If it doesn't,
+   remove the feature. The flag is experiment scaffolding, not a permanent knob.
+
+Keep a flag past merge only when it's a deliberate, documented product choice
+(a real cost/behavior tradeoff), not a leftover experiment switch.
+
 ## Cursor Cloud specific instructions
 
 Environment is pre-provisioned. The startup update script selects the pinned

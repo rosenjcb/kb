@@ -127,3 +127,25 @@ Do **not** use `1`, `0`, `yes`, `on`, or other aliases for true/false in
 - **Exception:** when a third-party library or protocol requires a numeric
   boolean at its API boundary, convert at that call site only — do not adopt
   that convention for KB env vars or config.
+
+## Feature flags for perf/enhancement work: flag first, then remove
+
+When adding a new performance or quality enhancement (a second LLM pass, a
+reranker, a caching layer, a retrieval tweak — anything whose value is a
+hypothesis until measured), gate it behind a **temporary** feature-flag env var
+so it can be toggled off/on for A/B measurement.
+
+1. **Add it behind a flag, default off.** Parse with
+   `@kb/core/config/env-boolean` (see above). This lets you run the eval suite
+   with the flag off (baseline) and on (treatment) and compare.
+2. **Experiment.** Measure the on-vs-off delta via `kb:evaluation-run` /
+   `pnpm run eval` before deciding anything.
+3. **Then collapse the flag before merging.** If the feature proves out, **remove
+   the flag entirely** — make the behavior unconditional and delete the env var,
+   its config plumbing, and its docs. If it doesn't prove out, remove the feature.
+   The flag is scaffolding for the experiment, **not** a permanent config surface;
+   don't ship long-lived `KB_*_ENABLE`-style toggles for validated features.
+
+Only keep a flag past merge when the toggle is itself a deliberate, documented
+product knob (a genuine user choice with a cost/behavior tradeoff), not merely a
+leftover experiment switch.

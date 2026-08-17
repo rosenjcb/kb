@@ -27,28 +27,28 @@ const twoTasks = {
 // ── buildSummaryMarkdown ──────────────────────────────────────────────────────
 
 describe('buildSummaryMarkdown', () => {
-  it('[TC-137] includes run name and suite in header', () => {
+  it('[TC-3AG4] includes run name and suite in header', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toContain('test-run-1')
     expect(md).toContain('kb')
   })
 
-  it('[TC-138] renders task id in the table', () => {
+  it('[TC-AEFX] renders task id in the table', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toContain('task-alpha')
   })
 
-  it('[TC-139] shows positive N-K delta when N > K', () => {
+  it('[TC-K1B1] shows positive N-K delta when N > K', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toMatch(/\+0\.400/)
   })
 
-  it('[TC-140] shows hypothesisConfirmed: true when N > K for all tasks', () => {
+  it('[TC-91TX] shows hypothesisConfirmed: true when N > K for all tasks', () => {
     const md = buildSummaryMarkdown(singleTask)
     expect(md).toMatch(/hypothesisConfirmed.*true/)
   })
 
-  it('[TC-141] shows hypothesisConfirmed: false when K >= N for any task', () => {
+  it('[TC-VP45] shows hypothesisConfirmed: false when K >= N for any task', () => {
     const flipped = {
       ...singleTask,
       tasks: [makeResult('task-flip', 0.3, 0.9)],
@@ -57,12 +57,12 @@ describe('buildSummaryMarkdown', () => {
     expect(md).toMatch(/hypothesisConfirmed.*false/)
   })
 
-  it('[TC-142] renders aggregate row', () => {
+  it('[TC-3BG0] renders aggregate row', () => {
     const md = buildSummaryMarkdown(twoTasks)
     expect(md).toContain('Aggregate')
   })
 
-  it('[TC-143] shows dash for null lMoel values', () => {
+  it('[TC-J6UY] shows dash for null lMoel values', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -71,7 +71,7 @@ describe('buildSummaryMarkdown', () => {
     expect(md).toContain('-')
   })
 
-  it('[TC-144] contains correct number of table separator rows', () => {
+  it('[TC-PNB7] contains correct number of table separator rows', () => {
     const md = buildSummaryMarkdown(singleTask)
     const separators = md.split('\n').filter(line => /^\|[-| ]+\|$/.test(line))
     expect(separators.length).toBeGreaterThanOrEqual(2)
@@ -81,18 +81,18 @@ describe('buildSummaryMarkdown', () => {
 // ── buildSummaryJson ──────────────────────────────────────────────────────────
 
 describe('buildSummaryJson', () => {
-  it('[TC-145] returns correct runName and suite', () => {
+  it('[TC-EHZH] returns correct runName and suite', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.runName).toBe('test-run-1')
     expect(result.suite).toBe('kb')
   })
 
-  it('[TC-146] hypothesisConfirmed is true when N > K for all tasks', () => {
+  it('[TC-XCFB] hypothesisConfirmed is true when N > K for all tasks', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.hypothesisConfirmed).toBe(true)
   })
 
-  it('[TC-147] hypothesisConfirmed is false when K > N for any task', () => {
+  it('[TC-RJBS] hypothesisConfirmed is false when K > N for any task', () => {
     const flipped = {
       ...singleTask,
       tasks: [makeResult('task-flip', 0.3, 0.9)],
@@ -100,19 +100,19 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(flipped).hypothesisConfirmed).toBe(false)
   })
 
-  it('[TC-148] taskRows have correct lMoel values', () => {
+  it('[TC-XEMC] taskRows have correct lMoel values', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.tasks).toHaveLength(1)
     expect(result.tasks[0].conditions.N.lMoel).toBeCloseTo(0.8)
     expect(result.tasks[0].conditions.K.lMoel).toBeCloseTo(0.4)
   })
 
-  it('[TC-149] nKDelta is N minus K', () => {
+  it('[TC-FU9T] nKDelta is N minus K', () => {
     const result = buildSummaryJson(singleTask)
     expect(result.tasks[0].nKDelta).toBeCloseTo(0.4)
   })
 
-  it('[TC-150] nKDelta is null when either N or K is missing', () => {
+  it('[TC-AUEJ] nKDelta is null when either N or K is missing', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -120,7 +120,7 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(withNull).tasks[0].nKDelta).toBeNull()
   })
 
-  it('[TC-151] per-task hypothesisConfirmed is null when either condition is missing', () => {
+  it('[TC-8Z2B] per-task hypothesisConfirmed is null when either condition is missing', () => {
     const withNull = {
       ...singleTask,
       tasks: [makeResult('task-null', null, 0.4)],
@@ -128,27 +128,27 @@ describe('buildSummaryJson', () => {
     expect(buildSummaryJson(withNull).tasks[0].hypothesisConfirmed).toBeNull()
   })
 
-  it('[TC-152] aggregate meanLMoelByCondition is mean across tasks', () => {
+  it('[TC-LES6] aggregate meanLMoelByCondition is mean across tasks', () => {
     const result = buildSummaryJson(twoTasks)
     expect(result.aggregate.meanLMoelByCondition.N).toBeCloseTo((0.8 + 0.6) / 2)
     expect(result.aggregate.meanLMoelByCondition.K).toBeCloseTo((0.4 + 0.5) / 2)
   })
 
-  it('[TC-153] aggregate nKDelta is mean N minus mean K', () => {
+  it('[TC-JL4K] aggregate nKDelta is mean N minus mean K', () => {
     const result = buildSummaryJson(twoTasks)
     const expectedN = (0.8 + 0.6) / 2
     const expectedK = (0.4 + 0.5) / 2
     expect(result.aggregate.nKDelta).toBeCloseTo(expectedN - expectedK)
   })
 
-  it('[TC-154] handles empty tasks array without throwing', () => {
+  it('[TC-Y7WN] handles empty tasks array without throwing', () => {
     const empty = { runName: 'empty', suite: 'kb', conditions: ['N', 'K'], tasks: [] }
     const result = buildSummaryJson(empty)
     expect(result.tasks).toHaveLength(0)
     expect(result.aggregate.nKDelta).toBeNull()
   })
 
-  it('[TC-155] terminated conditions show lMoel null and terminated true', () => {
+  it('[TC-KMJG] terminated conditions show lMoel null and terminated true', () => {
     const withTerminated = {
       ...singleTask,
       tasks: [makeResult('task-term', null, 0.4)],

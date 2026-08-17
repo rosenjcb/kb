@@ -49,12 +49,12 @@ Presentation helpers that turn chat `answer` + `sources[]` into a single user-vi
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | fact:// / https | keep fact; drop https |
-| TC-2 | FR-2 | Duplicate paths + symbols + fact:// + single registry repo | one file per path; symbols folded; fact:// dropped; blob href on that repo's branch |
-| TC-3 | FR-3 | Plain reply with duplicates / empty sources | footer once; answer alone if empty |
-| TC-4 | FR-4 | Slack flavor + registry | `*Sources*` + `<url\|label>` |
-| TC-5 | FR-5 | Headers, tables, fences, lists, inline | mrkdwn shapes; no raw `###` / `**` |
-| TC-6 | FR-4 | Slack flavor end-to-end body+footer | converted body then Sources |
-| TC-7 | FR-6 | https/ssh/local remotes; BaseRepo filter | browse roots; skip local; bare HEAD kept |
-| TC-8 | FR-7 | Two slugs with different branches | distinct hrefs; unknown slug → label only |
-| TC-9 | FR-2 | More files than `maxSources`; a repeat of a cited file | list capped; later fact still folds into its file |
+| TC-4P8G | FR-1 | fact:// / https | keep fact; drop https |
+| TC-03Q7 | FR-2 | Duplicate paths + symbols + fact:// + single registry repo | one file per path; symbols folded; fact:// dropped; blob href on that repo's branch |
+| TC-NL7F | FR-3 | Plain reply with duplicates / empty sources | footer once; answer alone if empty |
+| TC-AZBG | FR-4 | Slack flavor + registry | `*Sources*` + `<url\|label>` |
+| TC-7V3F | FR-5 | Headers, tables, fences, lists, inline | mrkdwn shapes; no raw `###` / `**` |
+| TC-WLK4 | FR-4 | Slack flavor end-to-end body+footer | converted body then Sources |
+| TC-7FWQ | FR-6 | https/ssh/local remotes; BaseRepo filter | browse roots; skip local; bare HEAD kept |
+| TC-TULY | FR-7 | Two slugs with different branches | distinct hrefs; unknown slug → label only |
+| TC-B7JK | FR-2 | More files than `maxSources`; a repeat of a cited file | list capped; later fact still folds into its file |

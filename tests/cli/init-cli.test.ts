@@ -148,16 +148,14 @@ function createProvider(texts: string[]): LLMProvider {
 }
 
 describe('init-cli interview checkpoints', () => {
-  it('[TC-196] Given init without --base, then it prompts for a base name and uses the answer', async () => {
+  it('[TC-I5B9] Given init without --base, then it prompts for a base name and uses the answer', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
     const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    const questionIO = createQuestionIO([
-      'fresh-base',
-    ])
+    const questionIO = createQuestionIO(['fresh-base'])
 
     const result = await runKbInit({
       nonInteractive: false,
@@ -177,42 +175,48 @@ describe('init-cli interview checkpoints', () => {
     expect(activeBase).toBe('fresh-base')
   })
 
-  it('[TC-197] Given init without --base and config activeBase, then prompt suggests the first git remote slug', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
-    await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    const questionIO = createQuestionIO([''])
+  it(
+    '[TC-UBCD] Given init without --base and config activeBase, then prompt suggests the first git remote slug',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nThis project has a CLI.\n',
+      })
+      await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
+      await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nThis project has a CLI.\n',
+      })
+      const questionIO = createQuestionIO([''])
 
-    const result = await runKbInit({
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: questionIO.io,
-    })
+      const result = await runKbInit({
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: questionIO.io,
+      })
 
-    expect(questionIO.prompts[0]).not.toContain('[dogfood]')
-    expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
-    expect(result.base).toBe(repoSlugFromGitUrl(repo))
-    expect(result.checkpointFile).toBe(
-      path.join(
-        kbHomeDir,
-        'sessions',
-        repoSlugFromGitUrl(repo).toLowerCase(),
-        'checkpoints',
-        'init-latest.checkpoint.json'
+      expect(questionIO.prompts[0]).not.toContain('[dogfood]')
+      expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
+      expect(result.base).toBe(repoSlugFromGitUrl(repo))
+      expect(result.checkpointFile).toBe(
+        path.join(
+          kbHomeDir,
+          'sessions',
+          repoSlugFromGitUrl(repo).toLowerCase(),
+          'checkpoints',
+          'init-latest.checkpoint.json'
+        )
       )
-    )
-    const activeBase = (await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')).trim()
-    expect(activeBase).toBe(repoSlugFromGitUrl(repo))
-  })
+      const activeBase = (
+        await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')
+      ).trim()
+      expect(activeBase).toBe(repoSlugFromGitUrl(repo))
+    }
+  )
 
-  it('[TC-198] Given detach and resume flags, then parses them into init options', () => {
+  it('[TC-KWC3] Given detach and resume flags, then parses them into init options', () => {
     const parsed = parseInitCommand(['--base', 'dogfood', '--detach', '--resume'])
 
     expect(parsed.base).toBe('dogfood')
@@ -220,7 +224,7 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.resume).toBe(true)
   })
 
-  it('[TC-199] Given scan args, then parsing implies rescan and always applies automatically', () => {
+  it('[TC-4MNE] Given scan args, then parsing implies rescan and always applies automatically', () => {
     const parsed = parseScanCommand(['--base', 'dogfood'])
 
     expect(parsed.base).toBe('dogfood')
@@ -228,20 +232,21 @@ describe('init-cli interview checkpoints', () => {
     expect(parsed.apply).toBe(true)
   })
 
-  it('[TC-200] Given --stop-after document-index, then parsing returns document-index', () => {
+  it('[TC-PI4H] Given --stop-after document-index, then parsing returns document-index', () => {
     const parsed = parseInitCommand(['--base', 'dogfood', '--stop-after', 'document-index'])
 
     expect(parsed.stopAfter).toBe('document-index')
   })
 
-  it('[TC-201] Given init cycle validation, then exactly 5 phases are defined without pass-graph', () => {
-    const expectedCycles: Array<'read-inputs' | 'document-index' | 'import-docs' | 'write' | 'ast-facts'> = [
-      'read-inputs',
-      'document-index',
-      'import-docs',
-      'write',
-      'ast-facts',
-    ]
+  it('[TC-SKEB] Given --skip-embed, then parsing sets skipEmbeddings; absent it defaults false', () => {
+    expect(parseInitCommand(['--base', 'dogfood', '--skip-embed']).skipEmbeddings).toBe(true)
+    expect(parseInitCommand(['--base', 'dogfood']).skipEmbeddings).toBe(false)
+  })
+
+  it('[TC-HOLS] Given init cycle validation, then exactly 5 phases are defined without pass-graph', () => {
+    const expectedCycles: Array<
+      'read-inputs' | 'document-index' | 'import-docs' | 'write' | 'ast-facts'
+    > = ['read-inputs', 'document-index', 'import-docs', 'write', 'ast-facts']
 
     expect(expectedCycles).toHaveLength(5)
     expect(expectedCycles).not.toContain('pass-graph')
@@ -251,7 +256,7 @@ describe('init-cli interview checkpoints', () => {
     'Given oversized init context, then every LLM phase stays within the 4096-token budget — token budget constraints relaxed to support richer agent prompts'
   )
 
-  it('[TC-202] Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {
+  it('[TC-S6XJ] Given a custom progress sink, then init progress updates route there instead of writing directly to stderr', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nCLI docs.\n',
     })
@@ -320,7 +325,83 @@ describe('init-cli interview checkpoints', () => {
     stderrSpy.mockRestore()
   })
 
-  it('[TC-203] Given interactive init, then read-inputs does not ask deprecated interview questions', async () => {
+  it('[TC-EMSK] Given skipEmbeddings, then create-embeddings completes without writing any vectors', async () => {
+    const cwd = await createTempProject({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
+    const provider = createProvider([
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify({
+        title: 'Project Overview',
+        type: 'introduction',
+        tags: ['overview'],
+        content: 'Overview content',
+      }),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+      JSON.stringify([
+        {
+          title: 'Project Overview',
+          type: 'introduction',
+          tags: ['overview'],
+          content: 'Overview content',
+        },
+      ]),
+    ])
+    const repo = await makeTempGitRepo({
+      'README.md': '# Project\n\nCLI docs.\n',
+    })
+    const lines: string[] = []
+
+    const result = await runKbInit({
+      base: 'skip-embed-test',
+      nonInteractive: true,
+      cwd,
+      gitTargets: [{ url: repo, branch: 'main' }],
+      provider,
+      skipEmbeddings: true,
+      progressSink(line) {
+        lines.push(line)
+      },
+    })
+
+    expect(result.status).toBe('accepted')
+    expect(result.completedCycles).toContain('create-embeddings')
+    expect(lines.some(line => line.includes('skipped (--skip-embed)'))).toBe(true)
+
+    const baseDir = resolveBaseToDir('skip-embed-test', cwd)
+    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
+    try {
+      // Nothing was embedded — every document/symbol/fact row is still unembedded under the
+      // model the (mocked) embedder would have used.
+      expect(indexer.countUnembeddedRows('test:fake:3').total).toBeGreaterThan(0)
+    } finally {
+      indexer.close()
+    }
+  })
+
+  it('[TC-6HEV] Given interactive init, then read-inputs does not ask deprecated interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
@@ -357,51 +438,55 @@ describe('init-cli interview checkpoints', () => {
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
   })
 
-  it('[TC-204] Given resume after import-docs pause, then finishes init without re-asking read-inputs', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
-    })
+  it(
+    '[TC-3OB0] Given resume after import-docs pause, then finishes init without re-asking read-inputs',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
+      })
 
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
-    })
-    const firstQuestionIO = createQuestionIO([])
-    const provider = createProvider([])
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
+      })
+      const firstQuestionIO = createQuestionIO([])
+      const provider = createProvider([])
 
-    const firstRun = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      stopAfter: 'import-docs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: firstQuestionIO.io,
-      provider,
-    })
+      const firstRun = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        stopAfter: 'import-docs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: firstQuestionIO.io,
+        provider,
+      })
 
-    expect(firstRun.status).toBe('paused')
-    const firstCp = firstRun.checkpointFile
-    if (!firstCp) throw new Error('expected checkpointFile')
-    const mid = JSON.parse(await readFile(firstCp, 'utf8')) as {
-      completedCycles: string[]
-      candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+      expect(firstRun.status).toBe('paused')
+      const firstCp = firstRun.checkpointFile
+      if (!firstCp) throw new Error('expected checkpointFile')
+      const mid = JSON.parse(await readFile(firstCp, 'utf8')) as {
+        completedCycles: string[]
+        candidateDocs?: Array<{ title: string; isOriginal?: boolean }>
+      }
+      expect(mid.completedCycles).toContain('import-docs')
+      expect(mid.candidateDocs?.some(d => d.title === 'README.md' && d.isOriginal)).toBe(true)
+
+      const resumedRun = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: true,
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        resumeFrom: firstRun.checkpointFile,
+        questionIO: createQuestionIO([]).io,
+        provider,
+      })
+
+      expect(resumedRun.status).toBe('accepted')
     }
-    expect(mid.completedCycles).toContain('import-docs')
-    expect(mid.candidateDocs?.some(d => d.title === 'README.md' && d.isOriginal)).toBe(true)
+  )
 
-    const resumedRun = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: true,
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      resumeFrom: firstRun.checkpointFile,
-      questionIO: createQuestionIO([]).io,
-      provider,
-    })
-
-    expect(resumedRun.status).toBe('accepted')
-  })
-
-  it('[TC-205] Given version 1 checkpoint, then resume migrates it to version 3 without reviving deprecated answers', async () => {
+  it('[TC-YNOA] Given version 1 checkpoint, then resume migrates it to version 3 without reviving deprecated answers', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
@@ -471,7 +556,7 @@ describe('init-cli interview checkpoints', () => {
     expect(checkpoint.completedCycles).toContain('import-docs')
   })
 
-  it('[TC-206] Given detach during read-inputs, then init no longer stores pending interview questions', async () => {
+  it('[TC-IUR0] Given detach during read-inputs, then init no longer stores pending interview questions', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nTiny overview only.\n',
     })
@@ -503,7 +588,7 @@ describe('init-cli interview checkpoints', () => {
     expect(pausedCheckpoint.context.userAnswers).toEqual([])
   })
 
-  it('[TC-207] Given legacy tmp checkpoint path, then init migrates it into KB home checkpoints', async () => {
+  it('[TC-R6KG] Given legacy tmp checkpoint path, then init migrates it into KB home checkpoints', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nSimple overview.\n',
     })
@@ -554,42 +639,46 @@ describe('init-cli interview checkpoints', () => {
     expect(migrated.version).toBe(3)
   })
 
-  it('[TC-208] Given resume after read-inputs, then deprecated interview prompting does not resume', { timeout: 15_000 }, async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nTiny overview only.\n',
-    })
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nTiny overview only.\n',
-    })
+  it(
+    '[TC-30HB] Given resume after read-inputs, then deprecated interview prompting does not resume',
+    { timeout: 15_000 },
+    async () => {
+      const cwd = await createTempProject({
+        'README.md': '# Project\n\nTiny overview only.\n',
+      })
+      const repo = await makeTempGitRepo({
+        'README.md': '# Project\n\nTiny overview only.\n',
+      })
 
-    const initial = await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: createQuestionIO([]).io,
-    })
+      const initial = await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: createQuestionIO([]).io,
+      })
 
-    expect(initial.status).toBe('paused')
+      expect(initial.status).toBe('paused')
 
-    const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
+      const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
 
-    await runKbInit({
-      base: 'dogfood',
-      nonInteractive: false,
-      resume: true,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: sequentialQuestionIO.io,
-    })
+      await runKbInit({
+        base: 'dogfood',
+        nonInteractive: false,
+        resume: true,
+        stopAfter: 'read-inputs',
+        cwd,
+        gitTargets: [{ url: repo, branch: 'main' }],
+        questionIO: sequentialQuestionIO.io,
+      })
 
-    // git targets supplied → no git prompt; categories removed → no category prompt
-    expect(sequentialQuestionIO.prompts).toHaveLength(0)
-  })
+      // git targets supplied → no git prompt; categories removed → no category prompt
+      expect(sequentialQuestionIO.prompts).toHaveLength(0)
+    }
+  )
 
-  it('[TC-209] Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
+  it('[TC-ND14] Given several repo markdown files, then import-docs checkpoint lists each as original', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nOverview.\n',
     })
@@ -622,7 +711,7 @@ describe('init-cli interview checkpoints', () => {
     expect(titles).toEqual(['AGENTS.md', 'CLAUDE.md', 'README.md', 'docs/deep/nested.md'])
   })
 
-  it('[TC-210] Given rescan, then read-inputs loads all markdown sources under cwd', async () => {
+  it('[TC-0GAD] Given rescan, then read-inputs loads all markdown sources under cwd', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -668,7 +757,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['AGENTS.md', 'README.md', 'docs/README.md'])
   })
 
-  it('[TC-211] Given published snapshot docs, then read-inputs excludes published snapshots and export artifacts', async () => {
+  it('[TC-IOJ4] Given published snapshot docs, then read-inputs excludes published snapshots and export artifacts', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nReal repo overview.\n',
     })
@@ -700,7 +789,7 @@ describe('init-cli interview checkpoints', () => {
     expect(sourceFileKeys).toEqual(['README.md', 'docs/README.md'])
   })
 
-  it('[TC-212] Given no markdown sources under the working directory, then document-index stage is skipped', async () => {
+  it('[TC-YC8E] Given no markdown sources under the working directory, then document-index stage is skipped', async () => {
     const cwd = await createTempProject({
       'package.json': '{"name":"test"}',
     })
@@ -726,18 +815,19 @@ describe('init-cli interview checkpoints', () => {
     expect(
       lines.some(
         line =>
-          line.includes('document-index') &&
-          line.includes('skipped (no markdown documents found)')
+          line.includes('document-index') && line.includes('skipped (no markdown documents found)')
       )
     ).toBe(true)
   })
 
-  it('[TC-213] Given multiple markdown sources, then iterable init phases emit current-item progress', async () => {
+  it('[TC-HBHQ] Given multiple markdown sources, then iterable init phases emit current-item progress', async () => {
     const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+      'README.md':
+        '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
     })
     const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
+      'README.md':
+        '# Project\n\nThis root sentence is intentionally long enough for fact ingest.\n',
       'docs/guide.md':
         '# Guide\n\nThis guide sentence is also intentionally long enough for fact ingest.\n',
     })
@@ -755,12 +845,12 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     // All sub-steps (read-inputs, import-docs, write) now report under 'document-index'
-    expect(
-      lines.some(line => line.includes('document-index') && line.includes('README.md'))
-    ).toBe(true)
+    expect(lines.some(line => line.includes('document-index') && line.includes('README.md'))).toBe(
+      true
+    )
   })
 
-  it('[TC-214] Given rescan, then write cycle writes originals and any resulting mutations', async () => {
+  it('[TC-1NBT] Given rescan, then write cycle writes originals and any resulting mutations', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -780,7 +870,7 @@ describe('init-cli interview checkpoints', () => {
     expect((result.writtenDocIds ?? []).length).toBeGreaterThan(0)
   })
 
-  it('[TC-215] Given rescan, then run writes refreshed documents instead of staying plan-only', async () => {
+  it('[TC-5HX5] Given rescan, then run writes refreshed documents instead of staying plan-only', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -805,12 +895,14 @@ describe('init-cli interview checkpoints', () => {
       lines.some(
         line =>
           line.includes('document-index') &&
-          (line.includes('writing original docs') || line.includes('mutations processed') || line.includes('doc(s) written'))
+          (line.includes('writing original docs') ||
+            line.includes('mutations processed') ||
+            line.includes('doc(s) written'))
       )
     ).toBe(true)
   })
 
-  it('[TC-216] Given an unchanged second scan, then markdown sources are skipped and no original docs are rewritten', async () => {
+  it('[TC-GRLA] Given an unchanged second scan, then markdown sources are skipped and no original docs are rewritten', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -846,7 +938,7 @@ describe('init-cli interview checkpoints', () => {
     ).toBe(true)
   })
 
-  it('[TC-217] Given one changed markdown source on rescan, then only that original doc is re-imported', async () => {
+  it('[TC-0KMZ] Given one changed markdown source on rescan, then only that original doc is re-imported', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nStable root README content.\n',
       'docs/README.md': '# Docs\n\nThis README changed recently.\n',
@@ -899,9 +991,7 @@ describe('init-cli interview checkpoints', () => {
     expect(originals[0]?.title).toBe('docs/README.md')
   })
 
-  it(
-    'Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest',
-    async () => {
+  it('Given an unchanged second scan for AST-indexed code, then ast-facts skips the whole cycle from its manifest', async () => {
     const cwd = await createTempProject({
       'tsconfig.json': JSON.stringify({
         compilerOptions: { target: 'ES2020', module: 'commonjs', strict: true },
@@ -931,11 +1021,9 @@ describe('init-cli interview checkpoints', () => {
 
     expect(result.status).toBe('accepted')
     expect(lines.some(line => line.includes('code-index') && line.includes('0 changed'))).toBe(true)
-    },
-    10000
-  )
+  }, 10000)
 
-  it('[TC-218] Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
+  it('[TC-9Z33] Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
@@ -957,7 +1045,7 @@ describe('init-cli interview checkpoints', () => {
     expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
-  it('[TC-219] Given interactive rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
+  it('[TC-H1FQ] Given interactive rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
@@ -977,7 +1065,7 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('[TC-220] Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
+  it('[TC-Z054] Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
@@ -1000,7 +1088,7 @@ describe('init-cli interview checkpoints', () => {
     expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('[TC-221] Given rescan with an active base, uses it in non-interactive mode', async () => {
+  it('[TC-5FAE] Given rescan with an active base, uses it in non-interactive mode', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1017,7 +1105,7 @@ describe('init-cli interview checkpoints', () => {
     expect(result.status).toBe('paused')
   })
 
-  it('[TC-222] Given rescan without --base and no selected base in non-interactive mode, throws guidance', async () => {
+  it('[TC-3SGG] Given rescan without --base and no selected base in non-interactive mode, throws guidance', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1032,7 +1120,7 @@ describe('init-cli interview checkpoints', () => {
     ).rejects.toThrow(/No base selected/)
   })
 
-  it('[TC-223] Given a full init cycle, then progress counter shows 3/3 (not more)', async () => {
+  it('[TC-QNA6] Given a full init cycle, then progress counter shows 3/3 (not more)', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nDocs here.\n',
     })
@@ -1121,7 +1209,7 @@ describe('init-cli token tracking', () => {
     }
   }
 
-  it('[TC-224] Given a TypeScript-only project, then AST code-index uses no LLM tokens', async () => {
+  it('[TC-0R0B] Given a TypeScript-only project, then AST code-index uses no LLM tokens', async () => {
     // TypeScript files use the AST indexer (tree-sitter), not an LLM pass.
     const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-tok-ts-'))
     const repo = await makeTempGitRepo({
@@ -1157,7 +1245,7 @@ async function initBase(name: string): Promise<void> {
 }
 
 describe('kb scan — base resolution', () => {
-  it('[TC-225] Given an active base, uses it without prompting', async () => {
+  it('[TC-O8A2] Given an active base, uses it without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('pinned-base')
     await writeSessionBase('pinned-base')
@@ -1176,7 +1264,7 @@ describe('kb scan — base resolution', () => {
     expect(prompts).toHaveLength(0)
   })
 
-  it('[TC-227] Given --base flag, uses it directly without prompting', async () => {
+  it('[TC-V7E7] Given --base flag, uses it directly without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('explicit-base')
     const { io, prompts } = createQuestionIO([])
@@ -1195,7 +1283,7 @@ describe('kb scan — base resolution', () => {
     expect(prompts).toHaveLength(0)
   })
 
-  it('[TC-228] Given no selected base and a single initialized base, auto-selects it without prompting', async () => {
+  it('[TC-D5NZ] Given no selected base and a single initialized base, auto-selects it without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('solo-base')
     const { io, prompts, writes } = createQuestionIO([])
@@ -1214,7 +1302,7 @@ describe('kb scan — base resolution', () => {
     expect(writes.join('')).toContain('solo-base')
   })
 
-  it('[TC-229] Given no selected base and multiple bases, prompts with a list and accepts a typed name', async () => {
+  it('[TC-I656] Given no selected base and multiple bases, prompts with a list and accepts a typed name', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1235,7 +1323,7 @@ describe('kb scan — base resolution', () => {
     expect(writes.join('')).toContain('beta')
   })
 
-  it('[TC-230] Given no selected base and multiple bases, passing suggestions list to askQuestion', async () => {
+  it('[TC-GOHJ] Given no selected base and multiple bases, passing suggestions list to askQuestion', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1265,7 +1353,7 @@ describe('kb scan — base resolution', () => {
     expect(opts?.suggestions).toContain('beta')
   })
 
-  it('[TC-231] Given no selected base and multiple bases, an invalid name throws an error', async () => {
+  it('[TC-D7OQ] Given no selected base and multiple bases, an invalid name throws an error', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1283,7 +1371,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('Unknown base')
   })
 
-  it('[TC-232] Given no selected base and /cancel answer, throws InitCancelledError', async () => {
+  it('[TC-XNCG] Given no selected base and /cancel answer, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
@@ -1301,7 +1389,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('Cancelled')
   })
 
-  it('[TC-233] Given no selected base and no initialized bases, throws a helpful error', async () => {
+  it('[TC-01FX] Given no selected base and no initialized bases, throws a helpful error', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO([])
 
@@ -1317,7 +1405,7 @@ describe('kb scan — base resolution', () => {
     ).rejects.toThrow('No initialized bases found')
   })
 
-  it('[TC-234] Given no selected base and --non-interactive, throws without prompting', async () => {
+  it('[TC-ZG04] Given no selected base and --non-interactive, throws without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     const { io } = createQuestionIO([])
@@ -1332,7 +1420,6 @@ describe('kb scan — base resolution', () => {
       })
     ).rejects.toThrow(/No base selected/)
   })
-
 })
 
 // ---------------------------------------------------------------------------
@@ -1340,7 +1427,7 @@ describe('kb scan — base resolution', () => {
 // ---------------------------------------------------------------------------
 
 describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
-  it('[TC-236] Given interactive init with a git URL entered first, then clones from that URL', async () => {
+  it('[TC-GM0N] Given interactive init with a git URL entered first, then clones from that URL', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
     const slug = repoSlugFromGitUrl(repo)
@@ -1370,7 +1457,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     }
   })
 
-  it('[TC-237] Given --git flag (non-interactive), then clones the repo onto the base volume', async () => {
+  it('[TC-PONX] Given --git flag (non-interactive), then clones the repo onto the base volume', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
 
@@ -1394,7 +1481,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     expect(repos[0]?.dir).toBeTruthy()
   })
 
-  it('[TC-238] Given --git without branch, then clones the remote default branch', async () => {
+  it('[TC-PGIR] Given --git without branch, then clones the remote default branch', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' }, 'master')
 
@@ -1410,7 +1497,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     expect(repos[0]?.gitBranch).toBe('master')
   })
 
-  it('[TC-239] Given multiple --git targets, then both repos index into one base and the volume lists both', async () => {
+  it('[TC-UIOI] Given multiple --git targets, then both repos index into one base and the volume lists both', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repoA = await makeTempGitRepo({
       'README.md': '# Repo A\n\nAlpha service documentation lives here.\n',
@@ -1448,7 +1535,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     }
   })
 
-  it('[TC-240] Given /cancel at git URL prompt, throws InitCancelledError', async () => {
+  it('[TC-HHLH] Given /cancel at git URL prompt, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO(['/cancel'])
 
@@ -1462,7 +1549,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ).rejects.toThrow(/cancel/i)
   })
 
-  it('[TC-241] Given non-interactive init without --git, throws requiring a git remote', async () => {
+  it('[TC-1L81] Given non-interactive init without --git, throws requiring a git remote', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
 
     await expect(
@@ -1473,7 +1560,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ).rejects.toThrow(/requires at least one git remote/i)
   })
 
-  it('[TC-242] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
+  it('[TC-2B4D] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const { io } = createQuestionIO(['', '/cancel'])
 
@@ -1486,12 +1573,12 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ).rejects.toThrow(/cancel/i)
   })
 
-  it('[TC-243] parseInitCommand parses --git and --branch flags', () => {
+  it('[TC-YYVU] parseInitCommand parses --git and --branch flags', () => {
     const parsed = parseInitCommand(['--git', 'U', '--branch', 'dev'])
     expect(parsed.gitTargets).toEqual([{ url: 'U', branch: 'dev' }])
   })
 
-  it('[TC-244] parseInitCommand parses repeatable --git with inline branch (no branch = remote default)', () => {
+  it('[TC-98OW] parseInitCommand parses repeatable --git with inline branch (no branch = remote default)', () => {
     const parsed = parseInitCommand(['--git', 'A', '--git', 'B#feat'])
     expect(parsed.gitTargets).toEqual([
       { url: 'A', branch: undefined },
@@ -1499,7 +1586,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     ])
   })
 
-  it('[TC-245] parseInitCommand with only --git leaves the branch undefined (remote default)', () => {
+  it('[TC-TIUI] parseInitCommand with only --git leaves the branch undefined (remote default)', () => {
     const parsed = parseInitCommand(['--git', 'U'])
     expect(parsed.gitTargets).toEqual([{ url: 'U', branch: undefined }])
   })

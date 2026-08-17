@@ -89,11 +89,7 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
-import {
-  startEvalServer,
-  buildEvalOfflineEnv,
-  defaultEvalApiKey,
-} from './eval-server.mjs'
+import { startEvalServer, buildEvalOfflineEnv, defaultEvalApiKey } from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
   DEFAULT_MAX_TURNS,
@@ -111,7 +107,10 @@ export const SHARED_EVAL_BATCH_BASE = '_eval-batch'
  * @param {string} base
  * @param {string} [kbHome]
  */
-export function evalSessionDir(base, kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')) {
+export function evalSessionDir(
+  base,
+  kbHome = process.env.KB_HOME || path.join(os.homedir(), '.kb')
+) {
   return path.join(kbHome, 'sessions', base)
 }
 
@@ -303,6 +302,7 @@ export function buildChildArgv(suite, args) {
   if (args.label) argv.push('--label', args.label)
   if (args.hypothesis) argv.push('--hypothesis', args.hypothesis)
   if (args.forceInit) argv.push('--force-init')
+  if (args.skipEmbeddings) argv.push('--skip-embed')
   if (args.skipCapture) argv.push('--skip-init')
   if (args.fromSnapshot) argv.push('--from-snapshot')
   if (args.skipScan) argv.push('--skip-scan')
@@ -546,6 +546,9 @@ function parseArgs(argv) {
     scoresFile: null,
     skipCapture: false,
     skipScan: false,
+    // Only meaningful when an index rebuild actually happens (--force-init, or a fresh session
+    // with no docs yet) — a plain query-only run never embeds anything to skip.
+    skipEmbeddings: false,
     // Adopt the snapshot Fly.io is already serving instead of building an index
     // locally (scripts/snapshot-pull.mjs). Implies --skip-scan.
     fromSnapshot: false,
@@ -554,10 +557,7 @@ function parseArgs(argv) {
     scoreRuns: 3,
     // Query trials: run each question K times and average the per-axis scores across
     // trials to cancel run-to-run retrieval/judge nondeterminism (default 1 = off).
-    queryTrials: Math.max(
-      1,
-      Number.parseInt(process.env.KB_EVAL_QUERY_TRIALS ?? '', 10) || 1
-    ),
+    queryTrials: Math.max(1, Number.parseInt(process.env.KB_EVAL_QUERY_TRIALS ?? '', 10) || 1),
     // Control condition (the real-agent baseline) runs side-by-side with kb by default.
     skipControl: false,
     controlModel: null,
@@ -613,6 +613,7 @@ function parseArgs(argv) {
     else if (a === '--skip-scan') out.skipScan = true
     else if (a === '--from-snapshot') out.fromSnapshot = true
     else if (a === '--force-init') out.forceInit = true
+    else if (a === '--skip-embed') out.skipEmbeddings = true
     else if (a === '--skip-control') out.skipControl = true
     else if (a === '--trace') out.queryTrace = true
     else if (a === '--control-model') out.controlModel = argv[++i]
@@ -625,7 +626,7 @@ function parseArgs(argv) {
     i++
   }
   // Backward-compat alias used by single-suite path
-  out.suite = out.suites.length === 1 ? out.suites[0] : out.suites[0] ?? null
+  out.suite = out.suites.length === 1 ? out.suites[0] : (out.suites[0] ?? null)
   return out
 }
 
@@ -681,6 +682,12 @@ Suite / questions:
 Session:
   --base NAME             Override derived session name (default: eval-{suiteId}; single-suite only)
   --force-init            Wipe ~/.kb/sessions/<base> on disk, then eval-index init from scratch
+  --skip-embed            Skip embedding during that rebuild (init + scan) — no vectors are
+                          written, retrieval is lexical/AST only. Only relevant when an index
+                          rebuild actually happens (--force-init, or a fresh session with no
+                          docs yet); a no-op otherwise. Faster/cheaper for checking retrieval
+                          changes that don't depend on the embedder (e.g. new AST symbols) —
+                          not for a run whose auto-scores you plan to trust.
   --skip-scan             Skip eval-index scan (reuse existing index; still queries). Forced scan
                           after a fresh init.
   --from-snapshot         Adopt the snapshot Fly.io is serving for this suite (download + verify +
@@ -815,7 +822,9 @@ async function kbAsync(cwd, args, { attempts = 3 } = {}) {
       lastErr = err
       if (attempt < attempts) {
         const backoffMs = 2000 * 2 ** (attempt - 1)
-        console.error(`[eval] query attempt ${attempt}/${attempts} failed; retrying in ${backoffMs}ms`)
+        console.error(
+          `[eval] query attempt ${attempt}/${attempts} failed; retrying in ${backoffMs}ms`
+        )
         await new Promise(r => setTimeout(r, backoffMs))
       }
     }
@@ -863,7 +872,13 @@ function averageTrialScores(perTrialNormalized, count) {
   const trials = perTrialNormalized.length
   const out = []
   for (let i = 0; i < count; i++) {
-    const acc = { correctness: 0, usefulness: 0, relevance: 0, specificity: 0, evidence_handling: 0 }
+    const acc = {
+      correctness: 0,
+      usefulness: 0,
+      relevance: 0,
+      specificity: 0,
+      evidence_handling: 0,
+    }
     let notes = ''
     for (let t = 0; t < trials; t++) {
       const ms = perTrialNormalized[t][i] ?? {}
@@ -1063,7 +1078,11 @@ function resolveEvalPaths(args) {
 function resolveQuestions(args, suiteConfig) {
   if (args.questionsFile) {
     const qs = JSON.parse(fs.readFileSync(path.resolve(args.questionsFile), 'utf8'))
-    if (!Array.isArray(qs) || qs.length === 0 || !qs.every(x => typeof x === 'string' && x.trim())) {
+    if (
+      !Array.isArray(qs) ||
+      qs.length === 0 ||
+      !qs.every(x => typeof x === 'string' && x.trim())
+    ) {
       throw new Error('--questions-file must be a JSON array of non-empty strings')
     }
     return qs
@@ -1088,7 +1107,10 @@ function readKbQueryTelemetry(base, limit = 8, trials = 1) {
   const logsDir = path.join(os.homedir(), '.kb', 'logs')
   if (!fs.existsSync(logsDir)) return null
   const reports = []
-  for (const file of fs.readdirSync(logsDir).filter(f => f.endsWith('.jsonl')).sort()) {
+  for (const file of fs
+    .readdirSync(logsDir)
+    .filter(f => f.endsWith('.jsonl'))
+    .sort()) {
     const text = fs.readFileSync(path.join(logsDir, file), 'utf8')
     for (const line of text.split('\n')) {
       if (!line.trim()) continue
@@ -1297,7 +1319,9 @@ async function main() {
     process.exit(1)
   }
   if (!fs.existsSync(path.join(KB_REPO, 'node_modules'))) {
-    console.error('Missing node_modules — run: pnpm install (eval-index runs from this checkout, not the cloned target repo).')
+    console.error(
+      'Missing node_modules — run: pnpm install (eval-index runs from this checkout, not the cloned target repo).'
+    )
     process.exit(1)
   }
 
@@ -1351,7 +1375,7 @@ async function main() {
         await timedAsync('init', runTiming, () =>
           evalIndexTee(
             'init',
-            `--base ${base} --git "${targetCwd}" --non-interactive --debug`,
+            `--base ${base} --git "${targetCwd}" --non-interactive --debug${args.skipEmbeddings ? ' --skip-embed' : ''}`,
             initLogPath
           )
         )
@@ -1369,7 +1393,11 @@ async function main() {
         console.error(`[eval] eval-index scan --base ${base}`)
         const scanLogPath = path.join(workdir, 'scan.log')
         await timedAsync('scan', runTiming, () =>
-          evalIndexTee('scan', `--base ${base} --debug`, scanLogPath)
+          evalIndexTee(
+            'scan',
+            `--base ${base} --debug${args.skipEmbeddings ? ' --skip-embed' : ''}`,
+            scanLogPath
+          )
         )
       } else {
         runTiming.command_durations_ms.scan = 0
@@ -1385,8 +1413,9 @@ async function main() {
       // (banner shows the last writer). Queries already pass `--base` explicitly;
       // the shared multi-base server selects via X-KB-Base.
 
-      const attaching =
-        !!(process.env.KB_EVAL_SERVER_URL?.trim() || process.env.KB_EVAL_ATTACH_URL?.trim())
+      const attaching = !!(
+        process.env.KB_EVAL_SERVER_URL?.trim() || process.env.KB_EVAL_ATTACH_URL?.trim()
+      )
       console.error(
         attaching
           ? `[eval] attaching to shared multi-base kb-server for base=${base}`
@@ -1463,7 +1492,11 @@ async function main() {
       // Wall-clock of the parallel batch (not the summed per-query time) drives the run's
       // speed budget, so parallelism actually improves the reported speed sub-score.
       runTiming.query_total_duration_ms = Date.now() - wallStartMs
-      fs.writeFileSync(path.join(workdir, 'runtime.json'), JSON.stringify(runTiming, null, 2), 'utf8')
+      fs.writeFileSync(
+        path.join(workdir, 'runtime.json'),
+        JSON.stringify(runTiming, null, 2),
+        'utf8'
+      )
     } finally {
       if (evalServer) {
         console.error('[eval] stopping kb-server')
@@ -1776,9 +1809,7 @@ async function main() {
               ? null
               : 'Could not parse init run id from kb logs table.',
         scan_run_id: scanRunId,
-        scan_run_id_note: scanRunId
-          ? null
-          : 'Could not parse scan run id from kb logs table.',
+        scan_run_id_note: scanRunId ? null : 'Could not parse scan run id from kb logs table.',
         docs_list: docsList,
         graph_summary: {
           entities: graphCounts.entities,
@@ -1831,9 +1862,7 @@ async function main() {
     console.error('[eval] --skip-init: control phase not run (rescore-only mode)')
   }
   if (!args.skipControl && !args.skipCapture) {
-    const controlLabel = args.controlAgentCmd
-      ? 'custom agent cmd'
-      : `${args.controlAgent} agent`
+    const controlLabel = args.controlAgentCmd ? 'custom agent cmd' : `${args.controlAgent} agent`
     console.error(
       `[eval] control phase · suite=${suiteId} (${suiteLabel}) · ${controlLabel}, condition N (--skip-control to disable)`
     )

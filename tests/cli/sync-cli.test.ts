@@ -21,7 +21,7 @@ const FAKE_NODE_BIN = '/fake/nvm/versions/node/v24.15.0/bin/node'
 const FAKE_RUNTIME = { nodeBin: FAKE_NODE_BIN }
 
 describe('sync-cli', () => {
-  it('[TC-394] Given --help, then prints release-based sync help', () => {
+  it('[TC-W5CI] Given --help, then prints release-based sync help', () => {
     expect(printSyncHelp()).toContain('kb sync command')
     expect(printSyncHelp()).toContain('GitHub Releases')
     expect(printSyncHelp()).toContain(KB_CLIENT_RELEASE_TARBALL_URL)
@@ -31,7 +31,7 @@ describe('sync-cli', () => {
     expect(printSyncHelp('tui')).toContain('/sync command')
   })
 
-  it('[TC-395] Given no flags, then sync installs client + server tarballs and links both binaries', async () => {
+  it('[TC-62DX] Given no flags, then sync installs client + server tarballs and links both binaries', async () => {
     process.env.KB_INSTALL_ROOT = TEST_KB_HOME
     await rm(TEST_KB_HOME, { recursive: true, force: true })
 
@@ -99,11 +99,11 @@ describe('sync-cli', () => {
     await rm(TEST_KB_HOME, { recursive: true, force: true })
   })
 
-  it('[TC-396] Given legacy no-build flag, then sync rejects it', async () => {
+  it('[TC-SPST] Given legacy no-build flag, then sync rejects it', async () => {
     await expect(runSyncCommand(['--no-build'])).rejects.toThrow('Unknown sync flag: --no-build')
   })
 
-  it('[TC-397] Given positional args, then sync rejects them', async () => {
+  it('[TC-8NNM] Given positional args, then sync rejects them', async () => {
     await expect(runSyncCommand(['extra'])).rejects.toThrow(
       'kb sync does not accept positional arguments.'
     )

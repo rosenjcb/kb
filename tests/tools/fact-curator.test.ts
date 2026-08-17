@@ -50,32 +50,32 @@ function errorLlm(): LLMProvider {
 }
 
 describe('shouldCurate', () => {
-  it('[TC-1] Given more than the threshold of results, then returns true', () => {
+  it('[TC-3UN8] Given more than the threshold of results, then returns true', () => {
     const results = Array.from({ length: 13 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldCurate(results)).toBe(true)
   })
 
-  it('[TC-2] Given few results, then returns false', () => {
+  it('[TC-KLE3] Given few results, then returns false', () => {
     const results = Array.from({ length: 8 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     expect(shouldCurate(results)).toBe(false)
   })
 })
 
 describe('parseVerdict', () => {
-  it('[TC-3] Given a JSON object embedded in prose, then it extracts keep/gaps/sufficient', () => {
+  it('[TC-NACU] Given a JSON object embedded in prose, then it extracts keep/gaps/sufficient', () => {
     const v = parseVerdict('Sure: {"keep":["a","b"],"gaps":["more"],"sufficient":true} done')
     expect([...v.keep]).toEqual(['a', 'b'])
     expect(v.gaps).toEqual(['more'])
     expect(v.sufficient).toBe(true)
   })
 
-  it('[TC-4] Given no JSON, then it throws', () => {
+  it('[TC-OE63] Given no JSON, then it throws', () => {
     expect(() => parseVerdict('no json here')).toThrow()
   })
 })
 
 describe('curateFacts', () => {
-  it('[TC-5] Given irrelevant facts, then the judge hard-drops them below the old 15% floor', async () => {
+  it('[TC-HEXQ] Given irrelevant facts, then the judge hard-drops them below the old 15% floor', async () => {
     // 20 facts; only 2 are on-topic. The old filter would refuse to drop below ~3.
     const results = [
       makeResult('keep-1', 'authentication token rotation'),
@@ -99,7 +99,7 @@ describe('curateFacts', () => {
     expect(record.sufficient).toBe(true)
   })
 
-  it('[TC-6] Given high token overlap, then a fact is auto-kept even if the judge omits it', async () => {
+  it('[TC-B147] Given high token overlap, then a fact is auto-kept even if the judge omits it', async () => {
     const results = [
       makeResult('auto', 'authentication works via token rotation'),
       ...Array.from({ length: 15 }, (_, i) => makeResult(`x-${i}`, `unrelated ${i}`)),
@@ -117,7 +117,7 @@ describe('curateFacts', () => {
     expect(record.autoKept).toBeGreaterThanOrEqual(1)
   })
 
-  it('[TC-7] Given gaps and insufficiency, then it issues bounded re-discovery and admits new facts', async () => {
+  it('[TC-MI89] Given gaps and insufficiency, then it issues bounded re-discovery and admits new facts', async () => {
     const results = [
       makeResult('seed', 'partial detail about caching'),
       ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),
@@ -144,7 +144,7 @@ describe('curateFacts', () => {
     expect(out.map(r => r.metadata.id)).toContain('seed')
   })
 
-  it('[TC-8] Given the LLM throws, then it fails safe and returns the original set untouched', async () => {
+  it('[TC-MZQY] Given the LLM throws, then it fails safe and returns the original set untouched', async () => {
     const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     const { results: out, record } = await curateFacts({
       llm: errorLlm(),
@@ -156,7 +156,7 @@ describe('curateFacts', () => {
     expect(record.dropped).toHaveLength(0)
   })
 
-  it('[TC-9] Given the judge drops everything, then it guards against an empty set via deterministic top-K', async () => {
+  it('[TC-LQFN] Given the judge drops everything, then it guards against an empty set via deterministic top-K', async () => {
     const results = Array.from({ length: 16 }, (_, i) =>
       makeResult(`f-${i}`, `query topic detail ${i}`)
     )
@@ -176,7 +176,7 @@ describe('curateFacts', () => {
     expect(record.fellBack).toBe(false)
   })
 
-  it('[TC-11] Given a pool larger than the judge candidate cap, then the tail is hard-dropped and the judge sees at most the cap', async () => {
+  it('[TC-AGUM] Given a pool larger than the judge candidate cap, then the tail is hard-dropped and the judge sees at most the cap', async () => {
     // 130 low-overlap facts → all candidates (none auto-kept), exceeding the default cap of 100.
     const results = Array.from({ length: 130 }, (_, i) =>
       makeResult(`f-${i}`, `unrelated topic ${i}`)
@@ -205,7 +205,7 @@ describe('curateFacts', () => {
     expect(record.fellBack).toBe(false)
   })
 
-  it('[TC-12] Given the LLM throws on an over-cap pool, then the fallback is bounded to the cap, not the full pool', async () => {
+  it('[TC-W5NK] Given the LLM throws on an over-cap pool, then the fallback is bounded to the cap, not the full pool', async () => {
     const results = Array.from({ length: 250 }, (_, i) =>
       makeResult(`f-${i}`, `unrelated topic ${i}`)
     )
@@ -220,7 +220,7 @@ describe('curateFacts', () => {
     expect(out.length).toBe(40)
   })
 
-  it('[TC-10] Given re-discovery returns only known ids, then it stops without looping', async () => {
+  it('[TC-R5W9] Given re-discovery returns only known ids, then it stops without looping', async () => {
     const results = [
       makeResult('seed', 'partial detail about caching'),
       ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `unrelated rendering ${i}`)),
@@ -243,7 +243,7 @@ describe('curateFacts', () => {
     expect(record.rounds).toBe(1)
   })
 
-  it('[TC-14] Given rank auto-keep, then top-N incoming facts survive even when the judge keeps nothing', async () => {
+  it('[TC-F3JM] Given rank auto-keep, then top-N incoming facts survive even when the judge keeps nothing', async () => {
     const results = Array.from({ length: 20 }, (_, i) =>
       makeResult(`f-${i}`, `unrelated rendering buffer ${i}`)
     )
@@ -263,7 +263,7 @@ describe('curateFacts', () => {
     expect(out.length).toBeGreaterThanOrEqual(10)
   })
 
-  it('[TC-13] Given a collector, then each judge round is recorded as a telemetry stage', async () => {
+  it('[TC-VZ2O] Given a collector, then each judge round is recorded as a telemetry stage', async () => {
     const results = [
       makeResult('seed', 'partial detail about caching'),
       ...Array.from({ length: 14 }, (_, i) => makeResult(`o-${i}`, `off topic ${i}`)),
@@ -303,7 +303,7 @@ describe('curateFacts', () => {
 })
 
 describe('curator degradation reporting', () => {
-  it('[TC-15] Given the LLM throws, then the record carries why it fell back so the outage is attributable', async () => {
+  it('[TC-NIJ2] Given the LLM throws, then the record carries why it fell back so the outage is attributable', async () => {
     const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
     const { record } = await curateFacts({
       llm: {

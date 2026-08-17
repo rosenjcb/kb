@@ -22,7 +22,7 @@ import { createKbService } from '@kb/core/service/kb-service.js'
 const mockScanBaseRepos = vi.mocked(scanBaseRepos)
 
 describe('createKbService reindex', () => {
-  it('[TC-16] scans the repos discovered on the base volume', async () => {
+  it('[TC-GAGS] scans the repos discovered on the base volume', async () => {
     mockScanBaseRepos.mockResolvedValue(1)
 
     const service = createKbService({

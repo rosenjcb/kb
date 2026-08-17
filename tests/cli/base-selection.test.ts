@@ -34,22 +34,22 @@ describe('base-selection', () => {
 
   // ─── resolveBaseToDir ─────────────────────────────────────────────────────
 
-  it('[TC-20] alias base resolves to namespaced sessions directory', () => {
+  it('[TC-1AL2] alias base resolves to namespaced sessions directory', () => {
     const dir = resolveBaseToDir('dogfood', '/repo')
     expect(dir).toBe(path.join(getKbHomeDir(), 'sessions', 'dogfood'))
   })
 
-  it('[TC-21] path-like base resolves relative to cwd', () => {
+  it('[TC-55NE] path-like base resolves relative to cwd', () => {
     expect(resolveBaseToDir('./tmp/docs', '/repo')).toBe('/repo/tmp/docs')
   })
 
-  it('[TC-22] absolute path base is returned as-is', () => {
+  it('[TC-UNMV] absolute path base is returned as-is', () => {
     expect(resolveBaseToDir('/data/kb', '/repo')).toBe('/data/kb')
   })
 
   // ─── resolveEffectiveBaseDir — active base only ───────────────────────────
 
-  it('[TC-23] resolves the active base from config', async () => {
+  it('[TC-YRYL] resolves the active base from config', async () => {
     const result = await resolveEffectiveBaseDir('/repo', {
       activeBase: 'session-base',
     })
@@ -59,13 +59,13 @@ describe('base-selection', () => {
     expect(result.baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'session-base'))
   })
 
-  it('[TC-25] throws when no activeBase is set (server default takes over)', async () => {
+  it('[TC-DH7S] throws when no activeBase is set (server default takes over)', async () => {
     await expect(resolveEffectiveBaseDir('/repo', {})).rejects.toThrow(CLI_ERROR_NO_KB_BASE)
   })
 
   // ─── writeSessionBase / readBaseConfig ───────────────────────────────────
 
-  it('[TC-28] writeSessionBase persists the active base', async () => {
+  it('[TC-IIKB] writeSessionBase persists the active base', async () => {
     await writeSessionBase('catalog')
 
     const config = await readBaseConfig()
@@ -75,7 +75,7 @@ describe('base-selection', () => {
     expect(raw.trim()).toBe('catalog')
   })
 
-  it('[TC-29] migrates legacy session.json into active-base and removes session.json', async () => {
+  it('[TC-S9NT] migrates legacy session.json into active-base and removes session.json', async () => {
     await writeFile(
       path.join(getKbHomeDir(), 'session.json'),
       `${JSON.stringify({ activeBase: 'legacy-base' }, null, 2)}\n`,
@@ -88,7 +88,7 @@ describe('base-selection', () => {
 
   // ─── legacy sqlite migration ──────────────────────────────────────────────
 
-  it('[TC-30] ensureOperationalBaseDir migrates legacy repo sqlite into KB home', async () => {
+  it('[TC-DL0O] ensureOperationalBaseDir migrates legacy repo sqlite into KB home', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-repo-'))
     const legacyDir = path.join(cwd, 'sessions', 'namespaces', 'catalog', 'documents')
     await mkdir(legacyDir, { recursive: true })
@@ -102,7 +102,7 @@ describe('base-selection', () => {
     await rm(cwd, { recursive: true, force: true })
   })
 
-  it('[TC-31] ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace', async () => {
+  it('[TC-1BXW] ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace', async () => {
     const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
     await mkdir(path.join(legacyBaseDir, 'checkpoints'), { recursive: true })
     await writeFile(path.join(legacyBaseDir, '.kb-index.sqlite'), 'sqlite-bytes', 'utf8')
@@ -126,7 +126,7 @@ describe('base-selection', () => {
 
   // ─── format helpers ───────────────────────────────────────────────────────
 
-  it('[TC-32] formatUseCommandHelp shows active session switching', () => {
+  it('[TC-Q3X2] formatUseCommandHelp shows active session switching', () => {
     const text = formatUseCommandHelp('catalog', path.join(getKbHomeDir(), 'sessions', 'catalog'))
     expect(text).toContain('Using base: catalog')
     expect(text).toContain('Switched the active base for this session')
@@ -146,7 +146,7 @@ describe('deleteBase', () => {
     await rm(tempKbHome, { recursive: true, force: true })
   })
 
-  it('[TC-36] Given an existing named base, then deletes its session directory', async () => {
+  it('[TC-QD3M] Given an existing named base, then deletes its session directory', async () => {
     const baseDir = await ensureOperationalBaseDir('to-delete')
     await writeFile(path.join(baseDir, 'marker.txt'), 'data')
 
@@ -157,7 +157,7 @@ describe('deleteBase', () => {
     await expect(readFile(path.join(baseDir, 'marker.txt'), 'utf8')).rejects.toThrow()
   })
 
-  it('[TC-37] Given legacy + tmp checkpoint artifacts, then purges them too', async () => {
+  it('[TC-LANX] Given legacy + tmp checkpoint artifacts, then purges them too', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-repo-del-'))
     const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
     const tmpCheckpoint = path.join(cwd, '.tmp', 'kb-init', 'dogfood-latest.checkpoint.json')
@@ -175,7 +175,7 @@ describe('deleteBase', () => {
     await rm(cwd, { recursive: true, force: true })
   })
 
-  it('[TC-38] Given the base is the active base, then clears it from config', async () => {
+  it('[TC-E8OQ] Given the base is the active base, then clears it from config', async () => {
     await ensureOperationalBaseDir('active-base')
     await writeSessionBase('active-base')
 
@@ -189,17 +189,17 @@ describe('deleteBase', () => {
     expect(after.activeBase).toBeUndefined()
   })
 
-  it('[TC-40] Given the base does not exist on disk, then succeeds without error', async () => {
+  it('[TC-TFPC] Given the base does not exist on disk, then succeeds without error', async () => {
     await expect(deleteBase('nonexistent-base')).resolves.toBeDefined()
   })
 
-  it('[TC-41] Given a path-like base, then throws rather than deleting arbitrary paths', async () => {
+  it('[TC-EJOW] Given a path-like base, then throws rather than deleting arbitrary paths', async () => {
     await expect(deleteBase('/tmp/some-dir')).rejects.toThrow('named bases')
   })
 })
 
 describe('formatDeleteBaseResult', () => {
-  it('[TC-44] includes the base name and path in output', () => {
+  it('[TC-O7OU] includes the base name and path in output', () => {
     const result = {
       basePath: '/tmp/sessions/test',
       clearedActive: false,
@@ -210,7 +210,7 @@ describe('formatDeleteBaseResult', () => {
     expect(text).toContain('/tmp/sessions/test')
   })
 
-  it('[TC-45] mentions cleared active base when applicable', () => {
+  it('[TC-CW47] mentions cleared active base when applicable', () => {
     const result = {
       basePath: '/tmp/sessions/test',
       clearedActive: true,
@@ -234,12 +234,12 @@ describe('listAllBases', () => {
     await rm(tempKbHome, { recursive: true, force: true })
   })
 
-  it('[TC-54] returns empty array when sessions directory does not exist', async () => {
+  it('[TC-TVMB] returns empty array when sessions directory does not exist', async () => {
     const bases = await listAllBases()
     expect(bases).toEqual([])
   })
 
-  it('[TC-55] returns only directories that contain .kb-index.sqlite', async () => {
+  it('[TC-NG7P] returns only directories that contain .kb-index.sqlite', async () => {
     const sessionsDir = path.join(tempKbHome, 'sessions')
     await mkdir(path.join(sessionsDir, 'initialized'), { recursive: true })
     await writeFile(path.join(sessionsDir, 'initialized', '.kb-index.sqlite'), '', 'utf8')
@@ -250,7 +250,7 @@ describe('listAllBases', () => {
     expect(bases[0].name).toBe('initialized')
   })
 
-  it('[TC-56] marks the active base correctly', async () => {
+  it('[TC-1GXA] marks the active base correctly', async () => {
     const sessionsDir = path.join(tempKbHome, 'sessions')
     for (const name of ['alpha', 'beta', 'gamma']) {
       await mkdir(path.join(sessionsDir, name), { recursive: true })
@@ -266,7 +266,7 @@ describe('listAllBases', () => {
     expect(byName.gamma.isActive).toBe(false)
   })
 
-  it('[TC-57] returns bases sorted alphabetically', async () => {
+  it('[TC-EA5G] returns bases sorted alphabetically', async () => {
     const sessionsDir = path.join(tempKbHome, 'sessions')
     for (const name of ['zebra', 'apple', 'mango']) {
       await mkdir(path.join(sessionsDir, name), { recursive: true })
@@ -293,7 +293,7 @@ describe('resolveEffectiveBaseDir', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('[TC-60] resolves the configured active base', async () => {
+  it('[TC-XXX9] resolves the configured active base', async () => {
     await writeSessionBase('session-base')
 
     const result = await resolveEffectiveBaseDir(tempDir)
@@ -302,7 +302,7 @@ describe('resolveEffectiveBaseDir', () => {
     expect(result.baseName).toBe('session-base')
   })
 
-  it('[TC-61] throws when no active base is configured', async () => {
+  it('[TC-EHQA] throws when no active base is configured', async () => {
     await expect(resolveEffectiveBaseDir(tempDir)).rejects.toThrow(CLI_ERROR_NO_KB_BASE)
   })
 })
@@ -320,24 +320,24 @@ describe('CLI argv helpers (--base)', () => {
     await rm(tempKbHome, { recursive: true, force: true })
   })
 
-  it('[TC-63] readOptionalCliValue returns the following token', () => {
+  it('[TC-OHPZ] readOptionalCliValue returns the following token', () => {
     expect(readOptionalCliValue(['--base', 'dogfood', 'x'], '--base')).toBe('dogfood')
     expect(readOptionalCliValue(['x', '--base', 'b'], '--base')).toBe('b')
   })
 
-  it('[TC-64] readOptionalCliValue returns undefined when flag or value is missing', () => {
+  it('[TC-CVIS] readOptionalCliValue returns undefined when flag or value is missing', () => {
     expect(readOptionalCliValue(['--other'], '--base')).toBeUndefined()
     expect(readOptionalCliValue(['--base'], '--base')).toBeUndefined()
     expect(readOptionalCliValue(['--base', '--apply'], '--base')).toBeUndefined()
   })
 
-  it('[TC-65] stripCliFlagWithValue removes --base and its value', () => {
+  it('[TC-MHT9] stripCliFlagWithValue removes --base and its value', () => {
     expect(
       stripCliFlagWithValue(['graph', '--base', 'dogfood', '--entity', 'KB'], '--base')
     ).toEqual(['graph', '--entity', 'KB'])
   })
 
-  it('[TC-66] resolveKbStorageDirFromArgs honors --base over active session', async () => {
+  it('[TC-1G6A] resolveKbStorageDirFromArgs honors --base over active session', async () => {
     await ensureOperationalBaseDir('session-a')
     await ensureOperationalBaseDir('session-b')
     await writeSessionBase('session-a')
@@ -346,7 +346,7 @@ describe('CLI argv helpers (--base)', () => {
     expect(dir).toBe(path.join(tempKbHome, 'sessions', 'session-b'))
   })
 
-  it('[TC-67] resolveKbStorageDirFromArgs falls back to effective base when --base omitted', async () => {
+  it('[TC-8ODE] resolveKbStorageDirFromArgs falls back to effective base when --base omitted', async () => {
     await ensureOperationalBaseDir('only-one')
     await writeSessionBase('only-one')
 

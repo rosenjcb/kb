@@ -12,6 +12,7 @@ import {
 import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
+import type { ChatSourceRepo } from './chat-reply.js'
 import { type GroupedSource, groupSources } from './source-grouping.js'
 
 export interface QuerySource {
@@ -49,7 +50,21 @@ export interface QueryResponseBody {
     detail?: string
     /** Best-effort LLM stages that failed and were skipped; retrieval still succeeded. */
     degraded?: LLMFailure[]
+    /** Prose claims the opt-in verification pass judged unsupported by the evidence (#223). */
+    unsupportedClaims?: string[]
   }
+  /**
+   * Actionable caveats every surface should show: verify hints, ungrounded-file /
+   * unsupported-claim warnings, degraded-retrieval and no-answer notices. Computed
+   * once here so REST, MCP, CLI, TUI, and the demo all carry the same caveats — the
+   * surfaces differ only in how they render them, never in whether they exist.
+   */
+  notes?: string[]
+  /**
+   * Evidence label, already downgraded when grounding checks fired (an answer that
+   * cites files absent from the sources, or makes claims the sources don't support,
+   * is never `strong` no matter how many results came back).
+   */
   evidence?: EvidenceLabel
   /**
    * Why no answer came back. Present only when synthesis was attempted and failed, so
@@ -267,26 +282,34 @@ function formatMcpSources(results: QuerySource[]): McpSource[] {
 }
 
 /**
- * Map an `IntentResult` to the trimmed agent payload (MCP `query` default and
- * REST without `verbose`): answer + top cited files, no fact dump, no retrieval
- * metadata. Adds `notes` when the answer needs verification (evidence below
- * `MCP_VERIFY_EVIDENCE_FLOOR`) or when the prose names files absent from the evidence.
+ * The single grounding computation shared by every surface: caveats (`notes`) and
+ * the evidence label after grounding downgrades. Runs once inside
+ * {@link serializeQueryResult} so the REST body, the MCP projection, and the human
+ * CLI/TUI all carry identical semantics — they differ only in rendering.
  */
-export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseBody {
-  const full = serializeQueryResult(result)
-  const sources = formatMcpSources(full.results)
+function computeQueryGrounding(params: {
+  answer: string | null
+  evidence?: EvidenceLabel
+  /** Openable paths of the cited evidence, for the ungrounded-file check. */
+  evidencePaths: string[]
+  unsupportedClaims: string[]
+  degraded?: LLMFailure[]
+  answerError?: LLMFailure
+  hasSources: boolean
+}): { notes: string[]; evidence?: EvidenceLabel } {
   const notes: string[] = []
-  let evidence = full.evidence
+  let evidence = params.evidence
 
-  if (full.evidence && !isEvidenceAtLeast(full.evidence, MCP_VERIFY_EVIDENCE_FLOOR)) {
+  // Floor note uses the *original* label: a `strong` answer later downgraded by a
+  // grounding check gets the sharper ungrounded/claims note below, not this one.
+  if (evidence && !isEvidenceAtLeast(evidence, MCP_VERIFY_EVIDENCE_FLOOR)) {
     notes.push(
-      `Retrieval evidence was ${full.evidence} — verify the cited sources before relying on this answer.`
+      `Retrieval evidence was ${evidence} — verify the cited sources before relying on this answer.`
     )
   }
 
-  if (full.answer) {
-    const evidencePaths = full.results.flatMap(r => (r.filePath ? [r.filePath] : []))
-    const ungrounded = findUngroundedFileReferences(full.answer, evidencePaths)
+  if (params.answer) {
+    const ungrounded = findUngroundedFileReferences(params.answer, params.evidencePaths)
     if (ungrounded.length > 0) {
       notes.push(
         `The answer names file(s) not in the cited sources (${ungrounded.join(', ')}) — trust the sources list for exact paths.`
@@ -296,50 +319,108 @@ export function serializeMcpQueryResult(result: IntentResult): McpQueryResponseB
       // let a note-only warning coexist with an unchanged top-level label.
       if (evidence) evidence = weakestEvidence([evidence, 'weak'])
     }
-  } else if (full.answerError) {
+
+    // Prose claims the opt-in verification pass judged unsupported by the evidence
+    // (#223). Same posture as the ungrounded-file check above: a confidently-wrong
+    // prose claim ("import POSTs to the backend") must not sail through with a
+    // `strong` label just because its cited file names were real.
+    if (params.unsupportedClaims.length > 0) {
+      notes.push(
+        `The answer makes claim(s) the cited sources do not directly support: ${params.unsupportedClaims.join('; ')} — verify against the sources before relying on this.`
+      )
+      if (evidence) evidence = weakestEvidence([evidence, 'weak'])
+    }
+  } else if (params.answerError) {
     // Lead with the failure. "Open the cited sources directly" reads as a retrieval
     // verdict; an agent acting on it would wrongly conclude the KB is thin, when in
     // fact the provider call failed and a retry is what's warranted.
-    notes.unshift(describeLLMFailure(full.answerError))
-  } else if (sources.length > 0) {
+    notes.unshift(describeLLMFailure(params.answerError))
+  } else if (params.hasSources) {
     notes.push('No synthesized answer was produced — open the cited sources directly.')
   }
 
-  const degraded = full.retrieval.degraded
-  if (degraded && degraded.length > 0) {
+  if (params.degraded && params.degraded.length > 0) {
     notes.push(
-      `Degraded retrieval — ${degraded.map(d => `${d.stage} (${d.kind})`).join(', ')} was skipped after an LLM error, so ranking and filtering are weaker than usual.`
+      `Degraded retrieval — ${params.degraded.map(d => `${d.stage} (${d.kind})`).join(', ')} was skipped after an LLM error, so ranking and filtering are weaker than usual.`
     )
   }
 
+  return { notes, evidence }
+}
+
+/** Options shared by both serializers. */
+export interface SerializeQueryOptions {
+  /**
+   * Per-repo registry (`chatSourceReposFromBaseRepos(discoverBaseRepos(baseDir))`)
+   * used to build clickable blob `href`s on the grouped sources. Omit for a
+   * single-base server with no remote, or when links aren't wanted.
+   */
+  sourceRepos?: ChatSourceRepo[]
+}
+
+/**
+ * Project the canonical {@link serializeQueryResult} body onto the trimmed agent
+ * payload (MCP `query` default and REST without `verbose`): answer + top cited
+ * files + the shared `notes`/`evidence`. Pure projection — all grounding logic
+ * lives in {@link serializeQueryResult}, so this surface can never diverge from it.
+ */
+export function serializeMcpQueryResult(
+  result: IntentResult,
+  options?: SerializeQueryOptions
+): McpQueryResponseBody {
+  const full = serializeQueryResult(result, options)
   return {
     status: full.status,
     answer: full.answer,
-    sources,
-    ...(evidence ? { evidence } : {}),
-    ...(notes.length > 0 ? { notes } : {}),
+    sources: formatMcpSources(full.results),
+    ...(full.evidence ? { evidence: full.evidence } : {}),
+    ...(full.notes && full.notes.length > 0 ? { notes: full.notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
   }
 }
 
-/** Map an `IntentResult` to the REST `POST /v1/query` response body. */
-export function serializeQueryResult(result: IntentResult): QueryResponseBody {
+/**
+ * Map an `IntentResult` to the canonical `POST /v1/query` response body — the
+ * single source of truth every surface renders from. Sources are grouped with
+ * blob `href`s (when `sourceRepos` is given) and grounding caveats + the
+ * downgraded evidence label are computed once here.
+ */
+export function serializeQueryResult(
+  result: IntentResult,
+  options?: SerializeQueryOptions
+): QueryResponseBody {
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
 
   const degraded = data.retrieval?.degraded
+  const unsupportedClaims = data.retrieval?.unsupportedClaims ?? []
   const querySources = results.map(toSource)
+  const sources = groupSources(querySources, { sourceRepos: options?.sourceRepos })
+  const answer = data.answer?.trim() || null
+
+  const { notes, evidence } = computeQueryGrounding({
+    answer,
+    evidence: result.evidence,
+    evidencePaths: querySources.flatMap(r => (r.filePath ? [r.filePath] : [])),
+    unsupportedClaims,
+    degraded,
+    answerError: data.answerError,
+    hasSources: sources.length > 0,
+  })
+
   return {
     status: result.status,
-    answer: data.answer?.trim() || null,
-    sources: groupSources(querySources),
+    answer,
+    sources,
     results: querySources,
     retrieval: {
       method: data.retrieval?.method,
       detail: data.retrieval?.detail,
       ...(degraded && degraded.length > 0 ? { degraded } : {}),
+      ...(unsupportedClaims.length > 0 ? { unsupportedClaims } : {}),
     },
-    ...(result.evidence ? { evidence: result.evidence } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
+    ...(evidence ? { evidence } : {}),
     ...(data.answerError ? { answerError: data.answerError } : {}),
     ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
   }

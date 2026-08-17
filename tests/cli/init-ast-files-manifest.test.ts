@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('init-ast-files-manifest', () => {
-  it('[TC-193] returns null diff when no manifest exists yet (first run)', async () => {
+  it('[TC-BF7T] returns null diff when no manifest exists yet (first run)', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-'))
     tempDirs.push(baseDir)
     const manifest = await readAstFilesManifest(baseDir)
@@ -24,7 +24,7 @@ describe('init-ast-files-manifest', () => {
     expect(diffChangedAstFiles({ 'src/a.ts': 'hash-a' }, manifest)).toBeNull()
   })
 
-  it('[TC-194] round-trips manifest writes and detects changed/new files only', async () => {
+  it('[TC-A9HB] round-trips manifest writes and detects changed/new files only', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-rt-'))
     tempDirs.push(baseDir)
     await writeAstFilesManifest(baseDir, {
@@ -45,7 +45,7 @@ describe('init-ast-files-manifest', () => {
     expect(new Set(diff ?? [])).toEqual(new Set(['tsconfig.json', 'src/b.ts']))
   })
 
-  it('[TC-195] treats unchanged contents as a no-op diff', async () => {
+  it('[TC-W75I] treats unchanged contents as a no-op diff', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-noop-'))
     tempDirs.push(baseDir)
     const current = { 'src/a.ts': 'hash-a' }
@@ -54,7 +54,7 @@ describe('init-ast-files-manifest', () => {
     expect(diffChangedAstFiles(current, manifest)).toEqual([])
   })
 
-  it('[TC-424] scopes manifests per repo slug so one repo never clobbers another', async () => {
+  it('[TC-DNRX] scopes manifests per repo slug so one repo never clobbers another', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-multi-'))
     tempDirs.push(baseDir)
 
@@ -79,7 +79,7 @@ describe('init-ast-files-manifest', () => {
     expect(entries).not.toContain('ast-files-manifest.json')
   })
 
-  it('[TC-425] undefined slug falls back to the un-suffixed legacy filename', async () => {
+  it('[TC-DY09] undefined slug falls back to the un-suffixed legacy filename', async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), 'kb-ast-mf-legacy-'))
     tempDirs.push(baseDir)
     await writeAstFilesManifest(baseDir, { 'src/a.ts': 'hash-a' })
@@ -90,7 +90,7 @@ describe('init-ast-files-manifest', () => {
     expect(slugManifest.files).toEqual({})
   })
 
-  it('[TC-426] detects AST files removed since the last manifest', () => {
+  it('[TC-MV4F] detects AST files removed since the last manifest', () => {
     const manifest = {
       version: 1 as const,
       files: { 'src/a.ts': 'h-a', 'src/gone.ts': 'h-gone' },

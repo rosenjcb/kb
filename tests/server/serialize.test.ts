@@ -7,7 +7,7 @@ import {
 } from '@kb/core/service/serialize.js'
 
 describe('serializeQueryResult', () => {
-  it('[TC-34] maps a read_facts IntentResult into the REST response body', () => {
+  it('[TC-17SF] maps a read_facts IntentResult into the REST response body', () => {
     const result: IntentResult = {
       status: 'accepted',
       recommendedAction: 'read_facts',
@@ -47,14 +47,14 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].snippet).not.toContain('# Heading')
   })
 
-  it('[TC-35] returns null answer when none is present', () => {
+  it('[TC-0CD9] returns null answer when none is present', () => {
     const body = serializeQueryResult({ status: 'accepted', data: { results: [] } })
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
     expect(body.evidence).toBeUndefined()
   })
 
-  it('[TC-39] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
+  it('[TC-C759] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -79,7 +79,7 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].filePath).not.toContain('fact://')
   })
 
-  it('[TC-40] falls back to the fact:// URI when no physical sourcePath is known', () => {
+  it('[TC-L9F8] falls back to the fact:// URI when no physical sourcePath is known', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -89,7 +89,7 @@ describe('serializeQueryResult', () => {
     expect(body.results[0].filePath).toBe('fact://def456')
   })
 
-  it('[TC-162] exposes source-centric `sources` (files, symbols folded, non-openable dropped)', () => {
+  it('[TC-C4IU] exposes source-centric `sources` (files, symbols folded, non-openable dropped)', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -111,7 +111,7 @@ describe('serializeQueryResult', () => {
     expect(body.results).toHaveLength(3)
   })
 
-  it('[TC-36] includes traceFile when the retrieval wrote a deep trace dump', () => {
+  it('[TC-6JDU] includes traceFile when the retrieval wrote a deep trace dump', () => {
     const body = serializeQueryResult({
       status: 'accepted',
       data: {
@@ -131,7 +131,7 @@ function factItem(sourcePath: string, symbol?: string, id = sourcePath) {
 }
 
 describe('serializeMcpQueryResult', () => {
-  it('[TC-112] trims to answer + lean citations and drops retrieval metadata and the fact dump', () => {
+  it('[TC-7277] trims to answer + lean citations and drops retrieval metadata and the fact dump', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       evidence: 'strong' as const,
@@ -154,7 +154,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body).not.toHaveProperty('retrieval')
   })
 
-  it('[TC-113] adds a verify note when evidence is below the floor', () => {
+  it('[TC-Q93N] adds a verify note when evidence is below the floor', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       evidence: 'weak' as const,
@@ -169,7 +169,7 @@ describe('serializeMcpQueryResult', () => {
     ])
   })
 
-  it('[TC-114] dedupes citations per file, folds in symbols, and caps the list at 5', () => {
+  it('[TC-B7DG] dedupes citations per file, folds in symbols, and caps the list at 5', () => {
     const results = [
       factItem('src/a.ts', 'alpha', 'f1'),
       factItem('src/a.ts', 'beta', 'f2'),
@@ -188,7 +188,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
   })
 
-  it('[TC-115] flags answer file references that match no cited source path', () => {
+  it('[TC-8URR] flags answer file references that match no cited source path', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: {
@@ -203,7 +203,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.notes?.[0]).toContain('trust the sources list')
   })
 
-  it('[TC-116] notes when sources exist but no answer was synthesized', () => {
+  it('[TC-OADK] notes when sources exist but no answer was synthesized', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: { results: [factItem('src/a.ts')], retrieval: {} },
@@ -214,7 +214,7 @@ describe('serializeMcpQueryResult', () => {
     ])
   })
 
-  it('[TC-180] downgrades evidence when the answer cites a file not in the sources', () => {
+  it('[TC-CA0M] downgrades evidence when the answer cites a file not in the sources', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       evidence: 'strong' as const,
@@ -229,7 +229,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.evidence).toBe('weak')
   })
 
-  it('[TC-181] leaves evidence untouched when every citation is grounded', () => {
+  it('[TC-KG1I] leaves evidence untouched when every citation is grounded', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       evidence: 'strong' as const,
@@ -241,10 +241,42 @@ describe('serializeMcpQueryResult', () => {
     })
     expect(body.evidence).toBe('strong')
   })
+
+  it('[TC-SVF8] notes and downgrades on unsupported prose claims even when the cited file is real', () => {
+    const body = serializeMcpQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'The `FlowsApi.ts` confirms import POSTs the flow to the backend and persists it.',
+        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+        retrieval: { unsupportedClaims: ['import POSTs the flow to the backend and persists it'] },
+      },
+    })
+    // The file name is grounded, so the file-name check stays silent — but the claim check fires.
+    expect(body.evidence).toBe('weak')
+    const claimNote = (body.notes ?? []).find(n => n.includes('do not directly support'))
+    expect(claimNote).toBeDefined()
+    expect(claimNote).toContain('POSTs the flow to the backend')
+    expect(claimNote).toContain('verify against the sources')
+  })
+
+  it('[TC-QS05] surfaces unsupportedClaims on the full REST retrieval body', () => {
+    const body = serializeQueryResult({
+      status: 'accepted',
+      evidence: 'strong' as const,
+      data: {
+        answer: 'Import persists to the backend.',
+        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+        retrieval: { method: 'hybrid', unsupportedClaims: ['Import persists to the backend'] },
+      },
+    })
+    expect(body.retrieval.unsupportedClaims).toEqual(['Import persists to the backend'])
+  })
+
 })
 
 describe('findUngroundedFileReferences', () => {
-  it('[TC-117] matches by basename so relative prose paths ground against absolute evidence paths', () => {
+  it('[TC-LB44] matches by basename so relative prose paths ground against absolute evidence paths', () => {
     const refs = findUngroundedFileReferences(
       'Resolution happens in `src/cli/base-selection.ts`.',
       ['packages/kb-client/src/cli/base-selection.ts']
@@ -252,7 +284,7 @@ describe('findUngroundedFileReferences', () => {
     expect(refs).toEqual([])
   })
 
-  it('[TC-118] ignores non-file tokens: product names, property access, bare words', () => {
+  it('[TC-1NET] ignores non-file tokens: product names, property access, bare words', () => {
     const refs = findUngroundedFileReferences(
       'Node.js reads data.results and config.activeBase, e.g. at startup.',
       []
@@ -260,26 +292,26 @@ describe('findUngroundedFileReferences', () => {
     expect(refs).toEqual([])
   })
 
-  it('[TC-119] reports each ungrounded file once', () => {
+  it('[TC-L52G] reports each ungrounded file once', () => {
     const refs = findUngroundedFileReferences('`dto.ts` … see dto.ts and `other.py`.', [
       'src/real.ts',
     ])
     expect(refs).toEqual(['dto.ts', 'other.py'])
   })
 
-  it('[TC-182] flags a path-qualified citation whose directory does not match, even when the basename does', () => {
+  it('[TC-SVF8] flags a path-qualified citation whose directory does not match, even when the basename does', () => {
     const refs = findUngroundedFileReferences('The type lives in `src/dto.ts`.', ['lib/dto.ts'])
     expect(refs).toEqual(['src/dto.ts'])
   })
 
-  it('[TC-183] grounds a path-qualified citation that matches a source path suffix', () => {
+  it('[TC-QS05] grounds a path-qualified citation that matches a source path suffix', () => {
     const refs = findUngroundedFileReferences('The type lives in `src/dto.ts`.', [
       'packages/common/src/dto.ts',
     ])
     expect(refs).toEqual([])
   })
 
-  it('[TC-184] still grounds a bare filename (no path) by basename alone', () => {
+  it('[TC-Q6XO] still grounds a bare filename (no path) by basename alone', () => {
     const refs = findUngroundedFileReferences('The type lives in `dto.ts`.', [
       'packages/common/src/dto.ts',
     ])
@@ -312,7 +344,7 @@ describe('synthesis failure surfacing', () => {
     },
   }
 
-  it('[TC-156] Given synthesis failed, then the REST body carries answerError alongside the sources', () => {
+  it('[TC-H88X] Given synthesis failed, then the REST body carries answerError alongside the sources', () => {
     const body = serializeQueryResult(resultWithFailure)
     expect(body.answer).toBeNull()
     expect(body.answerError).toEqual(failure)
@@ -320,7 +352,7 @@ describe('synthesis failure surfacing', () => {
     expect(body.results).toHaveLength(1)
   })
 
-  it('[TC-157] Given synthesis failed, then the MCP note names the outage instead of blaming the evidence', () => {
+  it('[TC-86UB] Given synthesis failed, then the MCP note names the outage instead of blaming the evidence', () => {
     const body = serializeMcpQueryResult(resultWithFailure)
     expect(body.answer).toBeNull()
     expect(body.answerError).toEqual(failure)
@@ -332,7 +364,7 @@ describe('synthesis failure surfacing', () => {
     expect(notes.join(' ')).not.toContain('No synthesized answer was produced')
   })
 
-  it('[TC-158] Given a degraded best-effort stage, then the payload says ranking is weaker than usual', () => {
+  it('[TC-EKVK] Given a degraded best-effort stage, then the payload says ranking is weaker than usual', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       recommendedAction: 'read_facts',
@@ -358,7 +390,7 @@ describe('synthesis failure surfacing', () => {
     expect((body.notes ?? []).join(' ')).toContain('curation (rate_limit)')
   })
 
-  it('[TC-159] Given no answer and no failure, then the original evidence note is unchanged', () => {
+  it('[TC-10E6] Given no answer and no failure, then the original evidence note is unchanged', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       recommendedAction: 'read_facts',

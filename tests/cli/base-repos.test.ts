@@ -21,11 +21,11 @@ afterEach(async () => {
 })
 
 describe('discoverBaseRepos', () => {
-  it('[TC-15] returns [] when the repos/ dir is absent', async () => {
+  it('[TC-ZORN] returns [] when the repos/ dir is absent', async () => {
     expect(await discoverBaseRepos(baseDir)).toEqual([])
   })
 
-  it('[TC-16] lists each git clone under repos/, deriving slug + dir from the layout', async () => {
+  it('[TC-12W4] lists each git clone under repos/, deriving slug + dir from the layout', async () => {
     await mkdir(path.join(baseDir, 'repos', 'org-repo', '.git'), { recursive: true })
     await mkdir(path.join(baseDir, 'repos', 'org-web', '.git'), { recursive: true })
 
@@ -49,7 +49,7 @@ describe('discoverBaseRepos', () => {
     )
   })
 
-  it('[TC-17] skips non-git directories under repos/', async () => {
+  it('[TC-ITUO] skips non-git directories under repos/', async () => {
     await mkdir(path.join(baseDir, 'repos', 'not-a-clone'), { recursive: true })
     expect(await discoverBaseRepos(baseDir)).toEqual([])
   })

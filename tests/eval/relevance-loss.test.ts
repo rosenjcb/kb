@@ -11,7 +11,7 @@ import {
 } from '../../scripts/eval-shared.mjs'
 
 describe('relevance in the harvest success score', () => {
-  it('[TC-121] Given a relevance arg, then quality averages three axes (back-compat without it)', () => {
+  it('[TC-KDPE] Given a relevance arg, then quality averages three axes (back-compat without it)', () => {
     const twoAxis = computeAdequacyQuality(4, 4)
     const threeAxisHigh = computeAdequacyQuality(4, 4, 4)
     const threeAxisLow = computeAdequacyQuality(4, 4, 0)
@@ -21,7 +21,7 @@ describe('relevance in the harvest success score', () => {
     expect(threeAxisLow).toBeLessThan(threeAxisHigh)
   })
 
-  it('[TC-122] Given an off-topic-but-correct answer, then success_score is lower than a focused one', () => {
+  it('[TC-052C] Given an off-topic-but-correct answer, then success_score is lower than a focused one', () => {
     const focused = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 4,
@@ -40,7 +40,7 @@ describe('relevance in the harvest success score', () => {
     expect(cluttered.inputs.mean_relevance).toBe(1)
   })
 
-  it('[TC-123] Given no relevance, then success_score matches the legacy two-axis quality', () => {
+  it('[TC-5CS1] Given no relevance, then success_score matches the legacy two-axis quality', () => {
     const legacy = computeSuccessScore({
       meanCorrectness: 4,
       meanUsefulness: 2,
@@ -51,7 +51,7 @@ describe('relevance in the harvest success score', () => {
     expect(legacy.quality_score).toBeCloseTo(computeAdequacyQuality(4, 2), 5)
   })
 
-  it('[TC-124] Given the rubric, then it scores a Relevance axis and requires it in the schema', () => {
+  it('[TC-8FHT] Given the rubric, then it scores a Relevance axis and requires it in the schema', () => {
     const rubric = buildRubric('the kb self-check', false)
     expect(rubric).toMatch(/Relevance —/)
     expect(rubric.toLowerCase()).toContain('unrelated')
@@ -59,19 +59,19 @@ describe('relevance in the harvest success score', () => {
 })
 
 describe('curator retrieval-relevancy telemetry', () => {
-  it('[TC-125] Given a retrieval detail with a curation segment, then it parses kept/dropped', () => {
+  it('[TC-B63S] Given a retrieval detail with a curation segment, then it parses kept/dropped', () => {
     const parsed = parseCurationDetail(
       'hybrid facts-loop;passes:3;curated:kept=8,dropped=12,requeried=2,rounds=1;semantic:on'
     )
     expect(parsed).toEqual({ kept: 8, dropped: 12, requeried: 2, rounds: 1 })
   })
 
-  it('[TC-126] Given details without curation, then parse returns null and summary is null', () => {
+  it('[TC-L4F0] Given details without curation, then parse returns null and summary is null', () => {
     expect(parseCurationDetail('hybrid facts-loop;passes:3')).toBeNull()
     expect(summarizeCuration(['hybrid facts-loop', null, undefined])).toBeNull()
   })
 
-  it('[TC-127] Given several curated details, then it aggregates retrieval precision', () => {
+  it('[TC-UJ4D] Given several curated details, then it aggregates retrieval precision', () => {
     const summary = summarizeCuration([
       'curated:kept=8,dropped=2,requeried=0,rounds=1',
       'curated:kept=6,dropped=4,requeried=1,rounds=2',
@@ -84,7 +84,7 @@ describe('curator retrieval-relevancy telemetry', () => {
 })
 
 describe('scoreMetric relevance + pass-gate preference', () => {
-  it('[TC-128] Given the new fields, then scoreMetric reads relevance and the strict pass gate', () => {
+  it('[TC-E2NX] Given the new fields, then scoreMetric reads relevance and the strict pass gate', () => {
     const artifact = {
       aggregate_scores: {
         query: {
@@ -98,7 +98,7 @@ describe('scoreMetric relevance + pass-gate preference', () => {
     expect(scoreMetric(artifact, 'pass_rate')).toBe(0.75)
   })
 
-  it('[TC-129] Given only the legacy pass field, then scoreMetric falls back to it', () => {
+  it('[TC-QNVX] Given only the legacy pass field, then scoreMetric falls back to it', () => {
     const artifact = {
       aggregate_scores: {
         query: { pass_rate_correctness_and_usefulness_at_least_3: 0.5 },

@@ -24,7 +24,7 @@ const raylibRepo = {
 }
 
 describe('gitRemoteToBrowseUrl', () => {
-  it('[TC-7] maps https and ssh remotes to browse roots; rejects local paths', () => {
+  it('[TC-7FWQ] maps https and ssh remotes to browse roots; rejects local paths', () => {
     expect(gitRemoteToBrowseUrl('https://github.com/rosenjcb/kb.git')).toBe(
       'https://github.com/rosenjcb/kb',
     )
@@ -40,7 +40,7 @@ describe('gitRemoteToBrowseUrl', () => {
 })
 
 describe('chatSourceReposFromBaseRepos', () => {
-  it('[TC-7] keeps browsable remotes; a bare HEAD clone still links via HEAD', () => {
+  it('[TC-7FWQ] keeps browsable remotes; a bare HEAD clone still links via HEAD', () => {
     const repos: BaseRepo[] = [
       {
         gitUrl: 'https://github.com/rosenjcb/kb.git',
@@ -71,7 +71,7 @@ describe('chatSourceReposFromBaseRepos', () => {
 })
 
 describe('resolveChatSourceDisplay', () => {
-  it('[TC-1] keeps fact:// ids and drops other schemes', () => {
+  it('[TC-4P8G] keeps fact:// ids and drops other schemes', () => {
     expect(
       resolveChatSourceDisplay({ filePath: 'fact://abc123' }, [kbRepo])?.label,
     ).toBe('fact://abc123')
@@ -80,7 +80,7 @@ describe('resolveChatSourceDisplay', () => {
 })
 
 describe('groupSources', () => {
-  it('[TC-2] dedupes by file, folds symbols, builds hrefs, drops fact:// ids', () => {
+  it('[TC-03Q7] dedupes by file, folds symbols, builds hrefs, drops fact:// ids', () => {
     const out = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
@@ -106,7 +106,7 @@ describe('groupSources', () => {
     expect(out[0].factCount).toBe(2)
   })
 
-  it('[TC-9] caps the file list at maxSources but still folds later facts', () => {
+  it('[TC-B7JK] caps the file list at maxSources but still folds later facts', () => {
     const sources = Array.from({ length: 5 }, (_, i) => ({ filePath: `src/f${i}.ts` }))
     // A repeat of an already-cited file must not be dropped by the cap.
     sources.push({ filePath: 'src/f0.ts' })
@@ -115,7 +115,7 @@ describe('groupSources', () => {
     expect(out[0].factCount).toBe(2)
   })
 
-  it('[TC-8] multi-repo: each slug uses its own browse URL and primary branch', () => {
+  it('[TC-TULY] multi-repo: each slug uses its own browse URL and primary branch', () => {
     const out = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
@@ -135,7 +135,7 @@ describe('groupSources', () => {
     ])
   })
 
-  it('[TC-8] unknown slug keeps a path label without href', () => {
+  it('[TC-TULY] unknown slug keeps a path label without href', () => {
     const out = groupSources([{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }], {
       sourceRepos: [kbRepo],
     })
@@ -146,7 +146,7 @@ describe('groupSources', () => {
 })
 
 describe('formatGroupedChatReply', () => {
-  it('[TC-3] appends a plain Sources footer', () => {
+  it('[TC-NL7F] appends a plain Sources footer', () => {
     const grouped = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
@@ -164,7 +164,7 @@ describe('formatGroupedChatReply', () => {
     )
   })
 
-  it('[TC-4] formats Slack mrkdwn with per-repo clickable links', () => {
+  it('[TC-AZBG] formats Slack mrkdwn with per-repo clickable links', () => {
     const grouped = groupSources(
       [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
       { sourceRepos: [kbRepo] },
@@ -176,7 +176,7 @@ describe('formatGroupedChatReply', () => {
     )
   })
 
-  it('[TC-3] returns answer alone when sources are empty', () => {
+  it('[TC-NL7F] returns answer alone when sources are empty', () => {
     expect(formatGroupedChatReply('Just text.', [])).toBe('Just text.')
     expect(formatGroupedSourcesFooter([])).toBe('')
   })

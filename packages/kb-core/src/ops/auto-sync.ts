@@ -10,6 +10,9 @@ import { runKbInit } from '@kb/core/ops/init-cli.js'
 
 export interface ScanOptions {
   onProgress?: (line: string) => void
+  /** Skip embedding entirely — see `InitOptions.skipEmbeddings`. Propagated to every per-repo
+   *  reindex and to the trailing base-wide embed pass below. */
+  skipEmbeddings?: boolean
 }
 
 /**
@@ -33,7 +36,11 @@ function isRepoPipelineStale(baseDir: string, slug: string): boolean {
 }
 
 /** Re-index `repo` from its clone, tagging facts with its slug. Ignore patterns come from env. */
-async function reindexRepo(baseDir: string, repo: BaseRepo): Promise<void> {
+async function reindexRepo(
+  baseDir: string,
+  repo: BaseRepo,
+  skipEmbeddings?: boolean
+): Promise<void> {
   await runKbInit({
     base: path.basename(baseDir),
     cwd: path.join(baseDir, repo.dir),
@@ -42,6 +49,7 @@ async function reindexRepo(baseDir: string, repo: BaseRepo): Promise<void> {
     nonInteractive: true,
     gitRepo: repo.slug,
     ignorePatterns: readIgnorePatternsFromEnv(),
+    skipEmbeddings,
   })
 }
 
@@ -76,7 +84,7 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
     : `pipeline v${HARVEST_PIPELINE_VERSION} rebuild`
   onProgress?.(`[kb] ${repo.slug}: re-indexing (${reason})…`)
   try {
-    await reindexRepo(baseDir, repo)
+    await reindexRepo(baseDir, repo, opts.skipEmbeddings)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     onProgress?.(`[kb] Re-index failed for ${repo.slug}: ${msg}`)
@@ -119,7 +127,8 @@ async function embedNewRows(baseDir: string, onProgress?: (line: string) => void
  * (see `discoverBaseRepos`); nothing is persisted about sync state — the reindex scheduler
  * owns cadence, and each clone's HEAD is its own source of truth. The per-repo sync loop
  * itself never throws (`syncRepo` catches and reports failures per repo), but the trailing
- * embed step does: a caller must not treat a successful return as "vectors are current."
+ * embed step does: a caller must not treat a successful return as "vectors are current" —
+ * unless `opts.skipEmbeddings` was set, in which case no embedding was attempted at all.
  */
 export async function scanBaseRepos(baseDir: string, opts: ScanOptions = {}): Promise<number> {
   const repos = await discoverBaseRepos(baseDir)
@@ -132,6 +141,6 @@ export async function scanBaseRepos(baseDir: string, opts: ScanOptions = {}): Pr
     anyReindexed = anyReindexed || reindexed
   }
 
-  if (anyReindexed) await embedNewRows(baseDir, opts.onProgress)
+  if (anyReindexed && !opts.skipEmbeddings) await embedNewRows(baseDir, opts.onProgress)
   return repos.length
 }

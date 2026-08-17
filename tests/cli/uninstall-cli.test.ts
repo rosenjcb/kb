@@ -63,7 +63,7 @@ afterEach(async () => {
 })
 
 describe('performClientUninstall', () => {
-  it('[TC-398] removes kb client only and keeps kb-server + server data', async () => {
+  it('[TC-3678] removes kb client only and keeps kb-server + server data', async () => {
     const { kbLink, serverLink, clientRuntime, serverRuntime, sessionsDir, activeBaseFile } =
       await setupDualInstall()
     const { out, lines } = makeOut()
@@ -85,7 +85,7 @@ describe('performClientUninstall', () => {
 })
 
 describe('performServerUninstall', () => {
-  it('[TC-402] without purge removes kb-server runtime only', async () => {
+  it('[TC-VGQ5] without purge removes kb-server runtime only', async () => {
     const { serverLink, serverRuntime, sessionsDir, activeBaseFile, kbLink } = await setupDualInstall()
     const { out } = makeOut()
 
@@ -99,7 +99,7 @@ describe('performServerUninstall', () => {
     await expect(access(activeBaseFile)).resolves.toBeUndefined()
   })
 
-  it('[TC-403] with purge removes server data but keeps kb client install', async () => {
+  it('[TC-CCMI] with purge removes server data but keeps kb client install', async () => {
     const { serverLink, kbLink, clientRuntime, sessionsDir, activeBaseFile } = await setupDualInstall()
     const { out } = makeOut()
 
@@ -115,13 +115,13 @@ describe('performServerUninstall', () => {
 })
 
 describe('runUninstallCommand', () => {
-  it('[TC-400] rejects --purge with server guidance', async () => {
+  it('[TC-NMA1] rejects --purge with server guidance', async () => {
     const { out, errors } = makeOut()
     await runUninstallCommand(['--purge'], out)
     expect(errors.some(e => e.includes('kb-server uninstall --purge'))).toBe(true)
   })
 
-  it('[TC-401] --yes removes client without prompting', async () => {
+  it('[TC-4FS5] --yes removes client without prompting', async () => {
     const { kbLink, serverLink } = await setupDualInstall()
     const { out } = makeOut()
 
@@ -134,7 +134,7 @@ describe('runUninstallCommand', () => {
 })
 
 describe('runServerUninstallCommand', () => {
-  it('[TC-404] --purge deletes server data', async () => {
+  it('[TC-0XNN] --purge deletes server data', async () => {
     await setupDualInstall()
     const { out } = makeOut()
 
@@ -147,7 +147,7 @@ describe('runServerUninstallCommand', () => {
 })
 
 describe('PATH cleanup', () => {
-  it('[TC-399] removes PATH entry only when both binaries are gone', async () => {
+  it('[TC-5X7H] removes PATH entry only when both binaries are gone', async () => {
     const { kbLink, serverLink } = await setupDualInstall()
     const fakeRcFile = path.join(TMP_KB_HOME, '.bashrc')
     const kbBinDir = path.join(TMP_KB_HOME, 'bin')

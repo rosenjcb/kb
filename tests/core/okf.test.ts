@@ -16,7 +16,7 @@ The renderer owns the frame loop.
 `
 
 describe('parseOkfDocument', () => {
-  it('[TC-91] detects an OKF doc and parses recommended fields', () => {
+  it('[TC-TPZA] detects an OKF doc and parses recommended fields', () => {
     const { isOkf, frontmatter, body } = parseOkfDocument(OKF_DOC)
     expect(isOkf).toBe(true)
     expect(frontmatter?.type).toBe('Subsystem')
@@ -29,7 +29,7 @@ describe('parseOkfDocument', () => {
     expect(body).not.toContain('type: Subsystem')
   })
 
-  it('[TC-92] treats frontmatter without a type as non-OKF but still strips it', () => {
+  it('[TC-WXY0] treats frontmatter without a type as non-OKF but still strips it', () => {
     const doc = '---\ntitle: Just metadata\n---\n\nBody text here.'
     const { isOkf, frontmatter, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -37,7 +37,7 @@ describe('parseOkfDocument', () => {
     expect(body).toBe('\nBody text here.')
   })
 
-  it('[TC-93] returns plain markdown unchanged', () => {
+  it('[TC-9EG0] returns plain markdown unchanged', () => {
     const doc = '# Title\n\nSome prose.'
     const { isOkf, frontmatter, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -45,19 +45,19 @@ describe('parseOkfDocument', () => {
     expect(body).toBe(doc)
   })
 
-  it('[TC-94] does not mistake a leading thematic break / prose for frontmatter', () => {
+  it('[TC-NLCO] does not mistake a leading thematic break / prose for frontmatter', () => {
     const doc = '---\nSome prose between rules.\n---\nMore text.'
     const { isOkf, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
     expect(body).toBe(doc)
   })
 
-  it('[TC-95] accepts a comma-separated tags string', () => {
+  it('[TC-QTA2] accepts a comma-separated tags string', () => {
     const doc = '---\ntype: Playbook\ntitle: Deploy\ntags: ops, release\n---\nbody'
     expect(parseOkfDocument(doc).frontmatter?.tags).toEqual(['ops', 'release'])
   })
 
-  it('[TC-96] degrades gracefully on malformed YAML', () => {
+  it('[TC-HE4E] degrades gracefully on malformed YAML', () => {
     const doc = '---\ntype: : : broken\n  bad indent\n---\nbody'
     const { isOkf, body } = parseOkfDocument(doc)
     expect(isOkf).toBe(false)
@@ -66,7 +66,7 @@ describe('parseOkfDocument', () => {
 })
 
 describe('isOkfDocument', () => {
-  it('[TC-97] is true only for frontmatter carrying a non-empty type', () => {
+  it('[TC-M6K4] is true only for frontmatter carrying a non-empty type', () => {
     expect(isOkfDocument(OKF_DOC)).toBe(true)
     expect(isOkfDocument('# Plain\n\ntext')).toBe(false)
   })

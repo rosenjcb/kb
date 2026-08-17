@@ -35,16 +35,16 @@ See companion doc for full vocabulary where applicable.
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|------------|----------|------------------|
-| TC-1 | FR-1 | loads a prompt file as a trimmed string | pass |
-| TC-2 | FR-1 | throws on a missing file | pass |
-| TC-3 | FR-1 | splits on the --- divider | pass |
-| TC-4 | FR-1 | trims both parts | pass |
-| TC-5 | FR-1 | intro does not contain the divider | pass |
-| TC-6 | FR-1 | instructions does not contain the divider | pass |
-| TC-7 | FR-1 | throws when the prompt file has no --- divider | pass |
-| TC-8 | FR-1 | all two-part prompt files parse without throwing | pass |
-| TC-9 | FR-2 | resolvePromptPath nests under prompts root | pass |
-| TC-10 | FR-2 | readPromptAssetUtf8 reads questionnaire file | pass |
+| TC-T1CF | FR-1 | loads a prompt file as a trimmed string | pass |
+| TC-TSOP | FR-1 | throws on a missing file | pass |
+| TC-OIPJ | FR-1 | splits on the --- divider | pass |
+| TC-AQ32 | FR-1 | trims both parts | pass |
+| TC-U1R6 | FR-1 | intro does not contain the divider | pass |
+| TC-EYGP | FR-1 | instructions does not contain the divider | pass |
+| TC-THDS | FR-1 | throws when the prompt file has no --- divider | pass |
+| TC-EL9S | FR-1 | all two-part prompt files parse without throwing | pass |
+| TC-X8XU | FR-2 | resolvePromptPath nests under prompts root | pass |
+| TC-32W5 | FR-2 | readPromptAssetUtf8 reads questionnaire file | pass |
 
 ### Related docs
 

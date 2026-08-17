@@ -163,7 +163,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('[TC-120] warm: adopts the prior snapshot, re-clones the repo, and reindexes at --out', async () => {
+  it('[TC-UDIJ] warm: adopts the prior snapshot, re-clones the repo, and reindexes at --out', async () => {
     const origin = makeOrigin(root, 'src')
     const srcBase = seedBaseWithClone(kbHome, 'src', origin, 'SRC')
     const bundle = path.join(root, 'snap')
@@ -190,7 +190,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1)
   }, 30_000)
 
-  it('[TC-121][TC-125] cold: clones fresh from --repos with no --from, and --json reports ok:true', async () => {
+  it('[TC-NHDZ][TC-KN8V] cold: clones fresh from --repos with no --from, and --json reports ok:true', async () => {
     const origin = makeOrigin(root, 'cold-src')
     const outDir = path.join(root, 'out')
     fakeBootstrapChild(fetchMock, () => {
@@ -211,7 +211,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(readIndexMarker(path.join(outDir, '.kb-index.sqlite'))).toBe('COLD')
   }, 30_000)
 
-  it('[TC-122] cold mode with neither --from nor --repos errors instead of hanging', async () => {
+  it('[TC-N0NE] cold mode with neither --from nor --repos errors instead of hanging', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerRefreshCommand(['--base', 'nobody', '--out', path.join(root, 'out')], logger, kbHome)
@@ -219,7 +219,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
-  it('[TC-123] surfaces the child bootstrap error instead of waiting out the timeout', async () => {
+  it('[TC-DB6P] surfaces the child bootstrap error instead of waiting out the timeout', async () => {
     spawnMock.mockImplementationOnce(() => ({ pid: DEAD_PID }))
     fetchMock.mockResolvedValue({ json: async () => ({ bootstrapError: 'clone failed: auth' }) })
 
@@ -233,7 +233,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     ).rejects.toThrow(/bootstrap child failed.*clone failed: auth/)
   })
 
-  it('[TC-124] returns a timeout error (not a hang) when bootstrap never reaches ok:true', async () => {
+  it('[TC-OIC1] returns a timeout error (not a hang) when bootstrap never reaches ok:true', async () => {
     spawnMock.mockImplementationOnce(() => ({ pid: DEAD_PID }))
     fetchMock.mockResolvedValue({ json: async () => ({ ok: false, indexing: true }) })
 
@@ -247,7 +247,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     ).rejects.toThrow(/did not settle within 10ms/)
   }, 10_000)
 
-  it('[TC-126] --json emits { ok: false } on stdout before rethrowing', async () => {
+  it('[TC-B1CR] --json emits { ok: false } on stdout before rethrowing', async () => {
     const { logger, stdout } = capturingLogger()
     await expect(
       runServerRefreshCommand(['--base', 'nobody', '--json'], logger, kbHome)
@@ -259,7 +259,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(typeof summary.error).toBe('string')
   })
 
-  it('[TC-127] rejects object-store URIs for --from/--out (cloud-agnostic guardrail)', async () => {
+  it('[TC-DR8O] rejects object-store URIs for --from/--out (cloud-agnostic guardrail)', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerRefreshCommand(
@@ -278,7 +278,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     ).rejects.toThrow(/LOCAL path only/)
   })
 
-  it('[TC-128] terminates the bootstrap child (no orphan) after it settles', async () => {
+  it('[TC-ZZMN] terminates the bootstrap child (no orphan) after it settles', async () => {
     const origin = makeOrigin(root, 'kill-src')
     const outDir = path.join(root, 'out')
     fakeBootstrapChild(fetchMock, () => {
@@ -295,7 +295,7 @@ describe('kb-server refresh (builder orchestration)', () => {
     expect(killSpy).toHaveBeenCalledWith(DEAD_PID, 'SIGTERM')
   }, 30_000)
 
-  it('[TC-129] routes the bootstrap child stdout/stderr into this process\'s own stderr instead of discarding it (#195)', async () => {
+  it('[TC-GCGE] routes the bootstrap child stdout/stderr into this process\'s own stderr instead of discarding it (#195)', async () => {
     const origin = makeOrigin(root, 'log-src')
     const outDir = path.join(root, 'out')
     fakeBootstrapChild(fetchMock, () => {

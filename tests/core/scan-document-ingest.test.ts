@@ -17,7 +17,7 @@ afterEach(async () => {
 })
 
 describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
-  it('[TC-186] indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS', async () => {
+  it('[TC-BYOL] indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS', async () => {
     const indexer = new SqliteKbIndexer({ dbPath: join(tmpDir, '.kb-index.sqlite') })
     indexer.upsertCodeSymbol({
       gitRepo: 'demo',
@@ -58,7 +58,7 @@ describe('indexSourceMarkdownFilesAsDocuments + hybrid retrieval', () => {
     reader.close()
   })
 
-  it('[TC-187] re-scan skips unchanged documents and re-indexes changed ones', async () => {
+  it('[TC-ELHG] re-scan skips unchanged documents and re-indexes changed ones', async () => {
     const dbPath = join(tmpDir, '.kb-index.sqlite')
     const files = { 'docs/guide.md': '# Guide\n\nOriginal body about widgets.\n' }
 

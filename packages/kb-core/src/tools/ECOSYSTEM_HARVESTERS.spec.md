@@ -9,7 +9,7 @@ sources:
   - ./ecosystems/common.yaml
 # TC ids are per-spec. entity-graph-edges.test.ts is claimed here and nowhere else;
 # the edge tests must not sit in tests/core/entity-index-cycle.test.ts, which
-# CORE.spec.md claims and which numbers its own TCs from TC-1.
+# CORE.spec.md claims and which numbers its own TCs from TC-LPER.
 tests:
   - ../../../../tests/tools/ecosystem-harvesters.test.ts
   - ../../../../tests/tools/entity-graph-edges.test.ts
@@ -148,49 +148,49 @@ edge named a container that nothing harvested.
 
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|----------|------------------|
-| TC-1 | FR-1 | Load `typescript.yaml` | Frameworks include express, react, and commander. Kind rules are present. Symbols and routes status is `partial`. |
-| TC-2 | FR-1 | Load `infra.yaml` | Compose files, `fly.toml`, and `catalog-info.yaml` are configured. |
-| TC-3 | FR-2 | Package with express, bin, react, main, or empty fields | Kinds are service, cli, surface, or library. An empty package falls back to `library`. |
-| TC-4 | FR-3 | pnpm workspace with client (bin), server (express), and core (main) | Candidates are cli, service, and library. Aliases exist. `part_of` points to root. |
-| TC-5 | FR-4 | Solo package with fastify; empty directory | One service candidate for the package. Empty directory yields zero candidates. |
-| TC-6 | FR-5 | Compose, fly, and Backstage files are present | Candidates exist for service keys, app name, and catalog name. A `belongs_to` edge exists. |
-| TC-7 | FR-6 | Malformed `docker-compose.yml` | Zero candidates. |
-| TC-8 | FR-7 | Same name in `package.json` and `fly.toml` | Two candidates share that canonical name. |
-| TC-9 | FR-8 | Inspect TypeScript coverage sections | `symbols.status` and `routes.status` are `partial`. |
-| TC-10 | FR-9 | List ecosystem YAML ids | List includes go, python, rust, ruby, java, csharp, php, scala, haskell, cpp, css, html, bash, infra, and typescript. |
-| TC-11 | FR-10 | `go.mod` that requires gin | Candidate kind is `service`. Canonical name is the module path. |
-| TC-12 | FR-11 | `pyproject.toml` with fastapi | Candidate kind is `service`. |
-| TC-13 | FR-12 | `Cargo.toml` with clap and `[[bin]]` | Candidate kind is `cli`. |
-| TC-14 | FR-13 | `composer.json` that requires laravel/framework | Candidate kind is `service`. |
-| TC-15 | FR-14 | Gemfile with rails and no gemspec | Candidate kind is `service`. Name is the scan directory basename. |
-| TC-16 | FR-15 | Multi-module pom with a spring-boot-starter-web member | Parent and payments candidates exist. Payments kind is `service`. A `part_of` edge exists. |
-| TC-17 | FR-16 | `billing.cabal` with servant | Candidate kind is `service`. |
-| TC-18 | FR-17 | `CMakeLists.txt` with `project(raylib)` | Candidate kind is `library`. |
-| TC-19 | FR-18 | Sdk.Web csproj and `.sln` | Candidate kind is `service`. A `part_of` edge points to the solution name. |
-| TC-20 | FR-19 | `build.sbt` with name storefront and play | Candidate kind is `service`. |
-| TC-21 | FR-20 | Kubernetes Deployment or Ingress, Helm Chart, and Procfile | Candidates have kind `service` or `api`. |
-| TC-22 | FR-20 | OpenAPI file (title + path items) and protobuf `service` | Candidates have kind `api` for title, paths, and operations. |
-| TC-23 | FR-21 | Nest, Express, FastAPI, Go, Spring, Next, and Rails routes plus a junk path | API routes are harvested. Next pages have kind `surface`. Junk paths are skipped. |
-| TC-24 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
-| TC-25 | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. Nest joins controller + method (`GET /orders/:id`). |
-| TC-26 | FR-24 | Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH | Joined routes, CRUD expansions, and ORM models are harvested. |
-| TC-27 | FR-25 | Raw Node HTTP, embedded SQL DDL, Nest global prefix, FastAPI router prefix, Gin Group, Rails namespace, Django app_name, Micronaut/JAX-RS join, ASGI Route, OpenAPI `$ref`, Store/Indexer classes | kb-like api/model/module candidates and Round-4 route joins are harvested. |
-| TC-28 | FR-26 | Rich `schema.prisma` with model, enum, view, composite type, `@@map`, and TypeORM `@Entity({ name })` | Prisma atoms are kind `model`; `@@map` / entity `name` appear as aliases. Generator/datasource are not harvested. |
-| TC-29 | FR-27 | Load `typescript.yaml` and `common.yaml` | `source_patterns` lists are non-empty. Common includes OpenAPI and GraphQL rules. |
-| TC-30 | FR-30 | Inline regex `source_pattern` for `@DemoRoute('…')` with no new strategy | Harvest emits the matching `api` candidate from that rule alone. |
-| TC-31 | FR-29 | Source pattern with `strategy: not_a_real_strategy` | Config load throws. Message names the unknown strategy. |
-| TC-32 | FR-28 | `typescript.yaml` includes `class_method_prefix_join` for Nest | Route harvest emits a joined Nest method path (`GET /orders/:id`). |
-| TC-33 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
-| TC-34 | FR-32 | `source_pattern` or `kind_rule` carrying `confidence` / `weight` / `score` | Config load throws. Message names the offending key. |
-| TC-35 | FR-33 | Repo with a package manifest, an infra manifest, a route decorator, and a table declaration | Manifest-derived candidates are `sourceKind: manifest`; route and model candidates are `sourceKind: source-pattern`. |
-| TC-36 | FR-34, FR-37 | Workspace whose globs do not list the root (`workspaces: ["packages/*"]`) | The member gets a `part_of` edge to the root package. `edgesDropped` is 0. |
-| TC-37 | FR-36 | Solo package in a repo with a slug | The package gets a `part_of` edge to the repo entity. |
-| TC-38 | FR-36 | Prisma model under `packages/api/prisma/` in a workspace | The model is `part_of` `@acme/api` — the nearest enclosing package, not the repo root. |
-| TC-39 | FR-35, FR-38 | Workspace member depending on a sibling package and on `express` | A `depends_on` edge links the two packages; `express` counts as `edgesExternal` and mints no entity. |
-| TC-40 | FR-39 | Repo with no manifest and no ecosystem profile (a lone `main.zig`) | One entity (the repo), 0 edges written, 0 dropped. |
-| TC-41 | FR-40 | `catalog-info.yaml` with `spec.owner: platform` | An `owned_by` edge from the component to `platform`, and a `team` candidate named `platform`. |
-| TC-42 | FR-40 | `catalog-info.yaml` with `spec.owner: group:default/platform-team` | The entity-ref is reduced to `platform-team` for both the edge and the candidate. |
-| TC-43 | FR-40 | `catalog-info.yaml` with no `spec.owner` | No `owned_by` edge and no `team` candidate. |
+| TC-LPER | FR-1 | Load `typescript.yaml` | Frameworks include express, react, and commander. Kind rules are present. Symbols and routes status is `partial`. |
+| TC-LMYT | FR-1 | Load `infra.yaml` | Compose files, `fly.toml`, and `catalog-info.yaml` are configured. |
+| TC-8T1P | FR-2 | Package with express, bin, react, main, or empty fields | Kinds are service, cli, surface, or library. An empty package falls back to `library`. |
+| TC-33HM | FR-3 | pnpm workspace with client (bin), server (express), and core (main) | Candidates are cli, service, and library. Aliases exist. `part_of` points to root. |
+| TC-RQHC | FR-4 | Solo package with fastify; empty directory | One service candidate for the package. Empty directory yields zero candidates. |
+| TC-N7TF | FR-5 | Compose, fly, and Backstage files are present | Candidates exist for service keys, app name, and catalog name. A `belongs_to` edge exists. |
+| TC-YKG7 | FR-6 | Malformed `docker-compose.yml` | Zero candidates. |
+| TC-9PLU | FR-7 | Same name in `package.json` and `fly.toml` | Two candidates share that canonical name. |
+| TC-D9J8 | FR-8 | Inspect TypeScript coverage sections | `symbols.status` and `routes.status` are `partial`. |
+| TC-2Q4J | FR-9 | List ecosystem YAML ids | List includes go, python, rust, ruby, java, csharp, php, scala, haskell, cpp, css, html, bash, infra, and typescript. |
+| TC-XTDN | FR-10 | `go.mod` that requires gin | Candidate kind is `service`. Canonical name is the module path. |
+| TC-2VXD | FR-11 | `pyproject.toml` with fastapi | Candidate kind is `service`. |
+| TC-THFI | FR-12 | `Cargo.toml` with clap and `[[bin]]` | Candidate kind is `cli`. |
+| TC-HWG7 | FR-13 | `composer.json` that requires laravel/framework | Candidate kind is `service`. |
+| TC-02D3 | FR-14 | Gemfile with rails and no gemspec | Candidate kind is `service`. Name is the scan directory basename. |
+| TC-W8DB | FR-15 | Multi-module pom with a spring-boot-starter-web member | Parent and payments candidates exist. Payments kind is `service`. A `part_of` edge exists. |
+| TC-BE9V | FR-16 | `billing.cabal` with servant | Candidate kind is `service`. |
+| TC-IO5S | FR-17 | `CMakeLists.txt` with `project(raylib)` | Candidate kind is `library`. |
+| TC-U6XD | FR-18 | Sdk.Web csproj and `.sln` | Candidate kind is `service`. A `part_of` edge points to the solution name. |
+| TC-Z7IV | FR-19 | `build.sbt` with name storefront and play | Candidate kind is `service`. |
+| TC-57QZ | FR-20 | Kubernetes Deployment or Ingress, Helm Chart, and Procfile | Candidates have kind `service` or `api`. |
+| TC-VMJQ | FR-20 | OpenAPI file (title + path items) and protobuf `service` | Candidates have kind `api` for title, paths, and operations. |
+| TC-PVKZ | FR-21 | Nest, Express, FastAPI, Go, Spring, Next, and Rails routes plus a junk path | API routes are harvested. Next pages have kind `surface`. Junk paths are skipped. |
+| TC-SIH8 | FR-22 | Spring, Nest, Django, Prisma, .NET, Rails, and SQL app or DB types | Candidates have kind `module` or `model`. No candidate has deployable kind `service`. |
+| TC-NRVE | FR-23 | Nest methods, Hono, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Sinatra, EF ToTable | Extra routes and models are harvested. Nest joins controller + method (`GET /orders/:id`). |
+| TC-OSKZ | FR-24 | Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH | Joined routes, CRUD expansions, and ORM models are harvested. |
+| TC-66BM | FR-25 | Raw Node HTTP, embedded SQL DDL, Nest global prefix, FastAPI router prefix, Gin Group, Rails namespace, Django app_name, Micronaut/JAX-RS join, ASGI Route, OpenAPI `$ref`, Store/Indexer classes | kb-like api/model/module candidates and Round-4 route joins are harvested. |
+| TC-OU3L | FR-26 | Rich `schema.prisma` with model, enum, view, composite type, `@@map`, and TypeORM `@Entity({ name })` | Prisma atoms are kind `model`; `@@map` / entity `name` appear as aliases. Generator/datasource are not harvested. |
+| TC-H6UJ | FR-27 | Load `typescript.yaml` and `common.yaml` | `source_patterns` lists are non-empty. Common includes OpenAPI and GraphQL rules. |
+| TC-HT2T | FR-30 | Inline regex `source_pattern` for `@DemoRoute('…')` with no new strategy | Harvest emits the matching `api` candidate from that rule alone. |
+| TC-DT7P | FR-29 | Source pattern with `strategy: not_a_real_strategy` | Config load throws. Message names the unknown strategy. |
+| TC-8B85 | FR-28 | `typescript.yaml` includes `class_method_prefix_join` for Nest | Route harvest emits a joined Nest method path (`GET /orders/:id`). |
+| TC-PJ76 | FR-31 | Package.json with express only | Kind rubric from YAML `kind_rules` sets kind `service`. |
+| TC-1WC4 | FR-32 | `source_pattern` or `kind_rule` carrying `confidence` / `weight` / `score` | Config load throws. Message names the offending key. |
+| TC-L3I6 | FR-33 | Repo with a package manifest, an infra manifest, a route decorator, and a table declaration | Manifest-derived candidates are `sourceKind: manifest`; route and model candidates are `sourceKind: source-pattern`. |
+| TC-ZI70 | FR-34, FR-37 | Workspace whose globs do not list the root (`workspaces: ["packages/*"]`) | The member gets a `part_of` edge to the root package. `edgesDropped` is 0. |
+| TC-QGZY | FR-36 | Solo package in a repo with a slug | The package gets a `part_of` edge to the repo entity. |
+| TC-29IO | FR-36 | Prisma model under `packages/api/prisma/` in a workspace | The model is `part_of` `@acme/api` — the nearest enclosing package, not the repo root. |
+| TC-8Z1A | FR-35, FR-38 | Workspace member depending on a sibling package and on `express` | A `depends_on` edge links the two packages; `express` counts as `edgesExternal` and mints no entity. |
+| TC-R7M5 | FR-39 | Repo with no manifest and no ecosystem profile (a lone `main.zig`) | One entity (the repo), 0 edges written, 0 dropped. |
+| TC-XF0D | FR-40 | `catalog-info.yaml` with `spec.owner: platform` | An `owned_by` edge from the component to `platform`, and a `team` candidate named `platform`. |
+| TC-FQGT | FR-40 | `catalog-info.yaml` with `spec.owner: group:default/platform-team` | The entity-ref is reduced to `platform-team` for both the edge and the candidate. |
+| TC-F0JV | FR-40 | `catalog-info.yaml` with no `spec.owner` | No `owned_by` edge and no `team` candidate. |
 
 ### Related docs
 

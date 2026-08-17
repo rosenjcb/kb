@@ -3,8 +3,11 @@
  * Eval harness indexing — calls @kb/core directly (kb init/scan removed from client CLI).
  *
  * Usage (from kb repo root, after pnpm install):
- *   pnpm exec tsx scripts/eval-index.ts init --base <name> --git <path> [--non-interactive] [--debug]
- *   pnpm exec tsx scripts/eval-index.ts scan --base <name> [--debug]
+ *   pnpm exec tsx scripts/eval-index.ts init --base <name> --git <path> [--non-interactive] [--debug] [--skip-embed]
+ *   pnpm exec tsx scripts/eval-index.ts scan --base <name> [--debug] [--skip-embed]
+ *
+ * `--skip-embed` skips the create-embeddings cycle (init) / embed pass (scan) entirely — no
+ * vectors are written. For a fast reindex where only lexical/AST retrieval is under test.
  */
 
 import { parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'

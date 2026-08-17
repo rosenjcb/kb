@@ -122,7 +122,7 @@ async function rescanRepo(base: string, repoDir: string, slug: string): Promise<
 
 describe('multi-repo incremental rescan', () => {
   it(
-    '[TC-429] warm rescan of an unchanged multi-repo base detects 0 changed per repo and preserves all facts',
+    '[TC-EWNP] warm rescan of an unchanged multi-repo base detects 0 changed per repo and preserves all facts',
     async () => {
       const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-rescan-cwd-'))
       tempDirs.push(cwd)
@@ -183,7 +183,7 @@ describe('multi-repo incremental rescan', () => {
   )
 
   it(
-    '[TC-430] a changed or deleted file in one repo reindexes only that repo and never purges unchanged files or sibling repos',
+    '[TC-WLSP] a changed or deleted file in one repo reindexes only that repo and never purges unchanged files or sibling repos',
     async () => {
       const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-rescan-cwd2-'))
       tempDirs.push(cwd)

@@ -50,7 +50,7 @@ afterEach(async () => {
 })
 
 describe('kb-server base create', () => {
-  it('[TC-164] refuses to create the reserved default base', async () => {
+  it('[TC-BZDP] refuses to create the reserved default base', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['create', '--base', 'default', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('always exists')
@@ -58,7 +58,7 @@ describe('kb-server base create', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it('[TC-165] requires at least one --git for a named base', async () => {
+  it('[TC-J398] requires at least one --git for a named base', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['create', '--base', 'acme'], out)
     expect(lines.join('\n')).toContain('At least one repo')
@@ -66,7 +66,7 @@ describe('kb-server base create', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it('[TC-166] refuses to create a base that already exists', async () => {
+  it('[TC-1E89] refuses to create a base that already exists', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
     await runServerBaseCommand(['create', '--base', 'acme', '--git', 'https://x/y'], out)
@@ -75,7 +75,7 @@ describe('kb-server base create', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it('[TC-167] builds a new named base from its repos', async () => {
+  it('[TC-FI59] builds a new named base from its repos', async () => {
     const { out } = makeOut()
     await runServerBaseCommand(
       ['create', '--base', 'acme', '--git', 'https://github.com/x/y', '--git', 'https://github.com/a/b'],
@@ -92,7 +92,7 @@ describe('kb-server base create', () => {
 })
 
 describe('kb-server base add-repo', () => {
-  it('[TC-168] refuses to add repos to a non-existent named base', async () => {
+  it('[TC-OJWT] refuses to add repos to a non-existent named base', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['add-repo', '--base', 'ghost', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('Create it first')
@@ -100,14 +100,14 @@ describe('kb-server base add-repo', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it('[TC-169] allows adding a repo to the empty default base', async () => {
+  it('[TC-PT5O] allows adding a repo to the empty default base', async () => {
     const { out } = makeOut()
     await runServerBaseCommand(['add-repo', '--base', 'default', '--git', 'https://github.com/x/y'], out)
     expect(mockRunKbInit).toHaveBeenCalledTimes(1)
     expect(mockRunKbInit.mock.calls[0]?.[0]?.base).toBe('default')
   })
 
-  it('[TC-170] requires at least one --git', async () => {
+  it('[TC-VLX0] requires at least one --git', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
     await runServerBaseCommand(['add-repo', '--base', 'acme'], out)
@@ -118,34 +118,34 @@ describe('kb-server base add-repo', () => {
 })
 
 describe('kb-server base list / delete', () => {
-  it('[TC-171] reports when no bases are initialized', async () => {
+  it('[TC-D8ZT] reports when no bases are initialized', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['list'], out)
     expect(lines.join('\n')).toContain('No initialized bases')
   })
 
-  it('[TC-172] lists an initialized base', async () => {
+  it('[TC-QCCG] lists an initialized base', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
     await runServerBaseCommand(['list'], out)
     expect(lines.join('\n')).toContain('acme')
   })
 
-  it('[TC-173] delete requires a base name', async () => {
+  it('[TC-SU4B] delete requires a base name', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--yes'], out)
     expect(lines.join('\n')).toContain('--base <name> is required')
     expect(process.exitCode).toBe(1)
   })
 
-  it('[TC-174] deletes a base with --yes', async () => {
+  it('[TC-3T44] deletes a base with --yes', async () => {
     await initBase('acme')
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--base', 'acme', '--yes'], out)
     expect(lines.join('\n')).toContain('Deleted base: acme')
   })
 
-  it('[TC-175] help lists the base subcommands', async () => {
+  it('[TC-WTZX] help lists the base subcommands', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand([], out)
     const text = lines.join('\n')

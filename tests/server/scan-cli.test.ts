@@ -103,7 +103,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('[TC-92] adopt(--from) → scan → export(--out) round-trips on local paths', async () => {
+  it('[TC-WEY5] adopt(--from) → scan → export(--out) round-trips on local paths', async () => {
     // Build a snapshot from a source base, then reindex a *fresh* base from it.
     seedBase(root, kbHome, 'src', 'BATCH')
     const bundle = path.join(root, 'snap')
@@ -123,7 +123,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(manifest?.provenance.repos).toHaveLength(1)
   }, 30_000)
 
-  it('[TC-93] scans a warm base in place with no --from / --out', async () => {
+  it('[TC-H0IH] scans a warm base in place with no --from / --out', async () => {
     seedBase(root, kbHome, 'warm', 'WARM')
     const { logger, stdout } = capturingLogger()
     await runServerScanCommand(['--base', 'warm'], logger, kbHome)
@@ -133,7 +133,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(stdout.join('\n')).toMatch(/Reindex complete/)
   }, 30_000)
 
-  it('[TC-94] --json emits a single machine-readable summary on stdout', async () => {
+  it('[TC-LNWR] --json emits a single machine-readable summary on stdout', async () => {
     seedBase(root, kbHome, 'warm', 'JSON')
     const outDir = path.join(root, 'out')
     const { logger, stdout } = capturingLogger()
@@ -154,21 +154,21 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(summary.indexDigest).toMatch(/^[0-9a-f]{64}$/)
   }, 30_000)
 
-  it('[TC-95] rejects object-store URIs for --from (cloud-agnostic guardrail)', async () => {
+  it('[TC-48DJ] rejects object-store URIs for --from (cloud-agnostic guardrail)', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'batch', '--from', 'gs://bucket/snap'], logger, kbHome)
     ).rejects.toThrow(/LOCAL path only/)
   })
 
-  it('[TC-96] rejects object-store URIs for --out (cloud-agnostic guardrail)', async () => {
+  it('[TC-1YZC] rejects object-store URIs for --out (cloud-agnostic guardrail)', async () => {
     const { logger } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'batch', '--out', 's3://bucket/out'], logger, kbHome)
     ).rejects.toThrow(/LOCAL path only/)
   })
 
-  it('[TC-97] overwrites a non-empty --out without --force (batch default)', async () => {
+  it('[TC-9EV9] overwrites a non-empty --out without --force (batch default)', async () => {
     seedBase(root, kbHome, 'warm', 'OVER')
     const outDir = path.join(root, 'stale-out')
     mkdirSync(outDir, { recursive: true })
@@ -182,7 +182,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(manifest?.provenance.base).toBe('warm')
   }, 30_000)
 
-  it('[TC-98] --json emits { ok: false } on stdout before rethrowing', async () => {
+  it('[TC-TAPM] --json emits { ok: false } on stdout before rethrowing', async () => {
     const { logger, stdout } = capturingLogger()
     await expect(
       runServerScanCommand(['--base', 'missing-base-xyz', '--json'], logger, kbHome)
@@ -195,7 +195,7 @@ describe('kb-server scan (one-shot batch reindex)', () => {
     expect(summary.error.length).toBeGreaterThan(0)
   })
 
-  it('[TC-99] --from replaces an existing base index without --force (batch default)', async () => {
+  it('[TC-LQ4S] --from replaces an existing base index without --force (batch default)', async () => {
     seedBase(root, kbHome, 'src', 'SRC')
     seedBase(root, kbHome, 'dest', 'OLD')
     const bundle = path.join(root, 'snap')

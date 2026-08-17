@@ -34,7 +34,7 @@ async function collect(gen: AsyncGenerator<ChatEvent>): Promise<ChatEvent[]> {
 }
 
 describe('streamChatTurn', () => {
-  it('[TC-1] streams reasoning then a terminal answer and done', async () => {
+  it('[TC-WH6M] streams reasoning then a terminal answer and done', async () => {
     const events = await collect(
       streamChatTurn(
         {
@@ -53,7 +53,7 @@ describe('streamChatTurn', () => {
     expect(events.at(-1)).toEqual({ type: 'done', inputTokens: 4, outputTokens: 2 })
   })
 
-  it('[TC-2] emits an error event when synthesis throws', async () => {
+  it('[TC-K61F] emits an error event when synthesis throws', async () => {
     const events = await collect(
       streamChatTurn(
         {
@@ -68,7 +68,7 @@ describe('streamChatTurn', () => {
     expect(last?.type).toBe('error')
     if (last?.type === 'error') expect(last.message).toContain('boom')
   })
-  it('[TC-155] Given the model returns no text, then it emits an error event instead of a canned answer', async () => {
+  it('[TC-0ARN] Given the model returns no text, then it emits an error event instead of a canned answer', async () => {
     // A blank completion used to be rendered as "I don't have enough information to answer
     // that" — a knowledge-base verdict standing in for a model failure.
     const events = await collect(

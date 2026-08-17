@@ -30,6 +30,7 @@
  */
 
 import type { KbService } from '@kb/core/service/kb-service.js'
+import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
 import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
 import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -355,11 +356,16 @@ export async function dispatchMcpToolCall(
     }
     // Always answer-first: synthesize a direct answer, with source files as evidence.
     const result = await svc.query({ query: q, synthesize: true })
+    // Resolve the blob-link registry once so cited files carry the same hrefs the
+    // REST/demo/Slack surfaces get — one payload, rendered per surface.
+    const sourceRepos = await resolveSourceRepos(svc.baseDir)
     // Default is the trimmed agent payload (answer + citations + notes); the full
     // fact dump and retrieval metadata are opt-in via verbose.
     const body: Record<string, unknown> = {
       query: q,
-      ...(verbose ? serializeQueryResult(result) : serializeMcpQueryResult(result)),
+      ...(verbose
+        ? serializeQueryResult(result, { sourceRepos })
+        : serializeMcpQueryResult(result, { sourceRepos })),
     }
     if (opts.requestId) body.requestId = opts.requestId
     // Sampled feedback ask — trimmed payload only; verbose callers are debugging.
@@ -418,6 +424,11 @@ async function applySampledFeedbackAsk(
     }
     if (outcome.kind === 'dismissed') {
       body.feedback = { status: outcome.action, via: 'elicitation' }
+      // The client dismissed the form (or auto-declined because it has no UI to render one in
+      // this session) rather than a human weighing in — either way, don't lose the sample.
+      // Queue it so a later checkpoint (get_feedback_requests) can still close the loop, without
+      // re-nudging the agent mid-call via AGENT_INSTRUCTION.
+      if (opts.requestId) resolvePendingFeedbackStore(opts).add(opts.requestId, query)
       return
     }
     // unavailable → fall through to AGENT_INSTRUCTION

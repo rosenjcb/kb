@@ -7,13 +7,13 @@ import {
 } from '@kb/core/prompts/prompt-assets.js'
 
 describe('prompt-assets', () => {
-  it('[TC-9] resolvePromptPath nests under prompts root', () => {
+  it('[TC-X8XU] resolvePromptPath nests under prompts root', () => {
     expect(resolvePromptPath('sub', 'init-refinement.md')).toBe(
       join(promptsRootDir, 'sub', 'init-refinement.md')
     )
   })
 
-  it('[TC-10] readPromptAssetUtf8 reads a prompt asset file', () => {
+  it('[TC-32W5] readPromptAssetUtf8 reads a prompt asset file', () => {
     const raw = readPromptAssetUtf8('init-refinement.md')
     expect(raw).toContain('refining a KB document set')
   })

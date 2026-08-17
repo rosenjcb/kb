@@ -77,7 +77,11 @@ import {
 } from '@kb/core/ops/init-source-files-manifest.js'
 import { assessTopicCoverage, summariseCoverage } from '@kb/core/ops/init-topic-coverage.js'
 import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
-import { type IgnoreMatcher, createIgnoreMatcher, readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
+import {
+  type IgnoreMatcher,
+  createIgnoreMatcher,
+  readIgnorePatternsFromEnv,
+} from '@kb/core/config/kb-ignore.js'
 
 export type InitCycle =
   | 'code-index'
@@ -134,6 +138,14 @@ export interface InitOptions {
    * `kb init` leaves this `false` so a missing key never blocks a local index.
    */
   requireEmbeddings?: boolean
+  /**
+   * Skip the create-embeddings cycle entirely — no embedder is resolved and no vectors are
+   * written, even when unembedded rows exist. Marks the cycle complete in the checkpoint like
+   * any other finished step, so a later run without this flag re-embeds normally. For a fast
+   * reindex where only lexical/AST retrieval is under test (embedding cost/latency not worth
+   * paying), not for a published base — a base with no vectors serves the lexical lane only.
+   */
+  skipEmbeddings?: boolean
 }
 
 /** A git remote to track. `branch` is omitted unless the user pins one (inline `#branch` or
@@ -541,6 +553,7 @@ export function parseInitCommand(args: string[]): InitOptions {
     resumeFrom: readOption(args, '--resume-from'),
     checkpointFile: readOption(args, '--checkpoint-file'),
     gitTargets,
+    skipEmbeddings: readFlag(args, '--skip-embed'),
   }
 }
 
@@ -766,7 +779,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             const treeStats = await treeIndexer.indexProject(scanDir, {
               candidateFiles: candidateAstFiles,
               onProgress: s => {
-                const fraction = candidateAstFiles.length > 0 ? s.files / candidateAstFiles.length : 0
+                const fraction =
+                  candidateAstFiles.length > 0 ? s.files / candidateAstFiles.length : 0
                 progress.update(
                   'code-index',
                   `${s.files}/${candidateAstFiles.length} changed, ${unchangedAstFileCount} unchanged | ${s.symbols} symbols`,
@@ -1063,8 +1077,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           finalCoverageSummary,
         })
         const purgeNote = purged > 0 ? `, ${purged} stale document(s) purged` : ''
-        const linksNote = ingestStats.linksWritten > 0 ? `, ${ingestStats.linksWritten} code link(s)` : ''
-        progress.finish('document-index', `${writtenDocIds.length} doc(s) written${linksNote}${purgeNote}`)
+        const linksNote =
+          ingestStats.linksWritten > 0 ? `, ${ingestStats.linksWritten} code link(s)` : ''
+        progress.finish(
+          'document-index',
+          `${writtenDocIds.length} doc(s) written${linksNote}${purgeNote}`
+        )
         if (options.stopAfter === 'write') throw new InitPausedError('write')
       }
       if (options.stopAfter === 'document-index') throw new InitPausedError('document-index')
@@ -1095,19 +1113,26 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     // Step 3/3: create-embeddings (Real neural embeddings with batch progress)
     // ─────────────────────────────────────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('create-embeddings')) {
-      progress.start('create-embeddings', 'resolving embedder…')
-      let embedIndexer: SqliteKbIndexer | undefined
-      let modelId = ''
-      try {
-        const embedder = requireEmbedderForInit()
-        modelId = embedder.modelId
-        embedIndexer = new SqliteKbIndexer({
-          dbPath: path.join(baseDir, '.kb-index.sqlite'),
-          embedder,
-        })
-        progress.update('create-embeddings', `embedding with ${embedder.modelId}…`)
-        const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
-        if (counts.total === 0) {
+      if (options.skipEmbeddings) {
+        progress.start('create-embeddings', 'skipping (--skip-embed)…')
+        progress.finish('create-embeddings', 'skipped (--skip-embed): no vectors written')
+        await persist({ completedCycles: ['create-embeddings'] })
+        if (options.stopAfter === 'create-embeddings')
+          throw new InitPausedError('create-embeddings')
+      } else {
+        progress.start('create-embeddings', 'resolving embedder…')
+        let embedIndexer: SqliteKbIndexer | undefined
+        let modelId = ''
+        try {
+          const embedder = requireEmbedderForInit()
+          modelId = embedder.modelId
+          embedIndexer = new SqliteKbIndexer({
+            dbPath: path.join(baseDir, '.kb-index.sqlite'),
+            embedder,
+          })
+          progress.update('create-embeddings', `embedding with ${embedder.modelId}…`)
+          const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
+          if (counts.total === 0) {
             progress.finish(
               'create-embeddings',
               `up to date (0 items to embed) with ${embedder.modelId}`
@@ -1150,19 +1175,21 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             )
           }
           await persist({ completedCycles: ['create-embeddings'] })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        if (options.requireEmbeddings) {
-          throw new Error(
-            `kb init embedding failed${modelId ? ` (${modelId})` : ''}: ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
-          )
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          if (options.requireEmbeddings) {
+            throw new Error(
+              `kb init embedding failed${modelId ? ` (${modelId})` : ''}: ${message}. Fix the embedder (e.g. GEMINI_API_KEY for KB_EMBEDDER=gemini) and re-run; an index without embeddings is incomplete and cannot be published.`
+            )
+          }
+          progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
+          await persist({ completedCycles: ['create-embeddings'] })
+        } finally {
+          embedIndexer?.close()
         }
-        progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
-        await persist({ completedCycles: ['create-embeddings'] })
-      } finally {
-        embedIndexer?.close()
+        if (options.stopAfter === 'create-embeddings')
+          throw new InitPausedError('create-embeddings')
       }
-      if (options.stopAfter === 'create-embeddings') throw new InitPausedError('create-embeddings')
     } else {
       progress.finish('create-embeddings', 'reused from checkpoint')
     }
@@ -1172,8 +1199,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       `[${progressPrefix(options)}] Finishing touches: base "${base}" ready.`
     )
 
-    const finalCoverageSummary =
-      checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
+    const finalCoverageSummary = checkpoint.finalCoverageSummary ?? summariseCoverage(topicCoverage)
     return {
       status: 'accepted',
       base,

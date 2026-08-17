@@ -53,7 +53,9 @@ allowBuilds:
   tree-sitter-ruby: false
   tree-sitter-rust: false
   tree-sitter-scala: false
+  tree-sitter-svelte: set this to true or false
   tree-sitter-typescript: false
+  tree-sitter-vue: set this to true or false
 
 minimumReleaseAgeExclude:
   - '@rosenjcb/spec-md@0.3.3'

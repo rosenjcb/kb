@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { awaitRefreshThenStart } from '@kb/client/tui/base-refresh.js'
 
 describe('awaitRefreshThenStart', () => {
-  it('[TC-1] Given an async refreshBase, then startSession sees the updated value', async () => {
+  it('[TC-ATPX] Given an async refreshBase, then startSession sees the updated value', async () => {
     const ref = { current: 'old-base-dir' }
     let capturedAtStart = ''
 
@@ -14,7 +14,7 @@ describe('awaitRefreshThenStart', () => {
     expect(capturedAtStart).toBe('new-base-dir')
   })
 
-  it('[TC-2] Given refreshBase not awaited, then startSession would see stale value (regression scenario)', async () => {
+  it('[TC-92GT] Given refreshBase not awaited, then startSession would see stale value (regression scenario)', async () => {
     // Demonstrates what the bug looked like: fire-and-forget refresh means
     // startSession reads storageDirRef.current before it is updated.
     const ref = { current: 'old-base-dir' }
@@ -31,7 +31,7 @@ describe('awaitRefreshThenStart', () => {
     expect(capturedAtStart).toBe('old-base-dir')
   })
 
-  it('[TC-3] Given refreshBase rejects, then error propagates and startSession is not called', async () => {
+  it('[TC-VFG5] Given refreshBase rejects, then error propagates and startSession is not called', async () => {
     let sessionStarted = false
 
     await expect(

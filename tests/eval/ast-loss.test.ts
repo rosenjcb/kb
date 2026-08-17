@@ -10,19 +10,19 @@ beforeAll(async () => {
 }, 30_000)
 
 describe('computeAstLoss — TypeScript', () => {
-  it('[TC-1] Given identical snippets, returns 0.0', async () => {
+  it('[TC-PL8C] Given identical snippets, returns 0.0', async () => {
     const src = 'export function foo(): void {}\nexport class Bar {}'
     expect(await computeAstLoss(src, src, 'ts', ctx)).toBe(0)
   })
 
-  it('[TC-2] Given completely disjoint named exports, returns 1.0', async () => {
+  it('[TC-DNPN] Given completely disjoint named exports, returns 1.0', async () => {
     const a = 'export function foo(): void {}'
     const b = 'export class Xyz {}'
     // {function_declaration:foo} vs {class_declaration:Xyz} — no overlap
     expect(await computeAstLoss(a, b, 'ts', ctx)).toBe(1)
   })
 
-  it('[TC-3] Given one extra export in candidate, returns partial loss', async () => {
+  it('[TC-5MJS] Given one extra export in candidate, returns partial loss', async () => {
     const a = 'export function foo(): void {}\nexport function bar(): void {}'
     const b = 'export function foo(): void {}'
     const loss = await computeAstLoss(a, b, 'ts', ctx)
@@ -30,23 +30,23 @@ describe('computeAstLoss — TypeScript', () => {
     expect(loss).toBeCloseTo(0.5)
   })
 
-  it('[TC-4] Given unsupported language, returns 1.0', async () => {
+  it('[TC-HN5C] Given unsupported language, returns 1.0', async () => {
     expect(await computeAstLoss('anything', 'anything', 'cobol', ctx)).toBe(1.0)
   })
 
-  it('[TC-5] Given interface declaration, it is included in the node set', async () => {
+  it('[TC-NMCE] Given interface declaration, it is included in the node set', async () => {
     const src = 'export interface Foo { bar: string }'
     expect(await computeAstLoss(src, src, 'ts', ctx)).toBe(0)
   })
 })
 
 describe('computeAstLoss — Python', () => {
-  it('[TC-6] Given identical Python snippets, returns 0.0', async () => {
+  it('[TC-TMM6] Given identical Python snippets, returns 0.0', async () => {
     const src = 'def foo():\n    pass\n\nclass Bar:\n    pass'
     expect(await computeAstLoss(src, src, 'python', ctx)).toBe(0)
   })
 
-  it('[TC-7] Given Python snippets with one missing function, returns partial loss', async () => {
+  it('[TC-2PSJ] Given Python snippets with one missing function, returns partial loss', async () => {
     const a = 'def foo():\n    pass\n\ndef bar():\n    pass'
     const b = 'def foo():\n    pass'
     const loss = await computeAstLoss(a, b, 'python', ctx)

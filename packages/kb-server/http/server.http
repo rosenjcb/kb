@@ -23,7 +23,7 @@ GET {{baseUrl}}/healthz
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-1] health shape', () => {
+  test('[TC-4OCI] health shape', () => {
     const body = response.parsedBody;
     assert.strictEqual(body.ok, true);
     assert.strictEqual(typeof body.base, 'string');
@@ -55,7 +55,7 @@ Content-Type: application/json
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-3] query result shape', () => {
+  test('[TC-TOEH] query result shape', () => {
     const b = response.parsedBody;
     assert.strictEqual(typeof b.status, 'string');
     assert.ok('answer' in b);
@@ -85,7 +85,7 @@ Content-Type: application/json
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-4] results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
+  test('[TC-VO6E] results is an array', () => assert.ok(Array.isArray(response.parsedBody.results)));
 }}
 
 ###
@@ -103,7 +103,7 @@ Content-Type: application/json
 
 {{
   const assert = require('assert');
-  test('[TC-5] status 401 without key', () => assert.strictEqual(response.statusCode, 401));
+  test('[TC-8XQM] status 401 without key', () => assert.strictEqual(response.statusCode, 401));
 }}
 
 ###
@@ -126,9 +126,9 @@ Accept: text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-6] sse content type', () =>
+  test('[TC-L6IF] sse content type', () =>
     assert.ok(String(response.contentType?.mimeType || '').includes('text/event-stream')));
-  test('[TC-7] sse stream has session + terminal events', () => {
+  test('[TC-1JJ9] sse stream has session + terminal events', () => {
     const body = response.body || '';
     assert.ok(body.includes('event: session'));
     assert.ok(body.includes('event: answer'));
@@ -153,7 +153,7 @@ Accept: text/event-stream
 {{
   const assert = require('assert');
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-8] answered', () => assert.ok((response.body || '').includes('event: done')));
+  test('[TC-H2UW] answered', () => assert.ok((response.body || '').includes('event: done')));
 }}
 
 ###
@@ -192,7 +192,7 @@ Accept: application/json, text/event-stream
     return res.parsedBody;
   };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-9] jsonrpc result', () => {
+  test('[TC-L2OM] jsonrpc result', () => {
     const body = mcpJson(response);
     assert.strictEqual(body.jsonrpc, '2.0');
     assert.ok(body.result?.protocolVersion);
@@ -231,12 +231,12 @@ mcp-session-id: {{mcpSessionId}}
     return res.parsedBody;
   };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-10] tools include query', () => {
+  test('[TC-5L2H] tools include query', () => {
     const tools = mcpJson(response).result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'query'));
   });
-  test('[TC-12] tools include submit_feedback', () => {
+  test('[TC-EJD2] tools include submit_feedback', () => {
     const tools = mcpJson(response).result?.tools;
     assert.ok(Array.isArray(tools));
     assert.ok(tools.some(t => t.name === 'submit_feedback'));
@@ -279,7 +279,7 @@ mcp-session-id: {{mcpSessionId}}
     return res.parsedBody;
   };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-13] submit_feedback call returns ok', () => {
+  test('[TC-FI6S] submit_feedback call returns ok', () => {
     const content = mcpJson(response).result?.content;
     assert.ok(Array.isArray(content));
     const body = JSON.parse(content[0].text);
@@ -319,5 +319,5 @@ mcp-session-id: {{mcpSessionId}}
     return res.parsedBody;
   };
   test('[smoke] status 200', () => assert.strictEqual(response.statusCode, 200));
-  test('[TC-11] tool returns content', () => assert.ok(Array.isArray(mcpJson(response).result?.content)));
+  test('[TC-RFKP] tool returns content', () => assert.ok(Array.isArray(mcpJson(response).result?.content)));
 }}

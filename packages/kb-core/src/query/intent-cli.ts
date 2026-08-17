@@ -261,6 +261,13 @@ export interface ReadDocumentsResultData {
      * or an outage reads as a quality regression.
      */
     degraded?: LLMFailure[]
+    /**
+     * Prose claims the optional post-synthesis verification pass judged unsupported
+     * by the retrieved evidence (issue #223). Present only when claim verification
+     * ran (opt-in) and found something. Surfaced as a caveat note and used to
+     * downgrade the evidence label, mirroring the ungrounded-file-name check.
+     */
+    unsupportedClaims?: string[]
   }
   /**
    * Set when answer synthesis was attempted and did not produce an answer. Absent

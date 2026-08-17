@@ -8,17 +8,17 @@ import {
 } from '@kb/core/core/doc-taxonomy.js'
 
 describe('DOC_TYPES enum', () => {
-  it('[TC-42] Given the canonical list, then contains exactly five members', () => {
+  it('[TC-7480] Given the canonical list, then contains exactly five members', () => {
     expect(DOC_TYPES).toEqual(['howto', 'introduction', 'reference', 'decision', 'runbook'])
   })
 
-  it('[TC-43] Given a known DocType, then isDocType returns true', () => {
+  it('[TC-L48H] Given a known DocType, then isDocType returns true', () => {
     for (const value of DOC_TYPES) {
       expect(isDocType(value)).toBe(true)
     }
   })
 
-  it('[TC-44] Given a legacy or unknown value, then isDocType returns false', () => {
+  it('[TC-RHU4] Given a legacy or unknown value, then isDocType returns false', () => {
     expect(isDocType('architecture')).toBe(false)
     expect(isDocType('checklist')).toBe(false)
     expect(isDocType('nonsense')).toBe(false)
@@ -29,7 +29,7 @@ describe('DOC_TYPES enum', () => {
 })
 
 describe('LEGACY_DOC_TYPE_REMAP', () => {
-  it('[TC-45] Given the legacy keys, then maps each to a current DocType', () => {
+  it('[TC-LPJ2] Given the legacy keys, then maps each to a current DocType', () => {
     expect(LEGACY_DOC_TYPE_REMAP).toEqual({
       architecture: 'reference',
       checklist: 'runbook',
@@ -42,18 +42,18 @@ describe('LEGACY_DOC_TYPE_REMAP', () => {
 })
 
 describe('coerceDocType', () => {
-  it('[TC-46] Given a current DocType, then returns it unchanged', () => {
+  it('[TC-V9J1] Given a current DocType, then returns it unchanged', () => {
     for (const value of DOC_TYPES) {
       expect(coerceDocType(value)).toBe(value)
     }
   })
 
-  it('[TC-47] Given a legacy DocType, then returns the remapped value', () => {
+  it('[TC-U4FC] Given a legacy DocType, then returns the remapped value', () => {
     expect(coerceDocType('architecture')).toBe<DocType>('reference')
     expect(coerceDocType('checklist')).toBe<DocType>('runbook')
   })
 
-  it('[TC-48] Given an unknown or non-string value, then returns undefined', () => {
+  it('[TC-X0PJ] Given an unknown or non-string value, then returns undefined', () => {
     expect(coerceDocType('mystery-type')).toBeUndefined()
     expect(coerceDocType('')).toBeUndefined()
     expect(coerceDocType(null)).toBeUndefined()

@@ -13,11 +13,11 @@ describe('chat retrieval refusal', () => {
     else process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = prev
   })
 
-  it('[TC-77] refuses when no results', () => {
+  it('[TC-XMSJ] refuses when no results', () => {
     expect(shouldRefuseChatTurnOnRetrieval({ results: [] })).toBe(true)
   })
 
-  it('[TC-78] allows when retrieval detail is all-facts:already-in-context even with zero results', () => {
+  it('[TC-7HZP] allows when retrieval detail is all-facts:already-in-context even with zero results', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [],
@@ -26,7 +26,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('[TC-79] refuses when last checkpoint below default min', () => {
+  it('[TC-DICS] refuses when last checkpoint below default min', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -41,7 +41,7 @@ describe('chat retrieval refusal', () => {
     ).toBe('weak')
   })
 
-  it('[TC-80] allows when checkpoints missing (no signal)', () => {
+  it('[TC-HAF4] allows when checkpoints missing (no signal)', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -50,7 +50,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('[TC-81] allows when last checkpoint at or above min', () => {
+  it('[TC-FRW1] allows when last checkpoint at or above min', () => {
     expect(
       shouldRefuseChatTurnOnRetrieval({
         results: [{ metadata: { id: 'a' }, content: 'x' }],
@@ -59,7 +59,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(false)
   })
 
-  it('[TC-82] respects KB_CHAT_RETRIEVAL_MIN_CONFIDENCE', () => {
+  it('[TC-BN67] respects KB_CHAT_RETRIEVAL_MIN_CONFIDENCE', () => {
     process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = 'strong'
     expect(
       shouldRefuseChatTurnOnRetrieval({
@@ -69,7 +69,7 @@ describe('chat retrieval refusal', () => {
     ).toBe(true)
   })
 
-  it('[TC-82] falls back to the default floor when the env label is unparseable', () => {
+  it('[TC-BN67] falls back to the default floor when the env label is unparseable', () => {
     process.env.KB_CHAT_RETRIEVAL_MIN_CONFIDENCE = '0.9'
     // A leftover numeric value must not silently disable the gate.
     expect(
@@ -82,7 +82,7 @@ describe('chat retrieval refusal', () => {
 })
 
 describe('formatChatTranscriptForDocSession', () => {
-  it('[TC-83] formats user/assistant pairs and tail-truncates', () => {
+  it('[TC-S9Y9] formats user/assistant pairs and tail-truncates', () => {
     const long = 'x'.repeat(500)
     const messages: Message[] = [
       { role: 'user', content: 'old' },

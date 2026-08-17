@@ -48,7 +48,7 @@ async function writePackage(dir: string, pkg: Record<string, unknown>): Promise<
 }
 
 describe('ecosystem YAML configs', () => {
-  it('[TC-1] Given typescript.yaml, when loaded, then frameworks, kind_rules, and symbol/route gaps are present', () => {
+  it('[TC-LPER] Given typescript.yaml, when loaded, then frameworks, kind_rules, and symbol/route gaps are present', () => {
     const ts = loadTypescriptEcosystemConfig()
     expect(ts.id).toBe('typescript')
     expect(ts.frameworks.server).toContain('express')
@@ -59,7 +59,7 @@ describe('ecosystem YAML configs', () => {
     expect(ts.routes.status).toBe('partial')
   })
 
-  it('[TC-2] Given infra.yaml, when loaded, then compose, fly, Backstage, k8s, helm, procfile configured', () => {
+  it('[TC-LMYT] Given infra.yaml, when loaded, then compose, fly, Backstage, k8s, helm, procfile configured', () => {
     const infra = loadInfraEcosystemConfig()
     expect(infra.id).toBe('infra')
     expect(infra.compose.files).toContain('docker-compose.yml')
@@ -71,13 +71,13 @@ describe('ecosystem YAML configs', () => {
     expect(infra.procfile.file).toBe('Procfile')
   })
 
-  it('[TC-9] Given typescript coverage sections, when inspected, then symbols and routes are partial', () => {
+  it('[TC-D9J8] Given typescript coverage sections, when inspected, then symbols and routes are partial', () => {
     const ts = loadTypescriptEcosystemConfig()
     expect(ts.symbols.status).toBe('partial')
     expect(ts.routes.status).toBe('partial')
   })
 
-  it('[TC-10] Given all LANG ecosystems, when listed, then YAML coverage files exist for each', () => {
+  it('[TC-2Q4J] Given all LANG ecosystems, when listed, then YAML coverage files exist for each', () => {
     const ids = listEcosystemIds()
     for (const id of [
       'typescript',
@@ -101,7 +101,7 @@ describe('ecosystem YAML configs', () => {
     expect(ids).not.toContain('common')
   })
 
-  it('[TC-29] Given typescript.yaml and common.yaml, when loaded, then source_patterns are present', () => {
+  it('[TC-H6UJ] Given typescript.yaml and common.yaml, when loaded, then source_patterns are present', () => {
     const ts = loadTypescriptEcosystemConfig()
     const common = loadCommonEcosystemConfig()
     expect(ts.source_patterns.length).toBeGreaterThan(0)
@@ -110,7 +110,7 @@ describe('ecosystem YAML configs', () => {
     expect(common.source_patterns.some(p => p.id === 'graphql_root_operations')).toBe(true)
   })
 
-  it('[TC-31] Given a source_pattern with an unknown strategy, when parsed, then load throws', () => {
+  it('[TC-DT7P] Given a source_pattern with an unknown strategy, when parsed, then load throws', () => {
     expect(() =>
       parseSourcePattern({
         id: 'bad',
@@ -122,7 +122,7 @@ describe('ecosystem YAML configs', () => {
     ).toThrow(/Unknown strategy "not_a_real_strategy"/)
   })
 
-  it('[TC-34] Given a source_pattern carrying a hand-assigned weight, when parsed, then load throws', () => {
+  it('[TC-1WC4] Given a source_pattern carrying a hand-assigned weight, when parsed, then load throws', () => {
     for (const key of ['confidence', 'weight', 'score']) {
       expect(() =>
         parseSourcePattern({
@@ -138,7 +138,7 @@ describe('ecosystem YAML configs', () => {
     }
   })
 
-  it('[TC-34] Given shipped ecosystem YAML, when loaded, then no rule carries a weight', () => {
+  it('[TC-1WC4] Given shipped ecosystem YAML, when loaded, then no rule carries a weight', () => {
     // The guard above only fires on parse; this asserts the shipped configs are
     // actually clean, so the rule is enforced in-repo and not just in theory.
     for (const id of listEcosystemIds()) {
@@ -153,7 +153,7 @@ describe('ecosystem YAML configs', () => {
     }
   })
 
-  it('[TC-32] Given Nest class_method_prefix_join in YAML, when harvested, then joined method routes emit', async () => {
+  it('[TC-8B85] Given Nest class_method_prefix_join in YAML, when harvested, then joined method routes emit', async () => {
     const ts = loadTypescriptEcosystemConfig()
     expect(
       ts.source_patterns.some(
@@ -175,7 +175,7 @@ describe('ecosystem YAML configs', () => {
     expect(routes.candidates.map(c => c.canonicalName)).toContain('GET /orders/:id')
   })
 
-  it('[TC-33] Given package.json with express, when classified, then YAML kind_rules set service', () => {
+  it('[TC-PJ76] Given package.json with express, when classified, then YAML kind_rules set service', () => {
     expect(
       classifyPackageKind({
         name: 'payments-api',
@@ -186,7 +186,7 @@ describe('ecosystem YAML configs', () => {
 })
 
 describe('classifyPackageKind', () => {
-  it('[TC-3] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
+  it('[TC-8T1P] Given package.json features, when classified, then YAML kind rubric maps to service/cli/surface/library', () => {
     expect(classifyPackageKind({ dependencies: { express: '4' } })).toBe('service')
     expect(classifyPackageKind({ bin: { kb: './bin/kb' } })).toBe('cli')
     expect(
@@ -200,7 +200,7 @@ describe('classifyPackageKind', () => {
 })
 
 describe('harvestTypeScriptEcosystem', () => {
-  it('[TC-4] Given a pnpm workspace, when harvested, then packages get identity, aliases, kinds, and part_of edges', async () => {
+  it('[TC-33HM] Given a pnpm workspace, when harvested, then packages get identity, aliases, kinds, and part_of edges', async () => {
     await writeFile(path.join(scanDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
     await writePackage(scanDir, { name: 'acme-monorepo', private: true })
     await writePackage(path.join(scanDir, 'packages', 'client'), {
@@ -237,7 +237,7 @@ describe('harvestTypeScriptEcosystem', () => {
     })
   })
 
-  it('[TC-5] Given a solo package or empty dir, when harvested, then root-only or zero candidates', async () => {
+  it('[TC-RQHC] Given a solo package or empty dir, when harvested, then root-only or zero candidates', async () => {
     await writePackage(scanDir, { name: 'solo-svc', dependencies: { fastify: '4' } })
     const single = await harvestTypeScriptEcosystem(scanDir)
     expect(single.candidates).toHaveLength(1)
@@ -255,7 +255,7 @@ describe('harvestTypeScriptEcosystem', () => {
 })
 
 describe('harvestInfraManifests', () => {
-  it('[TC-6] Given compose, fly, and Backstage manifests, when harvested, then service/app/catalog candidates and belongs_to', async () => {
+  it('[TC-N7TF] Given compose, fly, and Backstage manifests, when harvested, then service/app/catalog candidates and belongs_to', async () => {
     await writeFile(
       path.join(scanDir, 'docker-compose.yml'),
       [
@@ -292,7 +292,7 @@ describe('harvestInfraManifests', () => {
     })
   })
 
-  it('[TC-41] Given catalog spec.owner, when harvested, then an owned_by edge and a team candidate', async () => {
+  it('[TC-XF0D] Given catalog spec.owner, when harvested, then an owned_by edge and a team candidate', async () => {
     await writeFile(
       path.join(scanDir, 'catalog-info.yaml'),
       [
@@ -320,7 +320,7 @@ describe('harvestInfraManifests', () => {
     )
   })
 
-  it('[TC-42] Given a full Backstage entity-ref owner, when harvested, then only the name is used', async () => {
+  it('[TC-FQGT] Given a full Backstage entity-ref owner, when harvested, then only the name is used', async () => {
     await writeFile(
       path.join(scanDir, 'catalog-info.yaml'),
       [
@@ -345,7 +345,7 @@ describe('harvestInfraManifests', () => {
     )
   })
 
-  it('[TC-43] Given a catalog entry with no owner, when harvested, then no owned_by edge', async () => {
+  it('[TC-F0JV] Given a catalog entry with no owner, when harvested, then no owned_by edge', async () => {
     await writeFile(
       path.join(scanDir, 'catalog-info.yaml'),
       [
@@ -364,13 +364,13 @@ describe('harvestInfraManifests', () => {
     expect(result.candidates.some(c => c.kind === 'team')).toBe(false)
   })
 
-  it('[TC-7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
+  it('[TC-YKG7] Given malformed compose YAML, when harvested, then zero candidates', async () => {
     await writeFile(path.join(scanDir, 'docker-compose.yml'), '{{ not yaml')
     const result = await harvestInfraManifests(scanDir)
     expect(result.candidates).toHaveLength(0)
   })
 
-  it('[TC-21] Given k8s Deployment/Ingress, Helm Chart, Procfile, when harvested, then service/api candidates', async () => {
+  it('[TC-57QZ] Given k8s Deployment/Ingress, Helm Chart, Procfile, when harvested, then service/api candidates', async () => {
     await mkdir(path.join(scanDir, 'k8s'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'k8s', 'deploy.yaml'),
@@ -422,7 +422,7 @@ describe('harvestInfraManifests', () => {
 })
 
 describe('harvestContractManifests', () => {
-  it('[TC-22] Given OpenAPI + protobuf service, when harvested, then api candidates', async () => {
+  it('[TC-VMJQ] Given OpenAPI + protobuf service, when harvested, then api candidates', async () => {
     await writeFile(
       path.join(scanDir, 'openapi.yaml'),
       ['openapi: 3.0.3', 'info:', '  title: Payments API', '  version: 1.0.0', 'paths: {}'].join(
@@ -474,7 +474,7 @@ describe('harvestContractManifests', () => {
 })
 
 describe('harvestRouteDecorators', () => {
-  it('[TC-23] Given multi-language routes, when harvested, then api/surface candidates; noise skipped', async () => {
+  it('[TC-PVKZ] Given multi-language routes, when harvested, then api/surface candidates; noise skipped', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'src', 'payments.controller.ts'),
@@ -642,7 +642,7 @@ describe('harvestRouteDecorators', () => {
 })
 
 describe('harvestAppConcepts', () => {
-  it('[TC-24] Given Spring/Nest/Django/Prisma/.NET/Rails app + DB types, when harvested, then module and model kinds', async () => {
+  it('[TC-SIH8] Given Spring/Nest/Django/Prisma/.NET/Rails app + DB types, when harvested, then module and model kinds', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'src', 'BillingService.java'),
@@ -730,7 +730,7 @@ describe('harvestAppConcepts', () => {
     expect(result.candidates.every(c => c.kind !== 'service')).toBe(true)
   })
 
-  it('[TC-25] Given Nest methods, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Hono, EF ToTable, when harvested, then routes and models expand', async () => {
+  it('[TC-NRVE] Given Nest methods, Go 1.22 mux, Drizzle/Mongoose/Sequelize, GraphQL, Hono, EF ToTable, when harvested, then routes and models expand', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'src', 'orders.controller.ts'),
@@ -792,7 +792,7 @@ describe('harvestAppConcepts', () => {
     expect(models).toEqual(expect.arrayContaining(['Widget', 'Gadget', 'users', 'orders', 'User']))
   })
 
-  it('[TC-26] Given Round-3 Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH, when harvested, then routes and models expand', async () => {
+  it('[TC-OSKZ] Given Round-3 Spring join, Rails CRUD, Flask MethodView, Django include, tRPC, Slim, Symfony YAML, Room, Hibernate XML, Persistent TH, when harvested, then routes and models expand', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await mkdir(path.join(scanDir, 'config', 'routes'), { recursive: true })
     await mkdir(path.join(scanDir, 'users'), { recursive: true })
@@ -941,7 +941,7 @@ describe('harvestAppConcepts', () => {
     )
   })
 
-  it('[TC-27] Given Round-4 raw Node HTTP, embedded DDL, Nest global prefix, FastAPI/Gin/Rails/Django/Micronaut/JAX-RS/ASGI/OpenAPI $ref, Store/Indexer, when harvested, then kb-like api/model/module expand', async () => {
+  it('[TC-66BM] Given Round-4 raw Node HTTP, embedded DDL, Nest global prefix, FastAPI/Gin/Rails/Django/Micronaut/JAX-RS/ASGI/OpenAPI $ref, Store/Indexer, when harvested, then kb-like api/model/module expand', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await mkdir(path.join(scanDir, 'config'), { recursive: true })
     await mkdir(path.join(scanDir, 'polls'), { recursive: true })
@@ -1089,7 +1089,7 @@ describe('harvestAppConcepts', () => {
     expect(models).toEqual(expect.arrayContaining(['facts', 'entities']))
   })
 
-  it('[TC-30] Given a YAML-only regex source_pattern, when harvested, then it emits an api entity without a new strategy', async () => {
+  it('[TC-HT2T] Given a YAML-only regex source_pattern, when harvested, then it emits an api entity without a new strategy', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'src', 'demo.ts'),
@@ -1111,7 +1111,7 @@ describe('harvestAppConcepts', () => {
     expect(result.candidates[0]?.gloss).toBe('Demo route')
   })
 
-  it('[TC-28] Given rich Prisma schema + TypeORM Entity name, when harvested, then model/enum/view/type and @@map aliases', async () => {
+  it('[TC-OU3L] Given rich Prisma schema + TypeORM Entity name, when harvested, then model/enum/view/type and @@map aliases', async () => {
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
     await writeFile(
       path.join(scanDir, 'schema.prisma'),
@@ -1187,7 +1187,7 @@ describe('harvestAppConcepts', () => {
 })
 
 describe('harvestRepoEntities', () => {
-  it('[TC-8] Given package and fly declaring the same name, when merged, then two candidates for registry merge', async () => {
+  it('[TC-9PLU] Given package and fly declaring the same name, when merged, then two candidates for registry merge', async () => {
     await writePackage(scanDir, { name: 'edge-worker', dependencies: { koa: '2' } })
     await writeFile(path.join(scanDir, 'fly.toml'), 'app = "edge-worker"\n')
     const result = await harvestRepoEntities(scanDir)
@@ -1195,7 +1195,7 @@ describe('harvestRepoEntities', () => {
     expect(result.candidates.filter(c => c.canonicalName === 'edge-worker')).toHaveLength(2)
   })
 
-  it('[TC-35] Given manifests and in-source declarations, when harvested, then provenance separates them', async () => {
+  it('[TC-L3I6] Given manifests and in-source declarations, when harvested, then provenance separates them', async () => {
     await writePackage(scanDir, { name: 'billing-api', dependencies: { express: '4' } })
     await writeFile(path.join(scanDir, 'fly.toml'), 'app = "billing-prod"\n')
     await mkdir(path.join(scanDir, 'src'), { recursive: true })
@@ -1223,7 +1223,7 @@ describe('harvestRepoEntities', () => {
 })
 
 describe('multi-language package harvest', () => {
-  it('[TC-11] Given go.mod with gin, when harvested, then module is a service', async () => {
+  it('[TC-XTDN] Given go.mod with gin, when harvested, then module is a service', async () => {
     await writeFile(
       path.join(scanDir, 'go.mod'),
       [
@@ -1239,7 +1239,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('service')
   })
 
-  it('[TC-12] Given pyproject.toml with fastapi, when harvested, then project is a service', async () => {
+  it('[TC-2VXD] Given pyproject.toml with fastapi, when harvested, then project is a service', async () => {
     await writeFile(
       path.join(scanDir, 'pyproject.toml'),
       [
@@ -1254,7 +1254,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('service')
   })
 
-  it('[TC-13] Given Cargo.toml with clap bin, when harvested, then package is a cli', async () => {
+  it('[TC-THFI] Given Cargo.toml with clap bin, when harvested, then package is a cli', async () => {
     await writeFile(
       path.join(scanDir, 'Cargo.toml'),
       [
@@ -1275,7 +1275,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('cli')
   })
 
-  it('[TC-14] Given composer.json with laravel, when harvested, then package is a service', async () => {
+  it('[TC-HWG7] Given composer.json with laravel, when harvested, then package is a service', async () => {
     await writeFile(
       path.join(scanDir, 'composer.json'),
       JSON.stringify({
@@ -1289,7 +1289,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('service')
   })
 
-  it('[TC-15] Given Gemfile with rails, when harvested, then Gemfile-only app is a service', async () => {
+  it('[TC-02D3] Given Gemfile with rails, when harvested, then Gemfile-only app is a service', async () => {
     await writeFile(
       path.join(scanDir, 'Gemfile'),
       ['source "https://rubygems.org"', 'gem "rails", "~> 7.1"', 'gem "pg"'].join('\n')
@@ -1301,7 +1301,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.sourceFile).toBe('Gemfile')
   })
 
-  it('[TC-16] Given multi-module pom.xml, when harvested, then modules get identity and part_of', async () => {
+  it('[TC-W8DB] Given multi-module pom.xml, when harvested, then modules get identity and part_of', async () => {
     await writeFile(
       path.join(scanDir, 'pom.xml'),
       [
@@ -1343,7 +1343,7 @@ describe('multi-language package harvest', () => {
     })
   })
 
-  it('[TC-17] Given *.cabal with servant, when harvested, then package is a service', async () => {
+  it('[TC-BE9V] Given *.cabal with servant, when harvested, then package is a service', async () => {
     await writeFile(
       path.join(scanDir, 'billing.cabal'),
       [
@@ -1360,7 +1360,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('service')
   })
 
-  it('[TC-18] Given CMakeLists.txt project(), when harvested, then library candidate', async () => {
+  it('[TC-IO5S] Given CMakeLists.txt project(), when harvested, then library candidate', async () => {
     await writeFile(
       path.join(scanDir, 'CMakeLists.txt'),
       [
@@ -1374,7 +1374,7 @@ describe('multi-language package harvest', () => {
     expect(result.candidates[0]?.kind).toBe('library')
   })
 
-  it('[TC-19] Given *.csproj Sdk.Web, when harvested, then project is a service with sln part_of', async () => {
+  it('[TC-U6XD] Given *.csproj Sdk.Web, when harvested, then project is a service with sln part_of', async () => {
     await writeFile(
       path.join(scanDir, 'Acme.sln'),
       [
@@ -1407,7 +1407,7 @@ describe('multi-language package harvest', () => {
     })
   })
 
-  it('[TC-20] Given build.sbt with play, when harvested, then project is a service', async () => {
+  it('[TC-Z7IV] Given build.sbt with play, when harvested, then project is a service', async () => {
     await writeFile(
       path.join(scanDir, 'build.sbt'),
       [

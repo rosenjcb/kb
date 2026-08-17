@@ -54,7 +54,7 @@ describe('harvested relationship edges', () => {
    * workspace repo that did not happen to list `.` in its workspace globs shipped zero
    * `part_of` edges.
    */
-  it('[TC-36] writes workspace part_of edges when the root is not a workspace member', async () => {
+  it('[TC-ZI70] writes workspace part_of edges when the root is not a workspace member', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
       JSON.stringify({ name: 'acme-monorepo', workspaces: ['packages/*'] })
@@ -87,7 +87,7 @@ describe('harvested relationship edges', () => {
    * The repo entity was upserted but never registered as a resolvable edge endpoint,
    * so nothing could ever be `part_of` the repo it lives in.
    */
-  it('[TC-37] attaches harvested packages to the repo entity', async () => {
+  it('[TC-QGZY] attaches harvested packages to the repo entity', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
       JSON.stringify({ name: 'solo-service', dependencies: { express: '^4' } })
@@ -113,7 +113,7 @@ describe('harvested relationship edges', () => {
    * edges at all: `pattern-engine` emits candidates only. Containment is derivable from
    * the source file each candidate already carries.
    */
-  it('[TC-38] derives containment for source-pattern entities from their source file', async () => {
+  it('[TC-29IO] derives containment for source-pattern entities from their source file', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
       JSON.stringify({ name: 'acme-monorepo', workspaces: ['packages/*'] })
@@ -149,7 +149,7 @@ describe('harvested relationship edges', () => {
    * Dependency lists were parsed on every scan for the kind rubric and then discarded,
    * so `depends_on` had no writer anywhere in the codebase.
    */
-  it('[TC-39] writes depends_on between packages and counts third-party targets as external', async () => {
+  it('[TC-8Z1A] writes depends_on between packages and counts third-party targets as external', async () => {
     await writeFile(
       path.join(scanDir, 'package.json'),
       JSON.stringify({ name: 'acme-monorepo', workspaces: ['packages/*'] })
@@ -189,7 +189,7 @@ describe('harvested relationship edges', () => {
    * A repo in an ecosystem with no YAML profile (and no manifest of any kind) must
    * degrade to a clean no-op rather than a broken or half-written registry.
    */
-  it('[TC-40] degrades cleanly when nothing can be harvested', async () => {
+  it('[TC-R7M5] degrades cleanly when nothing can be harvested', async () => {
     await writeFile(path.join(scanDir, 'main.zig'), 'pub fn main() void {}\n')
 
     const stats = await runEntityIndexCycle({ baseDir, scanDir, gitRepo: 'zig-repo' })

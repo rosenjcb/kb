@@ -56,7 +56,7 @@ describe('FactsDocumentReader', () => {
     expect(response.total).toBeGreaterThan(0)
   })
 
-  it('[TC-19] expands generic query via LLM and merges results from all sub-queries', async () => {
+  it('[TC-9F1C] expands generic query via LLM and merges results from all sub-queries', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertDocument({
@@ -81,7 +81,7 @@ describe('FactsDocumentReader', () => {
     expect(response.total).toBeGreaterThan(0)
   })
 
-  it('[TC-20] skips expansion when query has enough meaningful tokens', async () => {
+  it('[TC-YX04] skips expansion when query has enough meaningful tokens', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'sqlite hybrid search ranks documents and symbols together' })
@@ -104,7 +104,7 @@ describe('FactsDocumentReader', () => {
     expect(calls).toBe(0)
   })
 
-  it('[TC-21] falls back to single-query when LLM returns empty expansion', async () => {
+  it('[TC-R8YZ] falls back to single-query when LLM returns empty expansion', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'kb graph command summarizes documents and symbols' })
@@ -120,7 +120,7 @@ describe('FactsDocumentReader', () => {
     expect(response.total).toBeGreaterThanOrEqual(0)
   })
 
-  it('[TC-22] Given allFacts in input, then returns all facts without query-based filtering', async () => {
+  it('[TC-CZZQ] Given allFacts in input, then returns all facts without query-based filtering', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'fact one about indexing pipeline' })
@@ -133,7 +133,7 @@ describe('FactsDocumentReader', () => {
     expect(response.retrieval.detail).toBe('all-facts')
   })
 
-  it('[TC-23] Given defaultAllFacts constructor param, then every queryDocuments call uses all-facts mode', async () => {
+  it('[TC-ACV5] Given defaultAllFacts constructor param, then every queryDocuments call uses all-facts mode', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'only fact in the store for all-facts mode' })
@@ -146,7 +146,7 @@ describe('FactsDocumentReader', () => {
     expect(second.retrieval.detail).toBe('all-facts:already-in-context')
   })
 
-  it('[TC-24] Given all_facts mode, then second call in same session returns empty (already-in-context)', async () => {
+  it('[TC-V7Q2] Given all_facts mode, then second call in same session returns empty (already-in-context)', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'session fact for all-facts dedupe' })
@@ -158,7 +158,7 @@ describe('FactsDocumentReader', () => {
     expect(second.total).toBe(0)
   })
 
-  it('[TC-25] Given all_facts mode via input flag, then deduplication also applies on second call', async () => {
+  it('[TC-8VGJ] Given all_facts mode via input flag, then deduplication also applies on second call', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'another all-facts session row' })
@@ -170,7 +170,7 @@ describe('FactsDocumentReader', () => {
     expect(second.retrieval.detail).toBe('all-facts:already-in-context')
   })
 
-  it('[TC-26] Given allFacts mode, then LLM query expansion is never invoked', async () => {
+  it('[TC-D19K] Given allFacts mode, then LLM query expansion is never invoked', async () => {
     const dbPath = await createDbPath()
     const indexer = new SqliteKbIndexer({ dbPath })
     indexer.upsertCuratedFact({ text: 'expansion should not be called for allFacts' })

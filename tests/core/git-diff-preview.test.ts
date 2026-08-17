@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { colorizeUnifiedDiff, createUnifiedDiff } from '@kb/core/core/git-diff-preview.js'
 
 describe('core/createUnifiedDiff', () => {
-  it('[TC-58] produces a valid unified diff with --- and +++ headers', () => {
+  it('[TC-5OC8] produces a valid unified diff with --- and +++ headers', () => {
     const diff = createUnifiedDiff('file.md', 'old content', 'new content')
     expect(diff).toContain('--- file.md')
     expect(diff).toContain('+++ file.md')
     expect(diff).toContain('@@')
   })
 
-  it('[TC-59] headers do NOT contain full document content', () => {
+  it('[TC-LXRC] headers do NOT contain full document content', () => {
     const before = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5'
     const after = 'Line 1\nLine 2\nChanged\nLine 4\nLine 5'
     const diff = createUnifiedDiff('doc.md', before, after)
@@ -21,7 +21,7 @@ describe('core/createUnifiedDiff', () => {
     expect(headerLine).not.toContain('Line 2')
   })
 
-  it('[TC-60] the diff body (not header) shows the actual changed line', () => {
+  it('[TC-CYIQ] the diff body (not header) shows the actual changed line', () => {
     const before = 'same line\nold version\nsame line'
     const after = 'same line\nnew version\nsame line'
     const diff = createUnifiedDiff('f.md', before, after)
@@ -29,7 +29,7 @@ describe('core/createUnifiedDiff', () => {
     expect(diff).toContain('+new version')
   })
 
-  it('[TC-61] does not duplicate full document content before the hunks', () => {
+  it('[TC-LCG9] does not duplicate full document content before the hunks', () => {
     const before = Array.from({ length: 20 }, (_, i) => `Para ${i + 1}`).join('\n')
     const after = before.replace('Para 10', 'Changed')
     const diff = createUnifiedDiff('doc.md', before, after)
@@ -40,7 +40,7 @@ describe('core/createUnifiedDiff', () => {
     expect(occurrences).toBeLessThan(5)
   })
 
-  it('[TC-62] context defaults to 3 lines', () => {
+  it('[TC-I9SO] context defaults to 3 lines', () => {
     const lines = Array.from({ length: 10 }, (_, i) => `L${i}`)
     const changed = [...lines]
     changed[5] = 'CHANGED'
@@ -51,12 +51,12 @@ describe('core/createUnifiedDiff', () => {
 })
 
 describe('core/colorizeUnifiedDiff', () => {
-  it('[TC-63] returns patch unchanged when color=false', () => {
+  it('[TC-YQCF] returns patch unchanged when color=false', () => {
     const patch = '--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new'
     expect(colorizeUnifiedDiff(patch, { color: false })).toBe(patch)
   })
 
-  it('[TC-64] when color=true processes all lines without throwing', () => {
+  it('[TC-O4MN] when color=true processes all lines without throwing', () => {
     const patch = '--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\n context'
     // Chalk may be disabled in headless test envs, but the function must not throw
     // and must return a string with the same number of lines.

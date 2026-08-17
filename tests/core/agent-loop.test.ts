@@ -21,7 +21,7 @@ class FakeProvider implements LLMProvider {
 }
 
 describe('agentLoop', () => {
-  it('[TC-1] Given a provider response with no tool calls, then should emit text metadata and done in order', async () => {
+  it('[TC-JLX4] Given a provider response with no tool calls, then should emit text metadata and done in order', async () => {
     const provider = new FakeProvider([
       {
         text: 'hello',
@@ -40,7 +40,7 @@ describe('agentLoop', () => {
     expect(events[0]).toEqual({ type: 'text', content: 'hello' })
   })
 
-  it('[TC-2] Given two slow tools in one turn and parallelToolCalls true, then overlap execution', async () => {
+  it('[TC-QQXJ] Given two slow tools in one turn and parallelToolCalls true, then overlap execution', async () => {
     const def: ToolDefinition = {
       name: 'noop',
       description: 'noop',
@@ -87,7 +87,7 @@ describe('agentLoop', () => {
     expect(maxConcurrent).toBe(2)
   })
 
-  it('[TC-3] Given a provider response with tool calls and maxTurns one, then should emit tool events and max-turn termination', async () => {
+  it('[TC-DVEO] Given a provider response with tool calls and maxTurns one, then should emit tool events and max-turn termination', async () => {
     const provider = new FakeProvider([
       {
         text: 'calling tool',
@@ -113,7 +113,7 @@ describe('agentLoop', () => {
     expect(events.at(-1)).toEqual({ type: 'done', reason: 'max_turns_reached' })
   })
 
-  it('[TC-4] Given runAgent wrapping agentLoop, then should return all streamed events as an array', async () => {
+  it('[TC-20G2] Given runAgent wrapping agentLoop, then should return all streamed events as an array', async () => {
     const provider = new FakeProvider([
       {
         text: 'wrapped',
@@ -128,7 +128,7 @@ describe('agentLoop', () => {
     expect(events[2]).toEqual({ type: 'done', reason: 'no_tool_calls' })
   })
 
-  it('[TC-5] Given a collector, then records a stage per LLM turn with correct token counts', async () => {
+  it('[TC-7VQ2] Given a collector, then records a stage per LLM turn with correct token counts', async () => {
     const provider = new FakeProvider([
       {
         text: 'hi',

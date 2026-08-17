@@ -6,19 +6,19 @@ import { parseShellArgs, runCommandForTui } from '@kb/client/tui/runner.js'
 // ---------------------------------------------------------------------------
 
 describe('parseShellArgs', () => {
-  it('[TC-55] splits a plain command into tokens', () => {
+  it('[TC-94OZ] splits a plain command into tokens', () => {
     expect(parseShellArgs('query docs graph')).toEqual(['query', 'docs', 'graph'])
   })
 
-  it('[TC-56] handles a double-quoted argument', () => {
+  it('[TC-M8AN] handles a double-quoted argument', () => {
     expect(parseShellArgs('query "what is the project"')).toEqual(['query', 'what is the project'])
   })
 
-  it('[TC-57] handles a single-quoted argument', () => {
+  it('[TC-SZ3O] handles a single-quoted argument', () => {
     expect(parseShellArgs("query 'what is the project'")).toEqual(['query', 'what is the project'])
   })
 
-  it('[TC-58] handles multiple quoted args', () => {
+  it('[TC-MA7P] handles multiple quoted args', () => {
     expect(parseShellArgs('submit "fact one" --base "my base"')).toEqual([
       'submit',
       'fact one',
@@ -27,16 +27,16 @@ describe('parseShellArgs', () => {
     ])
   })
 
-  it('[TC-59] ignores leading and trailing whitespace', () => {
+  it('[TC-K7BD] ignores leading and trailing whitespace', () => {
     expect(parseShellArgs('  query  docs  ')).toEqual(['query', 'docs'])
   })
 
-  it('[TC-60] returns empty array for blank input', () => {
+  it('[TC-N0IY] returns empty array for blank input', () => {
     expect(parseShellArgs('')).toEqual([])
     expect(parseShellArgs('   ')).toEqual([])
   })
 
-  it('[TC-61] handles an unclosed quote by appending the partial token', () => {
+  it('[TC-88J1] handles an unclosed quote by appending the partial token', () => {
     // Unclosed quote → rest of string is the token
     expect(parseShellArgs('query "unclosed')).toEqual(['query', 'unclosed'])
   })
@@ -58,7 +58,7 @@ describe('runCommandForTui', () => {
     vi.mocked(runMainWithOutput).mockReset()
   })
 
-  it('[TC-62] captures log output from runMainWithOutput', async () => {
+  it('[TC-QVW0] captures log output from runMainWithOutput', async () => {
     vi.mocked(runMainWithOutput).mockImplementation(async (_args, out) => {
       out.log('line one')
       out.log('line two')
@@ -68,7 +68,7 @@ describe('runCommandForTui', () => {
     expect(result).toBe('line one\nline two')
   })
 
-  it('[TC-63] captures error output from runMainWithOutput', async () => {
+  it('[TC-2RBM] captures error output from runMainWithOutput', async () => {
     vi.mocked(runMainWithOutput).mockImplementation(async (_args, out) => {
       out.error('something went wrong')
     })
@@ -77,7 +77,7 @@ describe('runCommandForTui', () => {
     expect(result).toBe('something went wrong')
   })
 
-  it('[TC-64] captures write (streaming) output', async () => {
+  it('[TC-HVU0] captures write (streaming) output', async () => {
     vi.mocked(runMainWithOutput).mockImplementation(async (_args, out) => {
       out.write('chunk one\n')
       out.write('chunk two\n')
@@ -87,19 +87,19 @@ describe('runCommandForTui', () => {
     expect(result).toBe('chunk one\nchunk two')
   })
 
-  it('[TC-65] returns empty string when runMainWithOutput produces no output', async () => {
+  it('[TC-06X3] returns empty string when runMainWithOutput produces no output', async () => {
     vi.mocked(runMainWithOutput).mockResolvedValue(undefined)
     const result = await runCommandForTui(['skills', 'install'], {} as never)
     expect(result).toBe('')
   })
 
-  it('[TC-66] captures thrown errors as output text', async () => {
+  it('[TC-0VOS] captures thrown errors as output text', async () => {
     vi.mocked(runMainWithOutput).mockRejectedValue(new Error('provider not configured'))
     const result = await runCommandForTui(['query', 'test'], {} as never)
     expect(result).toBe('provider not configured')
   })
 
-  it('[TC-68] signals thrown errors via the onError callback', async () => {
+  it('[TC-U3RV] signals thrown errors via the onError callback', async () => {
     vi.mocked(runMainWithOutput).mockRejectedValue(new Error('unauthorized'))
     const onError = vi.fn()
     const result = await runCommandForTui(['base', 'list'], {} as never, undefined, undefined, onError)
@@ -108,7 +108,7 @@ describe('runCommandForTui', () => {
     expect(result).toBe('unauthorized')
   })
 
-  it('[TC-69] does not invoke onError when the command succeeds', async () => {
+  it('[TC-VG2C] does not invoke onError when the command succeeds', async () => {
     vi.mocked(runMainWithOutput).mockImplementation(async (_args, out) => {
       out.log('ok')
     })
@@ -117,7 +117,7 @@ describe('runCommandForTui', () => {
     expect(onError).not.toHaveBeenCalled()
   })
 
-  it('[TC-67] passes args through to runMainWithOutput', async () => {
+  it('[TC-VTOQ] passes args through to runMainWithOutput', async () => {
     vi.mocked(runMainWithOutput).mockResolvedValue(undefined)
     await runCommandForTui(['facts', 'list', '--limit', '5'], {} as never)
     expect(runMainWithOutput).toHaveBeenCalledWith(

@@ -17,7 +17,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('MarkdownMDWriterTool specialized operations', () => {
-  it('[TC-51] Given append_to_document, then should append content at bottom by default', async () => {
+  it('[TC-0DXL] Given append_to_document, then should append content at bottom by default', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -39,7 +39,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(final.indexOf('Initial entry')).toBeLessThan(final.indexOf('Second entry'))
   })
 
-  it('[TC-52] Given append_to_document with top position, then should prepend content', async () => {
+  it('[TC-3KSD] Given append_to_document with top position, then should prepend content', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -60,7 +60,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(final.indexOf('Prepended header text')).toBeLessThan(final.indexOf('# Notes'))
   })
 
-  it('[TC-53] Given update_document, then should replace content and preserve created timestamp', async () => {
+  it('[TC-IJW5] Given update_document, then should replace content and preserve created timestamp', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -84,7 +84,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(updated.createdAt).toBe(first.createdAt)
   })
 
-  it('[TC-54] Given prune_document, then should remove matching section and keep others', async () => {
+  it('[TC-NLNW] Given prune_document, then should remove matching section and keep others', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -116,7 +116,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(final).not.toContain('Remove this section')
   })
 
-  it('[TC-55] Given merge_documents in user-decides mode, then should return pending approval status', async () => {
+  it('[TC-7VJ8] Given merge_documents in user-decides mode, then should return pending approval status', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -143,7 +143,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(result.sourceDocIds).toEqual(['auth-v2'])
   })
 
-  it('[TC-56] Given merge_documents in auto mode, then should return merged status', async () => {
+  it('[TC-6WUJ] Given merge_documents in auto mode, then should return merged status', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -173,7 +173,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(merged).toContain('## Merged Notes (auth-v2)')
   })
 
-  it('[TC-57] Given reconcileFacts default policy, then replaces in non-session docs and skips session-log docs', async () => {
+  it('[TC-8ODM] Given reconcileFacts default policy, then replaces in non-session docs and skips session-log docs', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 
@@ -221,7 +221,7 @@ describe('MarkdownMDWriterTool specialized operations', () => {
     expect(sessionContent).toContain('foo')
   })
 
-  it('[TC-58] Given reconcileFacts with includeSessionLogs true, then updates session-log documents too', async () => {
+  it('[TC-NMOK] Given reconcileFacts with includeSessionLogs true, then updates session-log documents too', async () => {
     const baseDir = await createTempDir()
     const writer = new MarkdownMDWriterTool({ baseDir })
 

@@ -6,7 +6,7 @@ import {
 import { formatGroupedChatReply, groupSources } from '@kb/core/service/source-grouping.js'
 
 describe('inlineMarkdownToSlack', () => {
-  it('[TC-5] maps bold, links, and code to Slack mrkdwn', () => {
+  it('[TC-7V3F] maps bold, links, and code to Slack mrkdwn', () => {
     expect(inlineMarkdownToSlack('see **bold** and `code`')).toBe('see *bold* and `code`')
     expect(inlineMarkdownToSlack('[docs](https://example.com/a)')).toBe(
       '<https://example.com/a|docs>',
@@ -15,13 +15,13 @@ describe('inlineMarkdownToSlack', () => {
 })
 
 describe('markdownToSlackMrkdwn', () => {
-  it('[TC-5] turns ATX headers into bold lines', () => {
+  it('[TC-7V3F] turns ATX headers into bold lines', () => {
     expect(markdownToSlackMrkdwn('### Key Differences\n\nHello.')).toBe(
       '*Key Differences*\n\nHello.',
     )
   })
 
-  it('[TC-5] rewrites GFM tables into ·-separated rows', () => {
+  it('[TC-7V3F] rewrites GFM tables into ·-separated rows', () => {
     const md = [
       '| Feature | kb query | kb chat |',
       '| :--- | :--- | :--- |',
@@ -34,14 +34,14 @@ describe('markdownToSlackMrkdwn', () => {
     expect(out).not.toContain('| :---')
   })
 
-  it('[TC-5] preserves fenced code and converts surrounding markdown', () => {
+  it('[TC-7V3F] preserves fenced code and converts surrounding markdown', () => {
     const out = markdownToSlackMrkdwn('### Install\n\n```\nnpm i lua\n```\n\nUse **wasm**.')
     expect(out).toContain('*Install*')
     expect(out).toContain('```\nnpm i lua\n```')
     expect(out).toContain('Use *wasm*.')
   })
 
-  it('[TC-5] formats lists with Slack bullets', () => {
+  it('[TC-7V3F] formats lists with Slack bullets', () => {
     const out = markdownToSlackMrkdwn('- one\n- two\n\n1. a\n2. b')
     expect(out).toContain('• one')
     expect(out).toContain('• two')
@@ -51,7 +51,7 @@ describe('markdownToSlackMrkdwn', () => {
 })
 
 describe('formatGroupedChatReply slack flavor', () => {
-  it('[TC-6] converts the answer body to mrkdwn before appending Sources', () => {
+  it('[TC-WLK4] converts the answer body to mrkdwn before appending Sources', () => {
     const grouped = groupSources(
       [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
       {

@@ -30,7 +30,7 @@ async function makeBaseWithFacts(): Promise<string> {
 }
 
 describe('createKbService', () => {
-                it('[TC-17] readFacts returns matching facts from the on-disk index', async () => {
+                it('[TC-I3L5] readFacts returns matching facts from the on-disk index', async () => {
     const baseDir = await makeBaseWithFacts()
     const service = createKbService({ baseDir, config: {} as KbConfig })
 
@@ -46,7 +46,7 @@ describe('createKbService', () => {
     await service.close()
   })
 
-                it('[TC-18] health reports the base name and a present index mtime', async () => {
+                it('[TC-RS4U] health reports the base name and a present index mtime', async () => {
     const baseDir = await makeBaseWithFacts()
     const service = createKbService({ baseDir, config: {} as KbConfig })
 
@@ -57,7 +57,7 @@ describe('createKbService', () => {
     await service.close()
   })
 
-                it('[TC-19] serializes concurrent reindex calls via the in-process guard', async () => {
+                it('[TC-M0WU] serializes concurrent reindex calls via the in-process guard', async () => {
     const baseDir = await makeBaseWithFacts()
     const service = createKbService({ baseDir, config: {} as KbConfig })
 
@@ -68,7 +68,7 @@ describe('createKbService', () => {
     await service.close()
   })
 
-                it('[TC-20] health reports indexing while background bootstrap is still running', async () => {
+                it('[TC-2L4T] health reports indexing while background bootstrap is still running', async () => {
     const baseDir = await makeBaseWithFacts()
     const bootstrapState = {
       indexing: true,
@@ -88,7 +88,7 @@ describe('createKbService', () => {
     await service.close()
   })
 
-                it('[TC-21] health reports not ready when bootstrap failed', async () => {
+                it('[TC-NFCZ] health reports not ready when bootstrap failed', async () => {
     const baseDir = await makeBaseWithFacts()
     const service = createKbService({
       baseDir,

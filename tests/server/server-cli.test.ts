@@ -96,7 +96,7 @@ describe('runServerMain version', () => {
     vi.clearAllMocks()
   })
 
-  it('[TC-49] prints version for --version and does not start the daemon', async () => {
+  it('[TC-QFNG] prints version for --version and does not start the daemon', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     await runServerMain(['--version'])
@@ -114,7 +114,7 @@ describe('runServerCommand bootstrap progress', () => {
     vi.clearAllMocks()
   })
 
-  it('[TC-47] forwards background init progress lines into server logging', async () => {
+  it('[TC-YOW6] forwards background init progress lines into server logging', async () => {
     const out = {
       log: vi.fn(),
       error: vi.fn(),
@@ -140,7 +140,7 @@ describe('runServerCommand bootstrap progress', () => {
     await serverPromise
   })
 
-  it('[TC-48] starts the reindex scheduler only after bootstrap init completes', async () => {
+  it('[TC-82TT] starts the reindex scheduler only after bootstrap init completes', async () => {
     let resolveInit!: () => void
     vi.mocked(runKbInit).mockImplementationOnce(
       async (options: { progressSink?: (line: string) => void }) =>
