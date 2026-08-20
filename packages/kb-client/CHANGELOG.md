@@ -1,5 +1,16 @@
 # @kb/client
 
+## 2.0.6
+
+### Patch Changes
+
+- Qualify every cited path with `owner/repo`.
+
+  A base can hold many repos, so a bare repo-relative path never said which repo a file came from, and the qualification that did exist was conditional on the answer spanning repos. Every surface now shows `owner/repo/relPath` (GitHub `nameWithOwner`). Citations also carry `repo` and `relPath` as separate fields — including on the lean MCP/REST payload — so a consumer can open the file locally without splitting the string, which is guesswork when the owner contains slashes (GitLab subgroups). `LeanSource` gains `repo`/`relPath`/`href`, and the CLI now renders `href` on lean payloads instead of discarding it.
+
+- Updated dependencies
+  - @kb/core@2.0.6
+
 ## 2.0.5
 
 ### Patch Changes

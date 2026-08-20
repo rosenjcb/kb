@@ -4,7 +4,7 @@ title: Chat Reply Presentation
 description: Shared answer + Sources footer; per-repo blob links from the volume registry.
 resource: ./chat-reply.ts
 tags: [chat, slack, presentation, sources]
-timestamp: 2026-08-19T19:20:00Z
+timestamp: 2026-08-19T19:55:00Z
 ---
 
 # Chat reply presentation
@@ -33,9 +33,18 @@ Each tracked clone has its own primary branch: whatever it was cloned on (`url#b
 | `git-sync.ts` | `gitRemoteToBrowseUrl` (ssh/https → browse root) |
 | `markdown-to-slack.ts` | Deterministic Markdown → Slack mrkdwn |
 
-A citation has two forms: the repo-relative `path` an agent opens and the blob `href` a human clicks. Both come from `sourceRepos`, which the serializers **require** — a surface cannot omit it.
+A citation carries three fields, all from `sourceRepos`, which the serializers **require** — a surface cannot omit it:
 
-The clone dir name (`rosenjcb-kb`, `kb-2026-08-15-1419-kb`) is provisioning detail and never appears in either form. Multi-repo answers qualify the path with the public `repoId` (`rosenjcb/kb/path`); single-repo answers are bare repo-relative. Unknown slug / local remotes → path only, no href.
+| Field | Value | For |
+|---|---|---|
+| `path` | `rosenjcb/kb/packages/kb-core/src/cli/help.ts` | display, everywhere |
+| `repo` | `rosenjcb/kb` | which repo it came from |
+| `relPath` | `packages/kb-core/src/cli/help.ts` | opening/grepping locally |
+| `href` | `https://github.com/rosenjcb/kb/blob/main/…` | clicking |
+
+`path` is **always** qualified — a base can hold many repos, so an unqualified path does not say which one a file came from. The `owner/repo` form is GitHub's `nameWithOwner`, the same shape `gh --repo OWNER/REPO` takes. No `@` prefix: that is npm scope notation and would read as a package.
+
+The clone dir name (`rosenjcb-kb`, `kb-2026-08-15-1419-kb`) is provisioning detail and never appears in any form. Unknown slug / local remotes → bare `relPath`, no `repo`, no `href`.
 
 ## Integration
 

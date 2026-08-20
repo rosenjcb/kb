@@ -84,7 +84,9 @@ describe('dispatchMcpToolCall', () => {
     expect(result.isError).toBeUndefined()
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBe('synth:true')
-    expect(body.sources).toEqual([{ path: 'src/auth/login.ts', symbols: ['loginHandler'] }])
+    expect(body.sources).toEqual([
+      { path: 'src/auth/login.ts', relPath: 'src/auth/login.ts', symbols: ['loginHandler'] },
+    ])
     // The noise the trimmed payload exists to drop:
     expect(body.retrieval).toBeUndefined()
     expect(body.results).toBeUndefined()
@@ -551,7 +553,7 @@ describe('query synthesis failure', () => {
     expect(body.answerError.kind).toBe('insufficient_credits')
     expect(body.notes[0]).toContain('Answer synthesis failed')
     // Sources still ship — retrieval worked, only the answer-writing step failed.
-    expect(body.sources).toEqual([{ path: 'src/auth/login.ts' }])
+    expect(body.sources).toEqual([{ path: 'src/auth/login.ts', relPath: 'src/auth/login.ts' }])
   })
 
   it('[TC-RBLQ] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {

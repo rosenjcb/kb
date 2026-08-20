@@ -37,7 +37,8 @@ function citationParts(source: LeanSource | GroupedSource): {
   if ('label' in source) {
     return { label: source.label, href: source.href, symbols: source.symbols }
   }
-  return { label: source.path, symbols: source.symbols }
+  // Lean payloads carry `href` too, so the CLI links them the same as verbose ones.
+  return { label: source.path, href: source.href, symbols: source.symbols }
 }
 
 /**

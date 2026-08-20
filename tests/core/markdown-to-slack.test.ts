@@ -60,6 +60,7 @@ describe('formatGroupedChatReply slack flavor', () => {
             slug: 'rosenjcb-kb',
             browseUrl: 'https://github.com/rosenjcb/kb',
             branch: 'main',
+            repoId: 'rosenjcb/kb',
           },
         ],
       },
@@ -69,7 +70,7 @@ describe('formatGroupedChatReply slack flavor', () => {
     expect(text).toContain('*Chat* uses tools.')
     expect(text).toContain('*Sources*')
     expect(text).toContain(
-      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|rosenjcb/kb/packages/kb-core/src/core/CHAT.md>',
     )
     expect(text).not.toContain('###')
     expect(text).not.toContain('**Chat**')

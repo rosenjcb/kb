@@ -25,14 +25,17 @@ describe('serializeQueryResult', () => {
             slug: 'rosenjcb-kb',
             browseUrl: 'https://github.com/rosenjcb/kb',
             branch: 'main',
+            repoId: 'rosenjcb/kb',
           },
         ],
       },
     )
     expect(body.sources).toEqual([
       {
-        path: 'src/a.ts',
-        label: 'src/a.ts',
+        path: 'rosenjcb/kb/src/a.ts',
+        repo: 'rosenjcb/kb',
+        relPath: 'src/a.ts',
+        label: 'rosenjcb/kb/src/a.ts',
         href: 'https://github.com/rosenjcb/kb/blob/main/src/a.ts',
         symbols: [],
         facts: [{ id: 'f1' }],

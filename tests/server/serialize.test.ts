@@ -145,8 +145,8 @@ describe('serializeMcpQueryResult', () => {
       status: 'accepted',
       answer: 'Login flows through `login.ts` and `session.ts`.',
       sources: [
-        { path: 'src/auth/login.ts', symbols: ['loginHandler'] },
-        { path: 'src/auth/session.ts' },
+        { path: 'src/auth/login.ts', relPath: 'src/auth/login.ts', symbols: ['loginHandler'] },
+        { path: 'src/auth/session.ts', relPath: 'src/auth/session.ts' },
       ],
       evidence: 'strong',
     })
@@ -179,7 +179,9 @@ describe('serializeMcpQueryResult', () => {
     )
     expect(body.sources).toEqual([
       {
-        path: 'src/auth/login.ts',
+        path: 'rosenjcb/kb/src/auth/login.ts',
+        repo: 'rosenjcb/kb',
+        relPath: 'src/auth/login.ts',
         symbols: ['loginHandler'],
         href: 'https://github.com/rosenjcb/kb/blob/main/src/auth/login.ts',
       },
@@ -216,7 +218,11 @@ describe('serializeMcpQueryResult', () => {
       data: { answer: 'See `a.ts`.', results, retrieval: {} },
     }, { sourceRepos: [] })
     expect(body.sources).toHaveLength(5)
-    expect(body.sources[0]).toEqual({ path: 'src/a.ts', symbols: ['alpha', 'beta'] })
+    expect(body.sources[0]).toEqual({
+      path: 'src/a.ts',
+      relPath: 'src/a.ts',
+      symbols: ['alpha', 'beta'],
+    })
     expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
   })
 

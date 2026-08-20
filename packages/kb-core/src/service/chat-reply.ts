@@ -55,8 +55,15 @@ export interface ChatReplyFormatOptions {
 }
 
 export interface ChatSourceDisplay {
-  /** Repo-relative (or `slug/path` when multi-repo) label shown to the user. */
+  /**
+   * Fully qualified `owner/repo/relPath` — the form every surface shows. Falls
+   * back to bare `relPath` when no registry entry identifies the repo.
+   */
   label: string
+  /** `owner/repo` (GitHub `nameWithOwner`) when the repo is known. */
+  repo?: string
+  /** Repo-relative path on its own, for opening/grepping the file locally. */
+  relPath: string
   /** Optional deep link (GitHub/GitLab blob URL, etc.). */
   href?: string
   symbol?: string
@@ -125,12 +132,12 @@ export function resolveChatSourceDisplay(
   if (raw.startsWith('fact://')) {
     return {
       label: raw,
+      relPath: raw,
       ...(source.symbol ? { symbol: source.symbol } : {}),
     }
   }
 
   const bySlug = new Map(sourceRepos.map(r => [r.slug, r]))
-  const multi = sourceRepos.length > 1
   const hinted = (source.gitRepo || '').trim()
   const firstSeg = raw.split('/')[0] || ''
   const slug =
@@ -151,9 +158,11 @@ export function resolveChatSourceDisplay(
 
   if (!relPath) return null
 
-  // Repo-relative by default; qualified by public identity only when the answer
-  // spans repos. The clone dir name is never a component of either form.
-  const label = repo && multi ? `${repo.repoId}/${relPath}` : relPath
+  // Always `owner/repo/relPath` (GitHub `nameWithOwner` + path) — a base can hold
+  // many repos, so an unqualified path does not say which one it came from. The
+  // clone dir name is never a component. No registry entry → bare path, which is
+  // the most that can honestly be said about it.
+  const label = repo ? `${repo.repoId}/${relPath}` : relPath
 
   let href: string | undefined
   if (repo && relPath) {
@@ -166,6 +175,8 @@ export function resolveChatSourceDisplay(
 
   return {
     label,
+    ...(repo ? { repo: repo.repoId } : {}),
+    relPath,
     ...(href ? { href } : {}),
     ...(source.symbol ? { symbol: source.symbol } : {}),
   }

@@ -120,7 +120,9 @@ describe('createHttpServer', () => {
     const body = await res.json()
     expect(body.answer).toBe('answer for: how does auth work')
     // Default is the lean agent payload — no fact dump or retrieval telemetry.
-    expect(body.sources).toEqual([{ path: 'src/docs/auth.md', symbols: ['AuthDoc'] }])
+    expect(body.sources).toEqual([
+      { path: 'src/docs/auth.md', relPath: 'src/docs/auth.md', symbols: ['AuthDoc'] },
+    ])
     expect(body.results).toBeUndefined()
     expect(body.retrieval).toBeUndefined()
   })
