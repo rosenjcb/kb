@@ -53,6 +53,12 @@ tmp/
 .github/**
 !.github/SKILLS/
 !.github/SKILLS/**
+# Without these, `git add .github/workflows/<new>.yml` is refused by `.github/**`
+# above — existing workflows keep working only because they are already tracked,
+# so a NEW workflow silently never lands. The header says workflows are tracked;
+# these make that true.
+!.github/workflows/
+!.github/workflows/**
 
 # Misc
 tickets/

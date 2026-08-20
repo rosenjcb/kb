@@ -63,8 +63,8 @@ describe('serializeQueryResult', () => {
         },
       },
     }
-    const rest = serializeQueryResult(result)
-    const mcp = serializeMcpQueryResult(result)
+    const rest = serializeQueryResult(result, { sourceRepos: [] })
+    const mcp = serializeMcpQueryResult(result, { sourceRepos: [] })
     expect(rest.evidence).toBe('weak')
     expect(mcp.evidence).toBe('weak')
     expect(mcp.notes).toEqual(rest.notes)

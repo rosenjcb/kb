@@ -1,5 +1,13 @@
 # @kb/core
 
+## 2.0.5
+
+### Patch Changes
+
+- Restore blob links on serve-only nodes and keep clone dir names out of citations.
+
+  `resolveBaseRepoRegistry` now falls back to the snapshot manifest's provenance when a base carries no `repos/*` clones, so a node hydrated from a snapshot still resolves blob hrefs. Citation paths are repo-relative and qualified by the public `org/repo` id when an answer spans repos — never by the local clone slug. The lean MCP payload carries both citation forms, and `sourceRepos` is now required by the serializers so no surface can silently drop links.
+
 ## 2.0.4
 
 ### Patch Changes

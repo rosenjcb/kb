@@ -15,12 +15,14 @@ const kbRepo = {
   slug: 'rosenjcb-kb',
   browseUrl: 'https://github.com/rosenjcb/kb',
   branch: 'main',
+  repoId: 'rosenjcb/kb',
 }
 
 const raylibRepo = {
   slug: 'raysan5-raylib',
   browseUrl: 'https://github.com/raysan5/raylib',
   branch: 'master',
+  repoId: 'raysan5/raylib',
 }
 
 describe('gitRemoteToBrowseUrl', () => {
@@ -65,7 +67,7 @@ describe('chatSourceReposFromBaseRepos', () => {
     // links against `HEAD`, which the forge resolves to its default branch.
     expect(chatSourceReposFromBaseRepos(repos)).toEqual([
       kbRepo,
-      { slug: 'acme-x', browseUrl: 'https://github.com/acme/x', branch: 'HEAD' },
+      { slug: 'acme-x', browseUrl: 'https://github.com/acme/x', branch: 'HEAD', repoId: 'acme/x' },
     ])
   })
 })
@@ -115,7 +117,7 @@ describe('groupSources', () => {
     expect(out[0].factCount).toBe(2)
   })
 
-  it('[TC-TULY] multi-repo: each slug uses its own browse URL and primary branch', () => {
+  it('[TC-TULY] multi-repo: each path is qualified by public repo id, not the clone dir', () => {
     const out = groupSources(
       [
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
@@ -125,23 +127,37 @@ describe('groupSources', () => {
     )
     expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
       {
-        path: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md',
+        path: 'rosenjcb/kb/packages/kb-core/src/core/CHAT.md',
         href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
       },
       {
-        path: 'raysan5-raylib/src/raudio.c',
+        path: 'raysan5/raylib/src/raudio.c',
         href: 'https://github.com/raysan5/raylib/blob/master/src/raudio.c',
       },
     ])
   })
 
-  it('[TC-TULY] unknown slug keeps a path label without href', () => {
+  it('[TC-TULY] an unregistered clone still yields a repo-relative path, without href', () => {
     const out = groupSources([{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }], {
       sourceRepos: [kbRepo],
     })
     expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
-      { path: 'other-slug/README.md', href: undefined },
+      { path: 'README.md', href: undefined },
     ])
+  })
+
+  it('[TC-N3WQ] no citation path ever contains a local clone dir name', () => {
+    // The regression this guards: a serve-only node (or a surface that forgot the
+    // registry) rendered `kb-2026-08-15-1419-kb/packages/…` — a local provisioning
+    // artifact — as the file a user was told to open.
+    const cloneSlug = 'kb-2026-08-15-1419-kb'
+    const facts = [{ filePath: `${cloneSlug}/packages/kb-core/src/core/CHAT.md`, gitRepo: cloneSlug }]
+    for (const sourceRepos of [[], [kbRepo], [kbRepo, raylibRepo]]) {
+      for (const g of groupSources(facts, { sourceRepos })) {
+        expect(g.path).not.toContain(cloneSlug)
+        expect(g.path).toBe('packages/kb-core/src/core/CHAT.md')
+      }
+    }
   })
 })
 

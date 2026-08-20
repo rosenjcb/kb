@@ -4,7 +4,7 @@ title: Chat Reply Presentation
 description: Shared answer + Sources footer; per-repo blob links from the volume registry.
 resource: ./chat-reply.ts
 tags: [chat, slack, presentation, sources]
-timestamp: 2026-07-18T00:00:00Z
+timestamp: 2026-08-19T19:20:00Z
 ---
 
 # Chat reply presentation
@@ -16,7 +16,7 @@ Turns a structured chat `answer` + `sources[]` into one user-visible message. Wi
 ```mermaid
 flowchart LR
   A[service.chat answer + sources] --> B[formatChatReply]
-  R[discoverBaseRepos] --> B
+  R[resolveBaseRepoRegistry\nclones, else snapshot manifest] --> B
   B --> C[plain / HTTP]
   B --> D[Slack mrkdwn + Sources]
 ```
@@ -27,17 +27,22 @@ Each tracked clone has its own primary branch: whatever it was cloned on (`url#b
 
 | File | Role |
 |------|------|
-| `chat-reply.ts` | `chatSourceReposFromBaseRepos`, `normalizeChatSources`, `formatChatReply` |
+| `chat-reply.ts` | `resolveSourceRepos`, `chatSourceReposFromBaseRepos`, `resolveChatSourceDisplay` |
+| `base-repos.ts` | `resolveBaseRepoRegistry` (live clones, else snapshot provenance) |
+| `source-grouping.ts` | `groupSources` + footer/reply rendering |
 | `git-sync.ts` | `gitRemoteToBrowseUrl` (ssh/https → browse root) |
 | `markdown-to-slack.ts` | Deterministic Markdown → Slack mrkdwn |
 
-`sourceRepos` is required for clickable links. Multi-repo: labels keep `slug/path`; single-repo: strip slug from the label. Unknown slug / local remotes → path only, no href.
+A citation has two forms: the repo-relative `path` an agent opens and the blob `href` a human clicks. Both come from `sourceRepos`, which the serializers **require** — a surface cannot omit it.
+
+The clone dir name (`rosenjcb-kb`, `kb-2026-08-15-1419-kb`) is provisioning detail and never appears in either form. Multi-repo answers qualify the path with the public `repoId` (`rosenjcb/kb/path`); single-repo answers are bare repo-relative. Unknown slug / local remotes → path only, no href.
 
 ## Integration
 
-- Slack: `discoverBaseRepos(service.baseDir)` → `formatChatReply({ flavor: 'slack', sourceRepos })`
-- HTTP `/v1/chat`: structured SSE; consumers format with the same registry when they have a base dir
-- Pages demo: static dogfood hardcode for `github.com/rosenjcb/kb` @ `main` (no volume registry in-browser)
+Every surface calls `resolveSourceRepos(svc.baseDir)` and hands the result to the serializer — Slack, `/v1/query`, `/v1/chat`, MCP, CLI. None of them resolve links themselves.
+
+- Pages demo: renders the server-resolved `href` as-is. No in-browser registry, and no hardcode.
+- `/v1/bases` advertises repos from the same `resolveBaseRepoRegistry`, so it can never list a repo the citation path cannot link.
 
 ## Invariants
 
@@ -48,14 +53,15 @@ Each tracked clone has its own primary branch: whatever it was cloned on (`url#b
 
 ## Extension checklist
 
-1. New text surface → pass `sourceRepos` from `discoverBaseRepos`.
+1. New text surface → pass `sourceRepos` from `resolveSourceRepos(baseDir)`. The type requires it.
 2. New host shape for remotes → extend `gitRemoteToBrowseUrl`.
 3. Do not reintroduce a global source-branch env.
 
 ## Gotchas
 
 - Multi-repo bases cannot share one browse URL; always map by slug.
-- Static demos cannot see the volume registry — document any hardcode as dogfood-only.
+- A serve-only node prunes `repos/*` after hydrating from a snapshot. Resolve the registry through `resolveBaseRepoRegistry`, never `discoverBaseRepos` alone, or links vanish in production while they work locally.
+- Never render the clone slug. It differs per node, so it points a user at a path that does not exist for them.
 
 ## Related docs
 

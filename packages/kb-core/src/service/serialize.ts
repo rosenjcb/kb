@@ -141,9 +141,12 @@ export function toSource(item: ReadDocumentsResultItem): QuerySource {
 
 /** Lean citation: openable path + optional folded symbols. No facts/ids/snippets. */
 export interface McpSource {
+  /** Repo-relative path (`org/repo`-qualified only when the answer spans repos). */
   path: string
   /** Distinct fact subjects when known; omitted when empty. */
   symbols?: string[]
+  /** Blob deep link when the repo registry resolved one. */
+  href?: string
 }
 
 export interface McpQueryResponseBody {
@@ -267,18 +270,25 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
 }
 
 /**
- * Lean `{ path, symbols? }` citations for the agent payload. Reuses the
+ * Lean `{ path, symbols?, href? }` citations for the agent payload. Reuses the
  * canonical {@link groupSources} (drops non-openable refs, dedupes by file, folds
- * symbols) at MCP's tighter caps. Omits label/gitRepo/href/facts/factCount — those
- * are verbose-only. Empty `symbols` is omitted to save tokens.
+ * symbols) at MCP's tighter caps. Omits label/gitRepo/facts/factCount — those are
+ * verbose-only. Empty `symbols` is omitted to save tokens.
+ *
+ * Takes the same `sourceRepos` as every other surface: the two citation forms
+ * (repo-relative path, blob href) come from one registry, so an agent's `path`
+ * and a human's link always name the same file.
  */
-function formatMcpSources(results: QuerySource[]): McpSource[] {
+function formatMcpSources(results: QuerySource[], sourceRepos: ChatSourceRepo[]): McpSource[] {
   return groupSources(results, {
+    sourceRepos,
     maxSources: MCP_MAX_SOURCES,
     maxSymbolsPerSource: MCP_MAX_SYMBOLS_PER_SOURCE,
-  }).map(g =>
-    g.symbols.length > 0 ? { path: g.path, symbols: g.symbols } : { path: g.path }
-  )
+  }).map(g => ({
+    path: g.path,
+    ...(g.symbols.length > 0 ? { symbols: g.symbols } : {}),
+    ...(g.href ? { href: g.href } : {}),
+  }))
 }
 
 /**
@@ -351,11 +361,12 @@ function computeQueryGrounding(params: {
 /** Options shared by both serializers. */
 export interface SerializeQueryOptions {
   /**
-   * Per-repo registry (`chatSourceReposFromBaseRepos(discoverBaseRepos(baseDir))`)
-   * used to build clickable blob `href`s on the grouped sources. Omit for a
-   * single-base server with no remote, or when links aren't wanted.
+   * Per-repo registry from `resolveSourceRepos(baseDir)`. **Required** — it drives
+   * both citation forms (the repo-relative `path` and the blob `href`), so a
+   * surface that omitted it silently degraded to unlinked, clone-slug-prefixed
+   * paths. Pass `[]` only when the base genuinely has no browsable remote.
    */
-  sourceRepos?: ChatSourceRepo[]
+  sourceRepos: ChatSourceRepo[]
 }
 
 /**
@@ -366,13 +377,13 @@ export interface SerializeQueryOptions {
  */
 export function serializeMcpQueryResult(
   result: IntentResult,
-  options?: SerializeQueryOptions
+  options: SerializeQueryOptions
 ): McpQueryResponseBody {
   const full = serializeQueryResult(result, options)
   return {
     status: full.status,
     answer: full.answer,
-    sources: formatMcpSources(full.results),
+    sources: formatMcpSources(full.results, options.sourceRepos),
     ...(full.evidence ? { evidence: full.evidence } : {}),
     ...(full.notes && full.notes.length > 0 ? { notes: full.notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
@@ -387,7 +398,7 @@ export function serializeMcpQueryResult(
  */
 export function serializeQueryResult(
   result: IntentResult,
-  options?: SerializeQueryOptions
+  options: SerializeQueryOptions
 ): QueryResponseBody {
   const data = (result.data ?? {}) as ReadDocumentsResultData
   const results = Array.isArray(data.results) ? data.results : []
@@ -395,7 +406,7 @@ export function serializeQueryResult(
   const degraded = data.retrieval?.degraded
   const unsupportedClaims = data.retrieval?.unsupportedClaims ?? []
   const querySources = results.map(toSource)
-  const sources = groupSources(querySources, { sourceRepos: options?.sourceRepos })
+  const sources = groupSources(querySources, { sourceRepos: options.sourceRepos })
   const answer = data.answer?.trim() || null
 
   const { notes, evidence } = computeQueryGrounding({

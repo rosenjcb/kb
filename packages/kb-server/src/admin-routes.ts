@@ -10,8 +10,7 @@ import { defaultLogsDir } from '@kb/core/core/telemetry.js'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import type { KbService } from '@kb/core/service/kb-service.js'
-import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import { readSnapshotManifest } from '@kb/core/storage/snapshot.js'
+import { resolveBaseRepoRegistry } from '@kb/core/storage/base-repos.js'
 import type { KbServiceRegistry } from './service-registry.js'
 
 /** One source repo advertised for a base, ready for client-side blob links. */
@@ -23,27 +22,13 @@ interface BaseRepoSummary {
 }
 
 /**
- * Source repos for a base, for building per-base source links in clients like the
- * chat demo (which shows a base picker and needs each base's `gitRepo` slug →
- * browse URL). Prefers the snapshot manifest's provenance — it is present even in
- * serve-only (`--no-repos`) snapshots, which carry no working trees — and falls
- * back to the live git clones for full/unsnapshotted bases.
+ * Source repos for a base, for the chat demo's base picker. Uses the same
+ * `resolveBaseRepoRegistry` that citations use, so this route can never advertise
+ * a repo the citation path cannot link.
  */
 async function baseReposFor(basePath: string): Promise<BaseRepoSummary[]> {
   try {
-    const manifest = await readSnapshotManifest(basePath)
-    if (manifest && manifest.provenance.repos.length > 0) {
-      return manifest.provenance.repos.map(repo => ({
-        slug: repo.slug,
-        url: gitRemoteToBrowseUrl(repo.gitUrl),
-        branch: repo.gitBranch,
-      }))
-    }
-  } catch {
-    // fall through to live-clone discovery
-  }
-  try {
-    const repos = await discoverBaseRepos(basePath)
+    const repos = await resolveBaseRepoRegistry(basePath)
     return repos.map(repo => ({
       slug: repo.slug,
       url: gitRemoteToBrowseUrl(repo.gitUrl),
