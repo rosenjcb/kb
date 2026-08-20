@@ -10,7 +10,7 @@ tests:
   - ../../../../tests/cli/remote-commands.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-08-02T23:10:00Z
+timestamp: 2026-08-19T20:45:00Z
 ---
 
 ### Intro
@@ -67,6 +67,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-23 | `hasExplicitConnectionOverride` (aliased as `hasExplicitServerHost`) is true when `KB_CONNECTION_STRING`, `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, or `config.server.host` is explicitly set — the one canonical "explicit vs. implicit localhost default" check, shared by MCP sync instead of its own duplicated env reads |
 | FR-24 | `mcp install` has no independent flag parser — `--host`/`--port`/`--sslmode`/`--api-key`/`--key`/`--base`/`--connection-string` are all global flags stripped by `parseGlobalCliFlags` before dispatch; `mcp install` itself only rejects genuinely unrecognized leftover arguments and otherwise syncs from the already-applied ambient connection |
 | FR-25 | `resolveDisplayBase` resolves the base to *display* (status bar / banner / chat header): the active base (`isServerDefault: false`) when one is selected, else the server's own default base via `discoverRemoteDefaultBase` (`isServerDefault: true`), or `{ name: undefined }` when the server is unreachable. `formatConnectionContext` labels the server-default case as `base: <name> (server default)`, so the client never shows a bare `(none)` while kb-server is in fact serving its default — making it obvious that with no `kb base use <base>` you are on the server default |
+| FR-26 | `dispatchRemoteChatStreamEvent`'s `answer` case exposes the SSE event's grouped sources via `onSources`, so `runRemoteChatSession` renders the same Sources footer `kb query` already does (count, then one citation per file, capped at 8) instead of silently dropping citations on the chat path |
 
 ### QA Test Cases
 
@@ -144,3 +145,4 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-2QL3 | FR-4 | Given a 401 whose body is not JSON | Still returns the API-key hint |
 | TC-GTHU | FR-4 | Given a non-401 server error carrying an `error` field | Passes the server message through unchanged |
 | TC-XJ1F | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |
+| TC-4RGX | FR-26 | Given an `answer` SSE event carrying `sources: GroupedSource[]` | `onSources` is called with the same array |

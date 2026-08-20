@@ -275,6 +275,7 @@ export function dispatchRemoteChatStreamEvent(
   hooks: {
     onSession?: (sessionId: string) => void
     onAnswer?: (text: string) => void
+    onSources?: (sources: GroupedSource[]) => void
   } = {}
 ): void {
   switch (event.type) {
@@ -289,6 +290,7 @@ export function dispatchRemoteChatStreamEvent(
       break
     case 'answer':
       hooks.onAnswer?.(event.text)
+      hooks.onSources?.(event.sources)
       break
     case 'error':
       throw new Error(event.message)
@@ -302,12 +304,13 @@ export async function runRemoteChatTurn(
   sessionId: string | undefined,
   out: CliOutput,
   config: KbConfig
-): Promise<{ sessionId: string; answer: string }> {
+): Promise<{ sessionId: string; answer: string; sources: GroupedSource[] }> {
   const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
 
   let activeSession = sessionId
   let answer = ''
+  let sources: GroupedSource[] = []
 
   for await (const event of client.chatStream({ sessionId, message })) {
     dispatchRemoteChatStreamEvent(event, out, {
@@ -317,10 +320,13 @@ export async function runRemoteChatTurn(
       onAnswer: text => {
         answer = text
       },
+      onSources: grouped => {
+        sources = grouped
+      },
     })
   }
 
-  return { sessionId: activeSession ?? sessionId ?? 'default', answer }
+  return { sessionId: activeSession ?? sessionId ?? 'default', answer, sources }
 }
 
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
@@ -328,6 +334,18 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
 
   const display = await resolveDisplayBase(kbConfig)
   io.write(formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault }))
+
+  const chatOut: CliOutput = {
+    log: line => io.write(line),
+    write: line => io.write(line),
+    error: line => io.error(line),
+    progress: line => io.setProgressLine?.(line ?? null),
+  }
+  // Same primitive shape `kb query` already renders (Sources count, then one
+  // citation line per file) — built from the same grouped-source model MCP,
+  // chat, and Slack all render from. Chat's SSE `answer` event carries it too;
+  // this is the first surface that actually prints it instead of dropping it.
+  const printer = createPrinter(chatOut, deps.mode ?? 'tui')
 
   let sessionId: string | undefined
 
@@ -345,21 +363,23 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     }
 
     try {
-      const { sessionId: nextSession, answer } = await runRemoteChatTurn(
+      const { sessionId: nextSession, answer, sources } = await runRemoteChatTurn(
         input,
         sessionId,
-        {
-          log: line => io.write(line),
-          write: line => io.write(line),
-          error: line => io.error(line),
-          progress: line => io.setProgressLine?.(line ?? null),
-        },
+        chatOut,
         kbConfig
       )
       if (nextSession !== sessionId) deps.onSessionStart?.(nextSession)
       sessionId = nextSession
       io.setProgressLine?.(null)
       if (answer.trim()) io.write(answer.trim())
+      if (sources.length > 0) {
+        printer.metadata('Sources', String(sources.length))
+        for (const source of sources.slice(0, 8)) {
+          const { label, href, symbols } = citationParts(source)
+          printer.sourceCitation(label, { href, symbols })
+        }
+      }
     } catch (error) {
       io.setProgressLine?.(null)
       io.error(error instanceof Error ? error.message : String(error))

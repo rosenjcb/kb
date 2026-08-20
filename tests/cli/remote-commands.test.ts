@@ -139,6 +139,28 @@ describe('dispatchRemoteChatStreamEvent', () => {
     ])
     expect(progress.mock.calls.map(c => c[0])).toEqual(['considering Lua…'])
   })
+
+  it('[TC-4RGX] surfaces the answer event\'s grouped sources via onSources', () => {
+    const onSources = vi.fn()
+    const grouped = [
+      {
+        path: 'rosenjcb/kb/src/a.ts',
+        repo: 'rosenjcb/kb',
+        relPath: 'src/a.ts',
+        label: 'rosenjcb/kb/src/a.ts',
+        href: 'https://github.com/rosenjcb/kb/blob/main/src/a.ts',
+        symbols: [],
+        facts: [],
+        factCount: 1,
+      },
+    ]
+    dispatchRemoteChatStreamEvent(
+      { type: 'answer', text: 'Hello.', sources: grouped, factsRetrieved: 1 },
+      { log: vi.fn(), progress: vi.fn() },
+      { onSources },
+    )
+    expect(onSources).toHaveBeenCalledWith(grouped)
+  })
 })
 
 describe('CLI startup wiring', () => {
