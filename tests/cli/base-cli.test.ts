@@ -64,7 +64,7 @@ describe('kb base use', () => {
     const { out, lines } = makeOut()
     await runMainWithOutput(['base', 'use', 'ghost'], out, {} as never)
     expect(lines.join('\n')).toContain('ghost')
-    expect(lines.join('\n')).toContain('KB_GIT_REPOS')
+    expect(lines.join('\n')).toContain('KB_SERVER_BASE_GIT_REPOS')
   })
 
   it('[TC-FCBG] Given kb base use --show, then prints current base config', async () => {

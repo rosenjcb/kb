@@ -34,7 +34,7 @@ answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
     SQLite-backed knowledge base. **kb-server** owns indexing: configure git repos on the server
-    (`KB_GIT_REPOS`, optional `KB_BASE`), run `kb-server start`, and the server clones, indexes code
+    (`KB_SERVER_BASE_GIT_REPOS`, optional `KB_SERVER_BASE_NAME`), run `kb-server start`, and the server clones, indexes code
     and docs, and re-indexes on a schedule. The **kb client** connects with `kb --host` or
     `KB_HOST` / `KB_PORT` / `KB_CONNECTION_STRING` and asks natural-language questions via `kb query` or
     interactive chat (`kb`). Bases are managed with `kb base`; repo membership and ignore patterns
@@ -62,7 +62,7 @@ answers:
     **bootstrap** (first-time build) clones repos and runs the full phase pipeline; routine
     **scan** / kb-server scheduled reindex (`KB_REINDEX_INTERVAL`) updates changed
     files and rebuilds cross-repo links. Operators change tracked repos by updating
-    `KB_SERVER_BASE_GIT_REPOS` (or `KB_GIT_REPOS`) and restarting; kb-server picks up configured
+    `KB_SERVER_BASE_GIT_REPOS` and restarting; kb-server picks up configured
     repos from the env on boot and folds in any newly-declared ones.
 
   - >
@@ -242,9 +242,12 @@ answers:
   - >
     A kb **base** is a named session directory under `~/.kb/sessions/<base>/` holding the SQLite
     index and cloned repo volumes — not "the git checkout you happened to run the CLI from." A
-    multi-base kb-server boots one default base and can serve other already-built bases selected per
-    request via `X-KB-Base` / `--base` / `?base=`; unknown/missing indexes 404 as serve-only.
-    Operators point the client with `--base` or `KB_BASE`. A correct answer distinguishes the session
+    multi-base kb-server boots one default base (the hardcoded `default` slug — no persisted or
+    configurable server-side state) and can serve other already-built bases selected per request via
+    `X-KB-Base` / `--base` / `?base=`; unknown/missing indexes 404 as serve-only, except `default`
+    itself, which always exists. Clients point at a base with `--base` or `KB_BASE` (a client-scoped
+    env var, distinct from the server's `KB_SERVER_BASE_NAME`) and always send an explicit base —
+    never a bare omitted header. A correct answer distinguishes the session
     base from a working tree and mentions multi-base selection; it must not conflate "base" with an
     arbitrary source folder or a Postgres database server.
 

@@ -10,7 +10,7 @@
  * ## Cloud-agnostic guardrail (non-negotiable, same as `scan`/`export`/`import`)
  *
  * `--from` / `--out` accept LOCAL paths only, and `--repos` is a plain
- * `url[#branch]` list (the existing `KB_GIT_REPOS` convention) — never a
+ * `url[#branch]` list (the `KB_SERVER_BASE_GIT_REPOS` convention) — never a
  * `gs://`/`s3://` value. This command must never learn about object storage,
  * bucket clients, or credentials. Pulling the previous snapshot down and
  * publishing the fresh one (immutable version prefix + atomic pointer flip +
@@ -151,7 +151,7 @@ async function hydrateReposViaBootstrapChild(
     String(port),
     ...(branch ? ['--branch', branch] : []),
   ]
-  const env = { ...process.env, KB_GIT_REPOS: repos }
+  const env = { ...process.env, KB_SERVER_BASE_GIT_REPOS: repos }
   // The child's own progress (init/scan cycle lines) is otherwise lost entirely — `stdio:
   // 'ignore'` would silently discard it, and a cold index of a large repo can run for a long
   // time with zero visibility (see #195). Route both of the child's streams into *this*
@@ -200,7 +200,7 @@ async function hydrateReposViaBootstrapChild(
  *   --from <dir>    adopt a previous LOCAL snapshot first (warm mode). Omit for
  *                   a cold build (requires --repos).
  *   --repos <list>  space-separated `url[#branch]` targets (same convention as
- *                   KB_GIT_REPOS) to hydrate onto the base. Required for a cold
+ *                   KB_SERVER_BASE_GIT_REPOS) to hydrate onto the base. Required for a cold
  *                   build; optional (but typical) for a warm one, to fold in any
  *                   newly-declared repos alongside re-cloning existing ones.
  *   --branch <b>    default branch for any --repos entry with no inline #branch

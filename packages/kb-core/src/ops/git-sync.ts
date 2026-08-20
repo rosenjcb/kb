@@ -28,7 +28,7 @@ function formatGitError(message: string): string {
   return [
     message,
     'GitHub HTTPS authentication failed.',
-    'Set GITHUB_TOKEN (or GH_TOKEN) for private GitHub repos, switch the repo URL to SSH, or remove private repos from KB_GIT_REPOS.',
+    'Set GITHUB_TOKEN (or GH_TOKEN) for private GitHub repos, switch the repo URL to SSH, or remove private repos from KB_SERVER_BASE_GIT_REPOS.',
   ].join('\n')
 }
 

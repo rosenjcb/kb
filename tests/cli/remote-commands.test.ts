@@ -5,7 +5,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  discoverRemoteDefaultBase,
   dispatchRemoteChatStreamEvent,
   isClientLocalCommand,
   resolveDisplayBase,
@@ -33,30 +32,6 @@ describe('isClientLocalCommand', () => {
   })
 })
 
-describe('discoverRemoteDefaultBase', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('[TC-DCY8] returns the base reported by the server health probe', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'raylib' }), { status: 200 })),
-    )
-    await expect(discoverRemoteDefaultBase({})).resolves.toBe('raylib')
-  })
-
-  it('[TC-I12L] returns undefined when the server is unreachable', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('ECONNREFUSED')
-      }),
-    )
-    await expect(discoverRemoteDefaultBase({})).resolves.toBeUndefined()
-  })
-})
-
 describe('resolveDisplayBase', () => {
   let kbHome: string
   const prevHome = process.env.KB_HOME
@@ -74,37 +49,22 @@ describe('resolveDisplayBase', () => {
     if (kbHome) await rm(kbHome, { recursive: true, force: true })
   })
 
-  it('[TC-4N1R] returns the active base (isServerDefault false) when one is selected', async () => {
+  it('[TC-4N1R] returns the explicit base (isFallback false) when KB_BASE is set', async () => {
     process.env.KB_BASE = 'raylib'
-    // No health probe needed — the active base short-circuits before any network call.
+    // Resolved entirely locally — no network call to fail if made.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        throw new Error('should not probe when an active base is set')
+        throw new Error('resolveDisplayBase must never probe the network')
       }),
     )
     await expect(resolveDisplayBase({})).resolves.toEqual({
       name: 'raylib',
-      isServerDefault: false,
+      isFallback: false,
     })
   })
 
-  it('[TC-MQGP] falls back to the server default (isServerDefault true) when no active base', async () => {
-    kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
-    process.env.KB_HOME = kbHome
-    delete process.env.KB_BASE
-    delete process.env.KB_ACTIVE_BASE
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ ok: true, base: 'base' }), { status: 200 })),
-    )
-    await expect(resolveDisplayBase({})).resolves.toEqual({
-      name: 'base',
-      isServerDefault: true,
-    })
-  })
-
-  it('[TC-PHMI] reports no base (isServerDefault false) when the server is unreachable', async () => {
+  it('[TC-MQGP] falls back to the reserved "default" slug (isFallback true) when nothing is configured', async () => {
     kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-display-'))
     process.env.KB_HOME = kbHome
     delete process.env.KB_BASE
@@ -112,12 +72,12 @@ describe('resolveDisplayBase', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        throw new Error('ECONNREFUSED')
+        throw new Error('resolveDisplayBase must never probe the network')
       }),
     )
     await expect(resolveDisplayBase({})).resolves.toEqual({
-      name: undefined,
-      isServerDefault: false,
+      name: 'default',
+      isFallback: true,
     })
   })
 })

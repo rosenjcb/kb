@@ -18,10 +18,12 @@ import { type GitTarget, parseGitTarget, runKbInit } from '@kb/core/ops/init-cli
 import {
   DEFAULT_BASE_SLUG,
   deleteBase,
+  ensureBaseExists,
   formatDeleteBaseResult,
   listAllBases,
   resolveBaseToDir,
 } from '@kb/core/storage/base-selection.js'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 
 export interface ServerLogger {
   log(message: string): void
@@ -50,6 +52,7 @@ Notes:
   • The target base is always the explicit --base flag (no positional, no implicit default).
   • --git is repeatable; pin a branch with url#branch.
   • CI/CD can still build a base at boot: \`kb-server start --base <name> --git <url>\`.
+  • The "default" base is created by \`kb-server init\` — always exists, may be empty.
   • To remove all server data instead of one base, use \`kb-server uninstall --purge\`.
 
 Examples:
@@ -90,12 +93,14 @@ async function runBaseList(out: ServerLogger): Promise<void> {
   const bases = await listAllBases()
   if (bases.length === 0) {
     out.log('No initialized bases found.')
-    out.log('Create one with `kb-server base create --base <name> --git <url>`.')
+    out.log('Run `kb-server init` to create the default base, or ')
+    out.log('`kb-server base create --base <name> --git <url>` for a named one.')
     return
   }
   out.log('KB bases (server)')
   for (const b of bases) {
-    out.log(`  ${b.name}${b.isActive ? '  [active]' : ''}`)
+    const empty = isKbIndexEmpty(path.join(b.path, '.kb-index.sqlite')) ? '  [empty]' : ''
+    out.log(`  ${b.name}${b.isActive ? '  [active]' : ''}${empty}`)
     out.log(`    ${b.path}`)
   }
 }
@@ -111,7 +116,7 @@ async function runBaseCreate(args: string[], out: ServerLogger): Promise<void> {
   }
   if (name === DEFAULT_BASE_SLUG) {
     out.error(
-      `The "${DEFAULT_BASE_SLUG}" base always exists — you don't create it. Add repos with ` +
+      `The "${DEFAULT_BASE_SLUG}" base is created by \`kb-server init\`, not \`base create\`. Add repos with ` +
         `\`kb-server base add-repo --base ${DEFAULT_BASE_SLUG} --git <url>\`.`
     )
     process.exitCode = 1
@@ -151,9 +156,12 @@ async function runBaseAddRepo(args: string[], out: ServerLogger): Promise<void> 
     process.exitCode = 1
     return
   }
-  // The default base always exists (it may be empty); any other base must have been
-  // created first. `create` requires repos, so a known non-default base always has an index.
-  if (name !== DEFAULT_BASE_SLUG && !baseIndexExists(name)) {
+  // Every base but `default` must have been created first (`create` requires repos,
+  // so a known non-default base always has an index). `default` self-heals here in the
+  // rare case it was somehow never materialized (e.g. `init` never ran).
+  if (name === DEFAULT_BASE_SLUG) {
+    await ensureBaseExists(name)
+  } else if (!baseIndexExists(name)) {
     out.error(
       `No base "${name}" on this server. Create it first with \`kb-server base create --base ${name} --git <url>\`.`
     )

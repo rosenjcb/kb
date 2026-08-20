@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@kb/core/storage/base-selection.js', () => ({
+  DEFAULT_BASE_SLUG: 'default',
+  ensureBaseExists: vi.fn(async (base: string) => ({ baseDir: `/tmp/${base}`, created: false })),
   ensureOperationalBaseDir: vi.fn(async () => '/tmp/demo'),
   readOptionalCliValue: vi.fn(() => undefined),
   resolveEffectiveBaseDir: vi.fn(async () => ({ baseDir: '/tmp/demo', baseName: 'demo' })),
@@ -61,7 +63,7 @@ vi.mock('@kb/server/reindex-scheduler.js', () => ({
 
 vi.mock('@kb/core/config/kb-config.js', () => ({
   getKbConfigDir: vi.fn(() => '/tmp/kb-config'),
-  ensureDefaultConfig: vi.fn(async () => ({})),
+  readKbConfig: vi.fn(async () => ({})),
   persistInferredLLMProvider: vi.fn(async ({ config }: { config: unknown }) => ({
     config,
     notice: 'ℹ Auto-selected LLM provider: gemini (detected GEMINI_API_KEY). Optional: export KB_LLM_PROVIDER=gemini',
@@ -84,7 +86,7 @@ vi.mock('@kb/server/http-server.js', () => ({
   createHttpServer: vi.fn(() => fakeServer),
 }))
 
-import { ensureDefaultConfig, persistInferredLLMProvider } from '@kb/core/config/kb-config.js'
+import { persistInferredLLMProvider, readKbConfig } from '@kb/core/config/kb-config.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { createHttpServer } from '@kb/server/http-server.js'
 import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
@@ -102,7 +104,7 @@ describe('runServerMain version', () => {
     await runServerMain(['--version'])
 
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/^kb-server v\d+\.\d+\.\d+/))
-    expect(ensureDefaultConfig).not.toHaveBeenCalled()
+    expect(readKbConfig).not.toHaveBeenCalled()
     expect(createHttpServer).not.toHaveBeenCalled()
 
     log.mockRestore()
@@ -211,5 +213,46 @@ describe('runServerCommand bootstrap progress', () => {
 
     process.emit('SIGTERM', 'SIGTERM')
     await serverPromise
+  })
+
+  it('[TC-ENW1] warns when the client-scoped KB_BASE is set without KB_SERVER_BASE_NAME', async () => {
+    const prevBase = process.env.KB_BASE
+    const prevServerBase = process.env.KB_SERVER_BASE_NAME
+    process.env.KB_BASE = 'raylib'
+    delete process.env.KB_SERVER_BASE_NAME
+    const out = { log: vi.fn(), error: vi.fn() }
+
+    const serverPromise = runServerCommand([], out, {} as never)
+    await vi.waitFor(() => {
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('kb-server listening'))
+    })
+
+    expect(out.error).toHaveBeenCalledWith(expect.stringContaining('KB_BASE'))
+    expect(out.error).toHaveBeenCalledWith(expect.stringContaining('KB_SERVER_BASE_NAME'))
+
+    process.emit('SIGTERM', 'SIGTERM')
+    await serverPromise
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
+    if (prevServerBase === undefined) delete process.env.KB_SERVER_BASE_NAME
+    else process.env.KB_SERVER_BASE_NAME = prevServerBase
+  })
+
+  it('[TC-ENW2] does not warn when KB_BASE is unset', async () => {
+    const prevBase = process.env.KB_BASE
+    delete process.env.KB_BASE
+    const out = { log: vi.fn(), error: vi.fn() }
+
+    const serverPromise = runServerCommand([], out, {} as never)
+
+    await vi.waitFor(() => {
+      expect(out.log).toHaveBeenCalledWith(expect.stringContaining('kb-server listening'))
+    })
+    expect(out.error).not.toHaveBeenCalledWith(expect.stringContaining('KB_BASE'))
+
+    process.emit('SIGTERM', 'SIGTERM')
+    await serverPromise
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
   })
 })

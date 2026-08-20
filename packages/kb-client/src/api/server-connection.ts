@@ -1,6 +1,6 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { KB_ENV, readEnvHost, readEnvPortRaw } from '@kb/core/config/kb-env.js'
-import { resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
+import { DEFAULT_BASE_SLUG, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import { buildServerUrl, type SslMode } from './connection-string.js'
 import type { ServerConnection } from './types.js'
 
@@ -39,16 +39,24 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
  * The one answer to "which base is this client acting on" — consumed by BOTH the
  * `X-KB-Base` header (what kb-server actually serves) AND every display (TUI status
  * bar, CLI banner, chat header). Because the wire and the UI read the same function,
- * they can never drift. Precedence:
+ * they can never drift. **Always resolves to a concrete name — never omitted.**
+ * Precedence:
  *   1. explicit per-invocation base — `--base` / `--connection-string` (both land in `KB_BASE`)
  *   2. active base — via `resolveEffectiveBaseDir` (also honors `KB_ACTIVE_BASE`), set by `kb base use`
- *   3. `config.server.base`
- * Undefined ⇒ kb-server serves its own default base (there is no client-side default).
+ *   3. the hardcoded `default` slug
+ *
+ * This mirrors `libpq`'s own default: a Postgres connection has no wire-level concept
+ * of an omitted database — the client always sends a `dbname`, defaulting client-side
+ * to the OS username before the connection ever opens. `default` here is that same
+ * kind of client-side convention, not a value discovered from the server — the server
+ * has no default-base *state* to discover (see `resolveServerBaseDir` in
+ * `@kb/server/server-cli.js`). It happens to always be a valid base to land on because
+ * `kb-server` materializes it unconditionally.
  */
 export async function resolveActiveBaseName(
-  config: KbConfig,
+  _config: KbConfig,
   cwd: string = process.cwd()
-): Promise<string | undefined> {
+): Promise<string> {
   const explicit = process.env[KB_ENV.BASE]?.trim()
   if (explicit) return explicit
   try {
@@ -56,9 +64,9 @@ export async function resolveActiveBaseName(
     const trimmed = baseName?.trim()
     if (trimmed) return trimmed
   } catch {
-    // No active base selected locally — fall through to the server default.
+    // No active base selected locally.
   }
-  return config.server?.base?.trim() || undefined
+  return DEFAULT_BASE_SLUG
 }
 
 /**
@@ -71,7 +79,7 @@ export async function resolveServerConnectionWithBase(
   cwd: string = process.cwd()
 ): Promise<ServerConnection> {
   const base = await resolveActiveBaseName(config, cwd)
-  return { ...resolveServerConnection(config), ...(base ? { base } : {}) }
+  return { ...resolveServerConnection(config), base }
 }
 
 /** True when the operator explicitly configured a connection (not the implicit localhost default). */
@@ -99,17 +107,17 @@ export function formatServerAddress(connection: ServerConnection): string {
 
 /**
  * User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header).
- * When `serverDefault` is set the base name came from the server's own default base
- * (no local active base), so we label it that way — the user is never truly
- * "baseless", they are on the server default until they run `kb base use <base>`.
+ * `isFallback` is computed locally (no network round-trip — see `resolveActiveBaseName`)
+ * and set when neither `KB_BASE` nor an active base was configured, so the label makes
+ * clear this is the client's own unconfigured-fallback name, not an intentional choice.
  */
 export function formatConnectionContext(
   config: KbConfig,
   baseName?: string,
-  opts: { serverDefault?: boolean } = {}
+  opts: { isFallback?: boolean } = {}
 ): string {
   const name = baseName?.trim()
-  const base = name ? (opts.serverDefault ? `${name} (server default)` : name) : '(none)'
+  const base = name ? (opts.isFallback ? `${name} (no active base selected)` : name) : '(none)'
   const host = formatServerAddress(resolveServerConnection(config))
   return `host: ${host} │ base: ${base}`
 }

@@ -16,7 +16,6 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import readline from 'node:readline'
 import dayjs from 'dayjs'
 import { deleteRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
@@ -46,7 +45,6 @@ import {
   deleteStaleAstSymbols,
   isTreeSitterIndexablePath,
 } from '@kb/core/tools/tree-sitter-indexer.js'
-import type { SlashInputContext } from '@kb/core/ui/slash-context.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import {
@@ -55,13 +53,12 @@ import {
   repoSlugFromGitUrl,
 } from '@kb/core/storage/repo-slug.js'
 import {
+  DEFAULT_BASE_SLUG,
   ensureOperationalBaseDir,
   getKbHomeDir,
-  listAllBases,
   resolveEffectiveBaseDir,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
-import { CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE } from '@kb/core/config/cli-prerequisites.js'
 import { baseNameFromGitUrl, cloneRepo } from '@kb/core/ops/git-sync.js'
 import {
   diffChangedAstFiles,
@@ -114,7 +111,6 @@ export interface InitOptions {
   checkpointFile?: string
   cwd?: string
   provider?: LLMProvider
-  questionIO?: InitQuestionIO
   progressSink?: (line: string) => void
   collector?: RunCollector
   /** Git remotes to clone + index. `kb init` requires at least one. */
@@ -294,29 +290,6 @@ interface LegacyInitCheckpointV2 {
   interviewRounds?: InitInterviewRound[]
   topicCoverage?: TopicCoverageAssessment[]
   finalCoverageSummary?: InitCoverageSummary
-}
-
-export interface InitQuestionOptions {
-  slashContext?: SlashInputContext
-  /** Plain-text inline completions forwarded to TUI autocomplete. */
-  suggestions?: string[]
-}
-
-export class InitCancelledError extends Error {
-  constructor(message = 'Cancelled.') {
-    super(message)
-    this.name = 'InitCancelledError'
-  }
-}
-
-export function isInitCancelledError(error: unknown): error is InitCancelledError {
-  return error instanceof InitCancelledError
-}
-
-export interface InitQuestionIO {
-  write?: (message: string) => void
-  askQuestion: (question: string, opts?: InitQuestionOptions) => Promise<string>
-  close?: () => Promise<void> | void
 }
 
 function writeInitNotice(sink: InitOptions['progressSink'], message: string): void {
@@ -607,15 +580,9 @@ function progressPrefix(options: Pick<InitOptions, 'rescan'>): 'init' | 'scan' {
 }
 
 export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> {
-  // When using real readline (no injected questionIO) and stdin is not a TTY
-  // (e.g. CI, background process, piped input), force non-interactive mode so
-  // readline doesn't throw "readline was closed".
-  const options =
-    !inputOptions.questionIO && !process.stdin.isTTY
-      ? { ...inputOptions, nonInteractive: true }
-      : inputOptions
-
-  const questionIO = options.questionIO ?? createReadlineQuestionIO()
+  // Piped/CI/background invocations have no stdin TTY to prompt on; force
+  // non-interactive mode so base/git resolution fails fast instead of hanging.
+  const options = !process.stdin.isTTY ? { ...inputOptions, nonInteractive: true } : inputOptions
   const cwd = options.cwd ?? process.cwd()
 
   // Fresh init indexes git clones under ~/.kb — never the caller's working directory.
@@ -627,12 +594,12 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
       predeclaredBase &&
       (await isInitializedGitBase(await ensureOperationalBaseDir(predeclaredBase, cwd)))
     if (!existingBaseReady) {
-      const gitTargets = await resolveGitTargetsForInit(options, questionIO)
+      const gitTargets = await resolveGitTargetsForInit(options)
       initOptions = { ...options, gitTargets }
     }
   }
 
-  const base = await resolveInitBaseName(initOptions, cwd, questionIO)
+  const base = await resolveInitBaseName(initOptions, cwd)
 
   if (!options.rescan) {
     await writeSessionBase(base)
@@ -647,7 +614,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     const existingRepos = await discoverBaseRepos(baseDir)
     const indexExists = existsSync(path.join(baseDir, '.kb-index.sqlite'))
     if (existingRepos.length > 0 && indexExists) {
-      return runExistingBaseSwap({ base, baseDir, options, questionIO, existingRepos })
+      return runExistingBaseSwap({ base, baseDir, options, existingRepos })
     }
   }
 
@@ -841,7 +808,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           rescan: options.rescan === true,
           nonInteractive: options.nonInteractive,
           detach: options.detach,
-          questionIO,
+          progressSink: options.progressSink,
           ignoreMatcher,
           startingRound: 1,
           maxQuestions: 0,
@@ -1031,7 +998,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           let mutationWritten: string[] = []
           const safeguards = planResult.plan.safeguards?.triggered ?? []
           if (safeguards.length > 0) {
-            questionIO.write?.(`[kb scan] safeguards triggered: ${safeguards.join(', ')}\n`)
+            writeInitNotice(options.progressSink, `[kb scan] safeguards triggered: ${safeguards.join(', ')}`)
           }
           const applyResult = await runRescanApplyOrchestrator({
             base,
@@ -1049,8 +1016,9 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             applyResult.plan.apply.appliedMutations > 0 ||
             applyResult.plan.apply.noopMutations > 0
           ) {
-            questionIO.write?.(
-              `[kb scan] applied ${applyResult.plan.apply.appliedMutations} action(s) (${applyResult.plan.apply.noopMutations} noop).\n`
+            writeInitNotice(
+              options.progressSink,
+              `[kb scan] applied ${applyResult.plan.apply.appliedMutations} action(s) (${applyResult.plan.apply.noopMutations} noop).`
             )
           }
           writtenDocIds = [...originalWritten, ...mutationWritten]
@@ -1104,7 +1072,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           provider: rawProvider,
           collector: options.collector,
           progressSink: options.progressSink,
-          questionIO: SILENT_QUESTION_IO,
         })
       }
     }
@@ -1215,8 +1182,6 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     } else {
       throw error
     }
-  } finally {
-    await questionIO.close?.()
   }
 
   return {
@@ -1234,75 +1199,67 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
  * Idempotent `kb init` against an already-initialised base. Instead of re-running the
  * fresh-init pipeline (which would re-index from scratch), this swaps to the existing base,
  * re-syncs the repos already cloned on its volume (pull + re-index any with new commits),
- * and clones + indexes any newly-listed `--git` remotes. The swap is announced through both
- * `questionIO.write` (TUI) and `progressSink` (CLI) so it is explicit in either surface.
+ * and clones + indexes any newly-listed `--git` remotes. Announced through `progressSink`.
  */
 async function runExistingBaseSwap(params: {
   base: string
   baseDir: string
   options: InitOptions
-  questionIO: InitQuestionIO
   existingRepos: BaseRepo[]
 }): Promise<InitResult> {
-  const { base, baseDir, options, questionIO, existingRepos } = params
+  const { base, baseDir, options, existingRepos } = params
   const emit = (line: string) => {
     options.progressSink?.(line)
-    questionIO.write?.(`${line}\n`)
   }
 
-  try {
-    // Split the requested remotes into "already tracked" (will be re-synced) and "new".
-    const trackedSlugs = new Set(existingRepos.map(r => r.slug))
-    const seen = new Set<string>()
-    const newTargets: GitTarget[] = []
-    for (const target of options.gitTargets ?? []) {
+  // Split the requested remotes into "already tracked" (will be re-synced) and "new".
+  const trackedSlugs = new Set(existingRepos.map(r => r.slug))
+  const seen = new Set<string>()
+  const newTargets: GitTarget[] = []
+  for (const target of options.gitTargets ?? []) {
+    const slug = repoSlugFromGitUrl(target.url)
+    if (trackedSlugs.has(slug) || seen.has(slug)) continue
+    seen.add(slug)
+    newTargets.push(target)
+  }
+
+  const addNote = newTargets.length > 0 ? `, adding ${newTargets.length} new repo(s).` : '.'
+  emit(
+    `[kb init] Base "${base}" already exists — switching to it and re-syncing ${existingRepos.length} tracked repo(s)${addNote}`
+  )
+
+  // 1) Re-sync the repos the base already tracks (pull + re-index changed, then reconcile).
+  await scanBaseRepos(baseDir, { onProgress: emit })
+
+  // 2) Clone + index any newly-listed remotes into the same base graph. The new clone
+  //    becomes part of the on-volume registry, so nothing needs recording afterward.
+  if (newTargets.length > 0) {
+    const ignorePatterns = options.ignorePatterns ?? readIgnorePatternsFromEnv()
+    for (const target of newTargets) {
       const slug = repoSlugFromGitUrl(target.url)
-      if (trackedSlugs.has(slug) || seen.has(slug)) continue
-      seen.add(slug)
-      newTargets.push(target)
-    }
-
-    const addNote = newTargets.length > 0 ? `, adding ${newTargets.length} new repo(s).` : '.'
-    emit(
-      `[kb init] Base "${base}" already exists — switching to it and re-syncing ${existingRepos.length} tracked repo(s)${addNote}`
-    )
-
-    // 1) Re-sync the repos the base already tracks (pull + re-index changed, then reconcile).
-    await scanBaseRepos(baseDir, { onProgress: emit })
-
-    // 2) Clone + index any newly-listed remotes into the same base graph. The new clone
-    //    becomes part of the on-volume registry, so nothing needs recording afterward.
-    if (newTargets.length > 0) {
-      const ignorePatterns = options.ignorePatterns ?? readIgnorePatternsFromEnv()
-      for (const target of newTargets) {
-        const slug = repoSlugFromGitUrl(target.url)
-        const dir = repoDirForSlug(slug)
-        const repoDir = path.join(baseDir, dir)
-        emit(`[kb init] Adding new repo "${repoDisplayFromGitUrl(target.url)}"…`)
-        if (!existsSync(repoDir)) {
-          await cloneRepo(target.url, repoDir, target.branch)
-        }
-        await runKbInit({
-          base,
-          cwd: repoDir,
-          rescan: true,
-          apply: true,
-          nonInteractive: true,
-          gitRepo: slug,
-          ignorePatterns,
-          provider: options.provider,
-          collector: options.collector,
-          progressSink: options.progressSink,
-          questionIO: SILENT_QUESTION_IO,
-        })
+      const dir = repoDirForSlug(slug)
+      const repoDir = path.join(baseDir, dir)
+      emit(`[kb init] Adding new repo "${repoDisplayFromGitUrl(target.url)}"…`)
+      if (!existsSync(repoDir)) {
+        await cloneRepo(target.url, repoDir, target.branch)
       }
+      await runKbInit({
+        base,
+        cwd: repoDir,
+        rescan: true,
+        apply: true,
+        nonInteractive: true,
+        gitRepo: slug,
+        ignorePatterns,
+        provider: options.provider,
+        collector: options.collector,
+        progressSink: options.progressSink,
+      })
     }
-
-    emit(`[kb init] Base "${base}" is ready.`)
-    return { status: 'accepted', base, completedCycles: [] }
-  } finally {
-    await questionIO.close?.()
   }
+
+  emit(`[kb init] Base "${base}" is ready.`)
+  return { status: 'accepted', base, completedCycles: [] }
 }
 
 async function runReadInputsCycle(options: {
@@ -1312,7 +1269,7 @@ async function runReadInputsCycle(options: {
   rescan: boolean
   nonInteractive: boolean
   detach?: boolean
-  questionIO: InitQuestionIO
+  progressSink?: InitOptions['progressSink']
   ignoreMatcher?: IgnoreMatcher
   startingRound: number
   maxQuestions: number
@@ -1328,7 +1285,7 @@ async function runReadInputsCycle(options: {
         cwd: options.cwd,
         baseDir: options.baseDir,
         baseName: options.baseName,
-        questionIO: options.questionIO,
+        progressSink: options.progressSink,
         ignoreMatcher: options.ignoreMatcher,
         onProgress: options.onProgress,
       })
@@ -1423,7 +1380,7 @@ async function collectRescanSourceFiles(options: {
   cwd: string
   baseDir: string
   baseName: string
-  questionIO: InitQuestionIO
+  progressSink?: InitOptions['progressSink']
   ignoreMatcher?: IgnoreMatcher
   onProgress?: (snapshot: ReadInputsCollectionProgress) => void
 }): Promise<Record<string, string>> {
@@ -1436,7 +1393,7 @@ async function collectRescanSourceFiles(options: {
   )
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
-    options.questionIO.write?.('[kb scan] found no markdown sources under the working directory.\n')
+    writeInitNotice(options.progressSink, '[kb scan] found no markdown sources under the working directory.')
   }
   return allSourceFiles
 }
@@ -1527,161 +1484,55 @@ async function writeDocs(
   return writtenIds
 }
 
-function createReadlineQuestionIO(): InitQuestionIO {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  return {
-    write(message: string) {
-      process.stdout.write(message)
-    },
-    askQuestion(question: string, _opts?: InitQuestionOptions) {
-      return new Promise(resolve => {
-        rl.question(question, answer => resolve(answer))
-      })
-    },
-    close() {
-      rl.close()
-    },
-  }
-}
-
 async function isInitializedGitBase(baseDir: string): Promise<boolean> {
   const repos = await discoverBaseRepos(baseDir)
   return repos.length > 0 && existsSync(path.join(baseDir, '.kb-index.sqlite'))
 }
 
-async function resolveInitBaseName(
-  options: InitOptions,
-  cwd: string,
-  questionIO: InitQuestionIO
-): Promise<string> {
+/**
+ * Resolve the base name for this run. `kb init`/`kb scan` are server-only (no TTY, no
+ * caller supplies interactive input), so there is no prompting — every case either
+ * resolves deterministically or throws.
+ */
+async function resolveInitBaseName(options: InitOptions, cwd: string): Promise<string> {
   if (options.base?.trim()) {
     return options.base.trim()
   }
 
   if (options.rescan) {
-    // Fall back to the selected active base (`kb base use`) — no prompt needed.
+    // Fall back to the selected active base (`kb base use`).
     try {
       const { baseName } = await resolveEffectiveBaseDir(cwd)
       if (baseName?.trim()) {
-        questionIO.write?.(`[kb scan] Using base: ${baseName}\n`)
+        writeInitNotice(options.progressSink, `[kb scan] Using base: ${baseName}`)
         return baseName
       }
     } catch {
-      // No active base selected — fall through to the picker / error.
+      // No active base selected — fall through to the error below.
     }
-
-    if (options.nonInteractive) {
-      throw new Error(
-        'No base selected. Pass `--base <name>` or set one with `kb base use <name>`.'
-      )
-    }
-
-    // No base selected — show a list picker so the user explicitly chooses
-    const bases = await listAllBases()
-    if (bases.length === 0) {
-      throw new Error('No initialized bases found. Run `kb init --base <name>` first.')
-    }
-    if (bases.length === 1) {
-      questionIO.write?.(`[kb scan] Using base: ${bases[0].name}\n`)
-      return bases[0].name
-    }
-
-    questionIO.write?.('\n[kb scan] Available bases:\n')
-    for (const b of bases) {
-      const tagStr = b.isActive ? '  [active]' : ''
-      questionIO.write?.(`  ${b.name}${tagStr}\n`)
-    }
-    questionIO.write?.('\n')
-
-    const answer = (
-      await questionIO.askQuestion('  > Base name: ', {
-        slashContext: 'scan-base-picker',
-        suggestions: bases.map(b => b.name),
-      })
-    ).trim()
-
-    if (answer === '/cancel') throw new InitCancelledError()
-
-    const matched = bases.find(b => b.name === answer)
-    if (!matched) {
-      throw new Error(`Unknown base: "${answer}". Available: ${bases.map(b => b.name).join(', ')}`)
-    }
-    return matched.name
+    throw new Error('No base selected. Pass `--base <name>` or set one with `kb base use <name>`.')
   }
 
-  const suggestedBase =
-    options.gitTargets && options.gitTargets.length > 0
-      ? baseNameFromGitUrl(options.gitTargets[0].url)
-      : undefined
-
-  if (options.nonInteractive) {
-    if (suggestedBase) return suggestedBase
-    throw new Error(CLI_ERROR_NO_KB_BASE_FOR_INIT_NON_INTERACTIVE)
+  // Fresh init: resolveGitTargetsForInit already guarantees gitTargets is non-empty by
+  // the time this runs, so a name is always derivable from the first repo. The
+  // DEFAULT_BASE_SLUG fallback is a defensive floor for any future direct caller that
+  // skips that guarantee — the same golden default `kb-server init` materializes.
+  if (options.gitTargets && options.gitTargets.length > 0) {
+    return baseNameFromGitUrl(options.gitTargets[0].url)
   }
-
-  questionIO.write?.('\n[kb init] Choose a knowledge base name for this run.\n\n')
-  const prompt = suggestedBase
-    ? `  > Knowledge base name [${suggestedBase}]\n    `
-    : '  > Knowledge base name\n    '
-  const answer = (await questionIO.askQuestion(prompt, { slashContext: 'init-free-text' })).trim()
-  if (answer === '/cancel') {
-    throw new InitCancelledError()
-  }
-  const resolved = answer || suggestedBase
-  if (!resolved) {
-    throw new Error(
-      'A knowledge base name is required. Use `kb init --base <name>` or enter one when prompted.'
-    )
-  }
-  return resolved
+  return DEFAULT_BASE_SLUG
 }
 
 /**
  * Resolve the git remotes to index. `kb init` requires at least one — local-directory
- * indexing is no longer supported. CLI `--git` flags win; otherwise prompt interactively
- * (space/comma separated, repeatable until at least one URL is given). Non-interactive with
- * no `--git` is a hard error.
+ * indexing is no longer supported, and (being server-only) there is no interactive
+ * fallback: missing `--git` is a hard error.
  */
-async function resolveGitTargetsForInit(
-  options: InitOptions,
-  questionIO: InitQuestionIO
-): Promise<GitTarget[]> {
+async function resolveGitTargetsForInit(options: InitOptions): Promise<GitTarget[]> {
   if (options.gitTargets && options.gitTargets.length > 0) return options.gitTargets
-
-  if (options.nonInteractive) {
-    throw new Error(
-      'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
-    )
-  }
-
-  questionIO.write?.(
-    '\n[kb init] Git remote URL(s) to index (required).\n' +
-      '  Space or comma separated; inline branch: url#branch\n' +
-      '  /cancel to exit without creating a base\n\n'
+  throw new Error(
+    'kb init requires at least one git remote. Pass `--git <url>` (repeatable; use url#branch or --branch to override the remote default).'
   )
-  for (;;) {
-    const answer = (
-      await questionIO.askQuestion('  > Git URL(s)\n    ', { slashContext: 'init-free-text' })
-    ).trim()
-    if (answer === '/cancel') throw new InitCancelledError()
-    if (!answer) {
-      questionIO.write?.('  At least one git URL is required. Enter URL(s) or /cancel to exit.\n')
-      continue
-    }
-    const targets = answer
-      .split(/[\s,]+/)
-      .filter(Boolean)
-      .map(raw => parseGitTarget(raw))
-    if (targets.length > 0) return targets
-    questionIO.write?.('  At least one git URL is required. Enter URL(s) or /cancel to exit.\n')
-  }
-}
-
-/** A questionIO that never prompts — used for recursive rescans of additional repos. */
-const SILENT_QUESTION_IO: InitQuestionIO = {
-  write: () => {},
-  askQuestion: async () => '',
-  close: async () => {},
 }
 
 function slugify(value: string): string {

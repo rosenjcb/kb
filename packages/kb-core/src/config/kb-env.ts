@@ -41,8 +41,6 @@ export function envVarHint(keyPath: string): string | undefined {
       return KB_ENV.PORT
     case 'server.apiKey':
       return KB_ENV.SERVER_API_KEY
-    case 'server.base':
-      return KB_ENV.BASE
     case 'llm.provider':
       return KB_ENV.LLM_PROVIDER
     case 'fact_retrieval_method':

@@ -1,10 +1,12 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig } from '@kb/core/config/kb-config.js'
+import { KB_ENV } from '@kb/core/config/kb-env.js'
 import {
   getIntentQuestion,
   isIntentCommand,
   parseIntentCommand,
 } from '@kb/core/query/intent-cli.js'
+import { DEFAULT_BASE_SLUG, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import type {
@@ -14,8 +16,6 @@ import type {
   LLMFailureResponse,
 } from '../api/types.js'
 import {
-  resolveActiveBaseName,
-  resolveServerConnection,
   resolveServerConnectionWithBase,
   formatConnectionContext,
 } from '../api/server-connection.js'
@@ -89,42 +89,31 @@ export async function ensureServerReady(config: KbConfig): Promise<void> {
   await client.connect()
 }
 
-/**
- * Discover the server's own default base for display when no base was resolved
- * locally (no `--base` and no active base). Best-effort: an
- * unreachable server just leaves the caller's existing "(none)" display as-is —
- * the actual command still gets a real connection error later.
- */
-export async function discoverRemoteDefaultBase(config: KbConfig): Promise<string | undefined> {
-  try {
-    const client = createKbApiClient(resolveServerConnection(config))
-    const health = await client.connect()
-    return health.base || undefined
-  } catch {
-    return undefined
-  }
-}
-
 export interface DisplayBase {
-  /** Base name to show, or undefined when the server is unreachable. */
-  name?: string
-  /** True when `name` is the server's own default base rather than a locally chosen active base. */
-  isServerDefault: boolean
+  /** Base name to show — always set (see `resolveActiveBaseName`). */
+  name: string
+  /** True when neither `KB_BASE` nor a local active base was configured, i.e. `name` is the client's own unconfigured-fallback slug. */
+  isFallback: boolean
 }
 
 /**
- * Resolve the base to *display* (TUI status bar, CLI banner, chat header). It is the
- * active base — what the wire sends as `X-KB-Base` — when one is selected; otherwise
- * the server's own default base, discovered over the wire. Surfacing the server default
- * (instead of "(none)") makes the base flow obvious: with no `kb base use <base>` you are
- * on the server's default, never truly baseless. Best-effort: an unreachable server
- * leaves `name` undefined and callers fall back to "(none)".
+ * Resolve the base to *display* (TUI status bar, CLI banner, chat header) — the same
+ * three tiers `resolveActiveBaseName` resolves for the wire, computed **locally, with
+ * no network round-trip**. There is nothing to discover from the server: the client
+ * always knows its own base before it ever connects (see `resolveActiveBaseName`'s doc
+ * comment for why that's the correct "psql model" reading).
  */
 export async function resolveDisplayBase(config: KbConfig, cwd?: string): Promise<DisplayBase> {
-  const active = await resolveActiveBaseName(config, cwd)
-  if (active) return { name: active, isServerDefault: false }
-  const serverDefault = await discoverRemoteDefaultBase(config)
-  return { name: serverDefault, isServerDefault: serverDefault !== undefined }
+  void config
+  const explicit = process.env[KB_ENV.BASE]?.trim()
+  if (explicit) return { name: explicit, isFallback: false }
+  try {
+    const { baseName } = await resolveEffectiveBaseDir(cwd)
+    if (baseName?.trim()) return { name: baseName.trim(), isFallback: false }
+  } catch {
+    // No active base selected locally.
+  }
+  return { name: DEFAULT_BASE_SLUG, isFallback: true }
 }
 
 export async function runRemoteAdminCli(
@@ -333,7 +322,7 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
   const display = await resolveDisplayBase(kbConfig)
-  io.write(formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault }))
+  io.write(formatConnectionContext(kbConfig, display.name, { isFallback: display.isFallback }))
 
   const chatOut: CliOutput = {
     log: line => io.write(line),

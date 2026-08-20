@@ -1,7 +1,9 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 import type { BootstrapPlan } from '@kb/server/server-bootstrap.js'
 import { resolveServerBaseDir } from '@kb/server/server-cli.js'
 
@@ -40,15 +42,29 @@ describe('resolveServerBaseDir golden default', () => {
 
   const emptyPlan: BootstrapPlan = { gitTargets: [], source: 'none' }
 
-  it('binds slug "default" when no base is declared and none is selected locally', async () => {
+  it('[TC-GLD1] binds slug "default" when no base is declared and none is selected locally', async () => {
     const resolved = await resolveServerBaseDir(emptyPlan)
     expect(resolved.baseRef).toBe('default')
     expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
   })
 
-  it('honors an explicit plan base over the golden default', async () => {
+  it('[TC-GLD2] honors an explicit plan base over the golden default', async () => {
     const resolved = await resolveServerBaseDir({ ...emptyPlan, base: 'acme' })
     expect(resolved.baseRef).toBe('acme')
     expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'acme'))
+  })
+
+  it('[TC-NOLK] ignores a locally-selected client active base — the server has no state of its own to leak into', async () => {
+    process.env.KB_ACTIVE_BASE = 'raylib'
+    const resolved = await resolveServerBaseDir(emptyPlan)
+    expect(resolved.baseRef).toBe('default')
+    expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
+  })
+
+  it('[TC-SLF1] self-heals: materializes a real, empty, migrated index even though `kb-server init` never ran', async () => {
+    const resolved = await resolveServerBaseDir(emptyPlan)
+    const dbPath = path.join(resolved.baseDir, '.kb-index.sqlite')
+    expect(existsSync(dbPath)).toBe(true)
+    expect(isKbIndexEmpty(dbPath)).toBe(true)
   })
 })

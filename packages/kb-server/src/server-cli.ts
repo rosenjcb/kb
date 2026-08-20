@@ -18,12 +18,10 @@ import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
 import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import {
   DEFAULT_BASE_SLUG,
-  ensureOperationalBaseDir,
+  ensureBaseExists,
   readOptionalCliValue,
-  resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
 import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
@@ -107,28 +105,23 @@ interface ResolvedBase {
 
 /**
  * Resolve which base to build + serve. The name comes from the bootstrap plan
- * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env); when none is
- * declared, prefer a base the operator already selected locally (`kb base use`),
- * and otherwise bind the golden default slug `default` — the cluster's well-known
- * base, à la Postgres's `postgres` maintenance DB. `kb-server start` never
- * requires naming a base to boot.
+ * (`--base` flag > `KB_SERVER_BASE_NAME` env); when neither is declared, the golden
+ * default slug `default` — a hardcoded constant, à la Postgres's `postgres`
+ * maintenance DB, never a recorded/configurable choice. `kb-server start` never
+ * requires naming a base to boot, and has no default-base *state* of its own to
+ * consult: it never reads client-side state (`kb base use`'s `active-base` file) —
+ * that would let an operator's shell silently change which base the daemon binds —
+ * and it never reads anything `kb-server init` might have written, because `init`
+ * writes nothing beyond materializing the same hardcoded `default` this function
+ * already falls back to.
+ *
+ * `ensureBaseExists` materializes whichever base wins: even a server that never ran
+ * `init` self-heals into the exact same state `init` would have produced.
  */
 export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
-  if (plan.base) {
-    return { baseDir: await ensureOperationalBaseDir(plan.base), baseRef: plan.base }
-  }
-  try {
-    const resolved = await resolveEffectiveBaseDir()
-    return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
-  } catch (error) {
-    if (error instanceof Error && error.message === CLI_ERROR_NO_KB_BASE) {
-      return {
-        baseDir: await ensureOperationalBaseDir(DEFAULT_BASE_SLUG),
-        baseRef: DEFAULT_BASE_SLUG,
-      }
-    }
-    throw error
-  }
+  const baseRef = plan.base || DEFAULT_BASE_SLUG
+  const { baseDir } = await ensureBaseExists(baseRef)
+  return { baseDir, baseRef }
 }
 
 interface BootstrapTask {
@@ -341,6 +334,28 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
  * `kb-server start [--base <name>] [--port <n>] [--with-mcp]
  *                  [--git <url[#branch]>]… [--branch <name>]`
  */
+/**
+ * `KB_BASE` / `KB_GIT_REPOS` are the **client's** env vars (the base a `kb`
+ * invocation targets; unused by the client for repos at all) — the server only
+ * ever reads `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`. On a same-machine
+ * install it is easy to export the client-scoped name and expect it to steer the
+ * daemon too, so warn loudly rather than silently booting the wrong base.
+ */
+function warnOnClientScopedBaseEnv(out: ServerLogger): void {
+  if (process.env.KB_BASE?.trim() && !process.env.KB_SERVER_BASE_NAME?.trim()) {
+    out.error(
+      '⚠  KB_BASE is set but is the client\'s base variable — kb-server reads ' +
+        'KB_SERVER_BASE_NAME instead. Set that (or --base) to steer which base this server boots.'
+    )
+  }
+  if (process.env.KB_GIT_REPOS?.trim() && !process.env.KB_SERVER_BASE_GIT_REPOS?.trim()) {
+    out.error(
+      '⚠  KB_GIT_REPOS is set but kb-server reads KB_SERVER_BASE_GIT_REPOS instead. ' +
+        'Set that (or --git) to declare repos for this server to build.'
+    )
+  }
+}
+
 export async function runServerCommand(
   args: string[],
   out: ServerLogger,
@@ -354,6 +369,8 @@ export async function runServerCommand(
   if (Number.isNaN(port) || port <= 0) {
     throw new Error('--port must be a positive integer')
   }
+
+  warnOnClientScopedBaseEnv(out)
 
   // Infer + announce LLM provider once at server boot.
   const inferred = await persistInferredLLMProvider({ config })
@@ -572,7 +589,8 @@ Commands:
   stop          Stop the running kb-server (SIGTERM, then SIGKILL).
   restart       Stop then start -d.
   status        Report whether kb-server is running (pid + /healthz).
-  init          Bootstrap KB_HOME and server config, then print next steps.
+  init          Bootstrap KB_HOME and materialize the "default" base (initdb-style;
+                takes no flags — start alone self-heals to the same state).
   base <list | create | add-repo | delete> --base <name> [--git <url>…] [--yes]
         Operator base management. \`create\`/\`add-repo\` build or extend a base from
         \`--git\` repos; \`list\` shows initialized bases; \`delete\` removes one base and
@@ -629,9 +647,9 @@ export async function runServerMain(argv: string[]): Promise<void> {
     return
   }
 
-  const { ensureDefaultConfig } = await import('@kb/core/config/kb-config.js')
-  const config = await ensureDefaultConfig()
-  const rest = command === 'start' ? argv.slice(1) : argv.slice(1)
+  const { readKbConfig } = await import('@kb/core/config/kb-config.js')
+  const config = await readKbConfig()
+  const rest = argv.slice(1)
 
   switch (command) {
     case 'start':

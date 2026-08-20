@@ -8,14 +8,18 @@
  * config file to manage, because these run as Docker service nodes, not local checkouts.
  *
  * Resolution precedence (highest wins) — explicit flags beat env:
- *   base:   `--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env
- *   repos:  `--git` flag(s) > `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS` env
+ *   base:   `--base` flag > `KB_SERVER_BASE_NAME` env
+ *   repos:  `--git` flag(s) > `KB_SERVER_BASE_GIT_REPOS` env
  *   ignore: `KB_SERVER_IGNORE` env
  *
- * `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS` are the server-scoped names; the
- * legacy `KB_BASE` / `KB_GIT_REPOS` remain supported as fallbacks for back-compat. Repo
- * lists accept comma- and/or whitespace/newline-separated entries (handy for multi-line
- * container env) and each entry keeps its inline `#<branch>` pin.
+ * These are deliberately **server-scoped** names, distinct from the client's `KB_BASE`
+ * (the base a `kb` invocation targets) and `KB_GIT_REPOS` (unused by the client). A
+ * same-machine install commonly has both client and server env in one shell; if the
+ * server read the client's `KB_BASE`, exporting it to point `kb` at a base would also
+ * silently change which base the daemon boots. See `runServerCommand`'s startup guard
+ * for the loud warning when the client-scoped names are set without their server-scoped
+ * counterpart. Repo lists accept comma- and/or whitespace/newline-separated entries
+ * (handy for multi-line container env) and each entry keeps its inline `#<branch>` pin.
  *
  * This module is intentionally pure (parsing + plan resolution, no I/O) so it is
  * unit-testable without Docker.
@@ -100,14 +104,14 @@ export function parseReposEnv(value: string | undefined, defaultBranch?: string)
 export async function resolveBootstrapPlan(args: string[]): Promise<BootstrapPlan> {
   const defaultBranch = readOptionalCliValue(args, '--branch')
 
-  // Base name: --base flag > KB_SERVER_BASE_NAME > KB_BASE.
+  // Base name: --base flag > KB_SERVER_BASE_NAME.
   const cliBase = readOptionalCliValue(args, '--base')?.trim()
-  const envBase = process.env.KB_SERVER_BASE_NAME?.trim() || process.env.KB_BASE?.trim()
+  const envBase = process.env.KB_SERVER_BASE_NAME?.trim()
   const base = cliBase || envBase || undefined
 
-  // Repos: --git flags > KB_SERVER_BASE_GIT_REPOS / KB_GIT_REPOS env.
+  // Repos: --git flags > KB_SERVER_BASE_GIT_REPOS.
   const flagTargets = readAllCliValues(args, '--git').map(raw => parseGitTarget(raw, defaultBranch))
-  const envReposRaw = process.env.KB_SERVER_BASE_GIT_REPOS ?? process.env.KB_GIT_REPOS
+  const envReposRaw = process.env.KB_SERVER_BASE_GIT_REPOS
   const envTargets = parseReposEnv(envReposRaw, defaultBranch)
 
   let gitTargets: GitTarget[]

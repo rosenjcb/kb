@@ -63,7 +63,7 @@ See companion doc for full vocabulary where applicable.
 | FR-1 | Repo sync pulls each clone on the volume and re-indexes those with new commits |
 | FR-2 | Global CLI routing parses flags, defaults, and dispatches subcommands |
 | FR-3 | Repo slug/dir helpers and on-volume repo discovery |
-| FR-4 | Base selection resolves `--base` and the active base; with none set the server default applies |
+| FR-4 | [UPDATED] Base selection resolves `--base`, then the active base; with neither set, the hardcoded `default` slug applies — the client always resolves to a concrete name, never `undefined`, so it always sends an explicit `X-KB-Base` |
 | FR-5 | Chat REPL delegates to kb-server `/v1/chat`; synthesis helpers stay unit-tested in-client |
 | FR-6 | Chat query orchestrator delegates QUERY turns to shared retrieval |
 | FR-7 | Chat retrieval refusal surfaces when evidence is insufficient |
@@ -73,12 +73,12 @@ See companion doc for full vocabulary where applicable.
 | FR-11 | Git sync pulls tracked repos and reports sync status |
 | FR-12 | Graph CLI exposes code-graph query and summary subcommands |
 | FR-13 | Init AST files manifest records parsed symbol files per cycle |
-| FR-14 | Init pipeline runs multi-cycle scan, enrichment, and synthesis |
+| FR-14 | [UPDATED] Init pipeline runs multi-cycle scan, enrichment, and synthesis. `kb init`/`kb scan` are server-only (`POST /v1/admin/cli`, no TTY): there is no interactive prompting for a base name or a git remote — a missing base (on rescan) or a missing `--git` (on fresh init) is always a hard error, never a prompt |
 | FR-15 | Init source files manifest tracks cloned repo paths and branches |
 | FR-16 | Init source snapshots capture per-cycle file hashes for drift detection |
 | FR-17 | Init topic coverage reports document-type coverage gaps |
 | FR-18 | Intent CLI parses query envelopes and routes to retrieval |
-| FR-19 | KB config loader merges defaults, file config, and env overrides |
+| FR-19 | [UPDATED] KB config loader merges defaults, file config, and env overrides. Config is environment-only: there is no `config.json` and nothing is auto-migrated from it |
 | FR-20 | kb.ignore patterns exclude paths from indexing |
 | FR-21 | Logs CLI reads structured run reports from the logs directory |
 | FR-22 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs. The kb-first reminder hook fires only on repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query` — never VCS/build/cloud tooling or pipeline-filter greps), throttles to one reminder per session per 15-minute window, and honors `KB_HOOK_REMINDER=false` |
@@ -122,9 +122,10 @@ See companion doc for full vocabulary where applicable.
 | TC-YRYL | FR-4 | resolves the active base from config | pass |
 | TC-DH7S | FR-4 | throws when no activeBase is set (server default takes over) | pass |
 | TC-IIKB | FR-4 | writeSessionBase persists the active base | pass |
-| TC-S9NT | FR-4 | migrates legacy session.json into active-base and removes session.json | pass |
-| TC-DL0O | FR-4 | ensureOperationalBaseDir migrates legacy repo sqlite into KB home | pass |
-| TC-1BXW | FR-4 | ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace | pass |
+| TC-EBX1 | FR-4 | [NEW] ensureBaseExists creates an empty, migrated index and reports created:true | pass |
+| TC-EBX2 | FR-4 | [NEW] ensureBaseExists is idempotent — a second call reports created:false | pass |
+| TC-EBX3 | FR-4 | [NEW] listAllBases includes a base materialized by ensureBaseExists | pass |
+| TC-EBX4 | FR-4 | [NEW] ensureBaseExistsSync materializes the same way as the async version | pass |
 | TC-Q3X2 | FR-4 | formatUseCommandHelp shows active session switching | pass |
 | TC-QD3M | FR-4 | Given an existing named base, then deletes its session directory | pass |
 | TC-LANX | FR-4 | Given legacy + tmp checkpoint artifacts, then purges them too | pass |
@@ -211,8 +212,7 @@ See companion doc for full vocabulary where applicable.
 | TC-BF7T | FR-13 | returns null diff when no manifest exists yet (first run) | pass |
 | TC-A9HB | FR-13 | round-trips manifest writes and detects changed/new files only | pass |
 | TC-W75I | FR-13 | treats unchanged contents as a no-op diff | pass |
-| TC-I5B9 | FR-14 | Given init without --base, then it prompts for a base name and uses the answer | pass |
-| TC-UBCD | FR-14 | Given init without --base and config activeBase, then prompt suggests the first git remote slug | pass |
+| TC-I5B9 | FR-14 | [UPDATED] Given init without --base, then it derives the base name from the git remote slug — no prompt, even with a local active base set | pass |
 | TC-KWC3 | FR-14 | Given detach and resume flags, then parses them into init options | pass |
 | TC-4MNE | FR-14 | Given scan args, then parsing implies rescan and always applies automatically | pass |
 | TC-PI4H | FR-14 | Given --stop-after document-facts, then parsing returns document-facts | pass |
@@ -240,22 +240,14 @@ See companion doc for full vocabulary where applicable.
 | TC-3SGG | FR-14 | Given rescan without --base and no selected base in non-interactive mode, throws guidance | pass |
 | TC-QNA6 | FR-14 | Given a full init cycle, then progress counter shows 3/3 (not more) | pass |
 | TC-0R0B | FR-14 | Given a TypeScript-only project, then AST code-index uses no LLM tokens | pass |
-| TC-O8A2 | FR-14 | Given an active base, uses it without prompting | pass |
-| TC-V7E7 | FR-14 | Given --base flag, uses it directly without prompting | pass |
-| TC-D5NZ | FR-14 | Given no selected base and a single initialized base, auto-selects it without prompting | pass |
-| TC-I656 | FR-14 | Given no selected base and multiple bases, prompts with a list and accepts a typed name | pass |
-| TC-GOHJ | FR-14 | Given no selected base and multiple bases, passing suggestions list to askQuestion | pass |
-| TC-D7OQ | FR-14 | Given no selected base and multiple bases, an invalid name throws an error | pass |
-| TC-XNCG | FR-14 | Given no selected base and /cancel answer, throws InitCancelledError | pass |
-| TC-01FX | FR-14 | Given no selected base and no initialized bases, throws a helpful error | pass |
-| TC-ZG04 | FR-14 | Given no selected base and --non-interactive, throws without prompting | pass |
-| TC-GM0N | FR-14 | Given interactive init with a git URL entered first, then clones from that URL | pass |
+| TC-O8A2 | FR-14 | Given an active base, uses it | pass |
+| TC-V7E7 | FR-14 | Given --base flag, uses it directly | pass |
+| TC-ZG04 | FR-14 | [UPDATED] Given no selected base, throws without prompting — regardless of how many other bases exist on the host | pass |
+| TC-01FX | FR-14 | [UPDATED] Given no selected base and no initialized bases, throws the same error | pass |
 | TC-PONX | FR-14 | Given --git flag (non-interactive), then clones the repo onto the base volume | pass |
 | TC-PGIR | FR-14 | Given --git without branch, then clones the remote default branch | pass |
 | TC-UIOI | FR-14 | Given multiple --git targets, then both repos index into one base and the volume lists both | pass |
-| TC-HHLH | FR-14 | Given /cancel at git URL prompt, throws InitCancelledError | pass |
-| TC-1L81 | FR-14 | Given non-interactive init without --git, throws requiring a git remote | pass |
-| TC-2B4D | FR-14 | Given interactive init with empty git answer then /cancel, throws InitCancelledError | pass |
+| TC-1L81 | FR-14 | [UPDATED] Given init without --git, throws requiring a git remote | pass |
 | TC-YYVU | FR-14 | parseInitCommand parses --git and --branch flags | pass |
 | TC-98OW | FR-14 | parseInitCommand parses repeatable --git with inline branch (no branch = remote default) | pass |
 | TC-TIUI | FR-14 | parseInitCommand with only --git leaves the branch undefined (remote default) | pass |
@@ -286,11 +278,7 @@ See companion doc for full vocabulary where applicable.
 | TC-5XBS | FR-18 | keeps LLM answer when synthesisQuestion is pre-expansion text (not graph-expanded query) | pass |
 | TC-8JL6 | FR-18 | query synthesis allows a larger answer output budget | pass |
 | TC-RFFQ | FR-19 | returns default features when no env is set | pass |
-| TC-HAQH | FR-19 | migrates legacy config.json base fields into line files | pass |
 | TC-ZLRD | FR-19 | reads server profile from KB_HOST/KB_PORT env | pass |
-| TC-VE4A | FR-19 | returns config with default features enabled | pass |
-| TC-VVB1 | FR-19 | matches readKbConfig output | pass |
-| TC-YAO2 | FR-19 | returns fresh config with defaults | pass |
 | TC-OBQU | FR-19 | returns false when no LLM env vars are set | pass |
 | TC-F4WQ | FR-19 | returns true when ANTHROPIC_API_KEY is set | pass |
 | TC-43MO | FR-19 | throws LLMKeyMissingError for anthropic when ANTHROPIC_API_KEY is not set | pass |

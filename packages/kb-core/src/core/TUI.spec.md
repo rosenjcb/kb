@@ -32,7 +32,7 @@ See companion doc for full vocabulary where applicable.
 | FR-2 | Behaviors in chat-io-classify.test.ts |
 | FR-3 | Behaviors in chat-read-kind.test.ts |
 | FR-4 | Behaviors in history-pane.test.ts |
-| FR-5 | Behaviors in init-args.test.ts |
+| FR-5 | [REMOVED] Behaviors in init-args.test.ts — `ensureScanBaseArg` and the file are deleted; `kb init`/`kb scan` have no interactive TUI surface to fall back a base for (server-only, no TTY) |
 | FR-6 | Behaviors in init-progress-line.test.ts |
 | FR-7 | Behaviors in init-status.test.ts |
 | FR-8 | Behaviors in loading-spinner.test.ts |
@@ -69,9 +69,6 @@ See companion doc for full vocabulary where applicable.
 | TC-T6L5 | FR-4 | returns empty liveItems when nothing is loading | pass |
 | TC-74CT | FR-4 | loading entry in the middle stays in liveItems while surrounding statics go to staticItems | pass |
 | TC-F4FA | FR-4 | once answer is committed it appears in staticItems at its array position | pass |
-| TC-KM20 | FR-5 | Given scan args without --base and fallback exists, then appends --base fallback | pass |
-| TC-NWQ7 | FR-5 | Given --base already provided, then preserves original args | pass |
-| TC-NX7E | FR-5 | Given empty fallback and no --base, then leaves args unchanged | pass |
 | TC-1N1D | FR-6 | extracts repo slug and progress body | pass |
 | TC-5GYA | FR-6 | returns the full line when no repo prefix is present | pass |
 | TC-LEF5 | FR-6 | passes through init prompts unchanged | pass |
@@ -127,7 +124,6 @@ See companion doc for full vocabulary where applicable.
 | TC-A1EO | FR-11 | suggests /skills when typing /sk | pass |
 | TC-P7AX | FR-11 | suggests logs subcommands when typing /logs c | pass |
 | TC-0FT3 | FR-11 | suggests /facts list when typing /facts li | pass |
-| TC-R1K4 | FR-11 | shows /cancel only in init-flow contexts, not at idle | pass |
 | TC-FV3W | FR-11 | completes multi-segment commands | pass |
 | TC-LMFB | FR-11 | suppresses suggestions after complete path with trailing args | pass |
 | TC-LPE9 | FR-11 | orders the command menu by catalog section, not alphabetically | pass |

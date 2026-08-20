@@ -148,57 +148,28 @@ function createProvider(texts: string[]): LLMProvider {
 }
 
 describe('init-cli interview checkpoints', () => {
-  it('[TC-I5B9] Given init without --base, then it prompts for a base name and uses the answer', async () => {
-    const cwd = await createTempProject({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    const repo = await makeTempGitRepo({
-      'README.md': '# Project\n\nThis project has a CLI.\n',
-    })
-    const questionIO = createQuestionIO(['fresh-base'])
-
-    const result = await runKbInit({
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: questionIO.io,
-    })
-
-    expect(result.base).toBe('fresh-base')
-    expect(questionIO.prompts[0]).toContain('Knowledge base name')
-    expect(questionIO.prompts[0]).toContain(repoSlugFromGitUrl(repo))
-    expect(result.checkpointFile).toBe(
-      path.join(kbHomeDir, 'sessions', 'fresh-base', 'checkpoints', 'init-latest.checkpoint.json')
-    )
-    const activeBase = (await readFile(path.join(kbHomeDir, 'state', 'active-base'), 'utf8')).trim()
-    expect(activeBase).toBe('fresh-base')
-  })
-
   it(
-    '[TC-UBCD] Given init without --base and config activeBase, then prompt suggests the first git remote slug',
+    '[TC-I5B9] Given init without --base, then it derives the base name from the git remote slug (no prompt, even with a local active base set)',
     { timeout: 15_000 },
     async () => {
       const cwd = await createTempProject({
         'README.md': '# Project\n\nThis project has a CLI.\n',
       })
+      // A locally-selected active base must not influence a fresh (non-rescan) init's
+      // derived name — that tier only applies to `kb scan`.
       await mkdir(path.join(kbHomeDir, 'state'), { recursive: true })
       await writeFile(path.join(kbHomeDir, 'state', 'active-base'), 'dogfood\n', 'utf8')
       const repo = await makeTempGitRepo({
         'README.md': '# Project\n\nThis project has a CLI.\n',
       })
-      const questionIO = createQuestionIO([''])
 
       const result = await runKbInit({
-        nonInteractive: false,
+        nonInteractive: true,
         stopAfter: 'read-inputs',
         cwd,
         gitTargets: [{ url: repo, branch: 'main' }],
-        questionIO: questionIO.io,
       })
 
-      expect(questionIO.prompts[0]).not.toContain('[dogfood]')
-      expect(questionIO.prompts[0]).toContain(`[${repoSlugFromGitUrl(repo)}]`)
       expect(result.base).toBe(repoSlugFromGitUrl(repo))
       expect(result.checkpointFile).toBe(
         path.join(
@@ -1245,170 +1216,45 @@ async function initBase(name: string): Promise<void> {
 }
 
 describe('kb scan — base resolution', () => {
-  it('[TC-O8A2] Given an active base, uses it without prompting', async () => {
+  it('[TC-O8A2] Given an active base, uses it', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('pinned-base')
     await writeSessionBase('pinned-base')
-    const { io, prompts } = createQuestionIO([])
 
     const result = await runKbInit({
       rescan: true,
       apply: true,
-      nonInteractive: false,
+      nonInteractive: true,
       stopAfter: 'read-inputs',
       cwd,
-      questionIO: io,
     })
 
     expect(result.base).toBe('pinned-base')
-    expect(prompts).toHaveLength(0)
   })
 
-  it('[TC-V7E7] Given --base flag, uses it directly without prompting', async () => {
+  it('[TC-V7E7] Given --base flag, uses it directly', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('explicit-base')
-    const { io, prompts } = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'explicit-base',
       rescan: true,
       apply: true,
-      nonInteractive: false,
+      nonInteractive: true,
       stopAfter: 'read-inputs',
       cwd,
-      questionIO: io,
     })
 
     expect(result.base).toBe('explicit-base')
-    expect(prompts).toHaveLength(0)
   })
 
-  it('[TC-D5NZ] Given no selected base and a single initialized base, auto-selects it without prompting', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('solo-base')
-    const { io, prompts, writes } = createQuestionIO([])
-
-    const result = await runKbInit({
-      rescan: true,
-      apply: true,
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(result.base).toBe('solo-base')
-    expect(prompts).toHaveLength(0)
-    expect(writes.join('')).toContain('solo-base')
-  })
-
-  it('[TC-I656] Given no selected base and multiple bases, prompts with a list and accepts a typed name', async () => {
+  // `kb init`/`kb scan` are server-only (POST /v1/admin/cli, no TTY), so base
+  // resolution never prompts — with no active base and no `--base`, it throws
+  // regardless of how many other bases exist on the host.
+  it('[TC-ZG04] Given no selected base, throws without prompting', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     await initBase('alpha')
     await initBase('beta')
-    const { io, prompts, writes } = createQuestionIO(['beta'])
-
-    const result = await runKbInit({
-      rescan: true,
-      apply: true,
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    expect(result.base).toBe('beta')
-    expect(prompts[0]).toContain('Base name')
-    expect(writes.join('')).toContain('alpha')
-    expect(writes.join('')).toContain('beta')
-  })
-
-  it('[TC-GOHJ] Given no selected base and multiple bases, passing suggestions list to askQuestion', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('alpha')
-    await initBase('beta')
-
-    const capturedOpts: unknown[] = []
-    const io = {
-      write: (_msg: string) => {},
-      async askQuestion(_question: string, opts?: unknown): Promise<string> {
-        capturedOpts.push(opts)
-        return 'alpha'
-      },
-      async close() {},
-    }
-
-    await runKbInit({
-      rescan: true,
-      apply: true,
-      nonInteractive: false,
-      stopAfter: 'read-inputs',
-      cwd,
-      questionIO: io,
-    })
-
-    const opts = capturedOpts[0] as { slashContext?: string; suggestions?: string[] }
-    expect(opts?.slashContext).toBe('scan-base-picker')
-    expect(opts?.suggestions).toContain('alpha')
-    expect(opts?.suggestions).toContain('beta')
-  })
-
-  it('[TC-D7OQ] Given no selected base and multiple bases, an invalid name throws an error', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('alpha')
-    await initBase('beta')
-    const { io } = createQuestionIO(['does-not-exist'])
-
-    await expect(
-      runKbInit({
-        rescan: true,
-        apply: true,
-        nonInteractive: false,
-        stopAfter: 'read-inputs',
-        cwd,
-        questionIO: io,
-      })
-    ).rejects.toThrow('Unknown base')
-  })
-
-  it('[TC-XNCG] Given no selected base and /cancel answer, throws InitCancelledError', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('alpha')
-    await initBase('beta')
-    const { io } = createQuestionIO(['/cancel'])
-
-    await expect(
-      runKbInit({
-        rescan: true,
-        apply: true,
-        nonInteractive: false,
-        stopAfter: 'read-inputs',
-        cwd,
-        questionIO: io,
-      })
-    ).rejects.toThrow('Cancelled')
-  })
-
-  it('[TC-01FX] Given no selected base and no initialized bases, throws a helpful error', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const { io } = createQuestionIO([])
-
-    await expect(
-      runKbInit({
-        rescan: true,
-        apply: true,
-        nonInteractive: false,
-        stopAfter: 'read-inputs',
-        cwd,
-        questionIO: io,
-      })
-    ).rejects.toThrow('No initialized bases found')
-  })
-
-  it('[TC-ZG04] Given no selected base and --non-interactive, throws without prompting', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    await initBase('alpha')
-    const { io } = createQuestionIO([])
 
     await expect(
       runKbInit({
@@ -1416,7 +1262,19 @@ describe('kb scan — base resolution', () => {
         apply: true,
         nonInteractive: true,
         cwd,
-        questionIO: io,
+      })
+    ).rejects.toThrow(/No base selected/)
+  })
+
+  it('[TC-01FX] Given no selected base and no initialized bases, throws the same error', async () => {
+    const cwd = await createTempProject({ 'README.md': '# hi\n' })
+
+    await expect(
+      runKbInit({
+        rescan: true,
+        apply: true,
+        nonInteractive: true,
+        cwd,
       })
     ).rejects.toThrow(/No base selected/)
   })
@@ -1427,36 +1285,6 @@ describe('kb scan — base resolution', () => {
 // ---------------------------------------------------------------------------
 
 describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
-  it('[TC-GM0N] Given interactive init with a git URL entered first, then clones from that URL', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
-    const slug = repoSlugFromGitUrl(repo)
-    const { io, prompts } = createQuestionIO([
-      repo, // git URL — first prompt
-      '', // accept suggested base name (repo slug)
-    ])
-
-    await runKbInit({
-      nonInteractive: false,
-      cwd,
-      questionIO: io,
-    })
-
-    expect(prompts[0]).toContain('Git URL')
-    expect(prompts[1]).toContain('Knowledge base name')
-
-    const baseDir = resolveBaseToDir(slug, cwd)
-    const repos = await discoverBaseRepos(baseDir)
-    expect(repos[0]?.gitUrl).toBe(repo)
-
-    const indexer = new SqliteKbIndexer({ dbPath: path.join(baseDir, '.kb-index.sqlite') })
-    try {
-      expect(indexer.listFactsForQuery(99999).length).toBeGreaterThan(0)
-    } finally {
-      indexer.close()
-    }
-  })
-
   it('[TC-PONX] Given --git flag (non-interactive), then clones the repo onto the base volume', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
     const repo = await makeTempGitRepo({ 'README.md': '# Remote Repo\n' })
@@ -1535,21 +1363,7 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
     }
   })
 
-  it('[TC-HHLH] Given /cancel at git URL prompt, throws InitCancelledError', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const { io } = createQuestionIO(['/cancel'])
-
-    await expect(
-      runKbInit({
-        nonInteractive: false,
-        stopAfter: 'read-inputs',
-        cwd,
-        questionIO: io,
-      })
-    ).rejects.toThrow(/cancel/i)
-  })
-
-  it('[TC-1L81] Given non-interactive init without --git, throws requiring a git remote', async () => {
+  it('[TC-1L81] Given init without --git, throws requiring a git remote', async () => {
     const cwd = await createTempProject({ 'README.md': '# hi\n' })
 
     await expect(
@@ -1558,19 +1372,6 @@ describe('init-cli git-linked dialog', { timeout: 30_000 }, () => {
         cwd,
       })
     ).rejects.toThrow(/requires at least one git remote/i)
-  })
-
-  it('[TC-2B4D] Given interactive init with empty git answer then /cancel, throws InitCancelledError', async () => {
-    const cwd = await createTempProject({ 'README.md': '# hi\n' })
-    const { io } = createQuestionIO(['', '/cancel'])
-
-    await expect(
-      runKbInit({
-        nonInteractive: false,
-        cwd,
-        questionIO: io,
-      })
-    ).rejects.toThrow(/cancel/i)
   })
 
   it('[TC-YYVU] parseInitCommand parses --git and --branch flags', () => {

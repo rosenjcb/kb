@@ -53,11 +53,17 @@ describe('resolveBootstrapPlan', () => {
     }
   })
 
-  it('[TC-L9F8] resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE)', async () => {
+  it('[TC-L9F8] resolves base from KB_SERVER_BASE_NAME; KB_BASE (the client-scoped var) is ignored even when both are set', async () => {
     process.env.KB_BASE = 'legacy'
     process.env.KB_SERVER_BASE_NAME = 'preferred'
     const plan = await resolveBootstrapPlan([])
     expect(plan.base).toBe('preferred')
+  })
+
+  it('[TC-ENS1] KB_BASE alone (no KB_SERVER_BASE_NAME) resolves no base at all — the hard client/server split', async () => {
+    process.env.KB_BASE = 'client-only'
+    const plan = await resolveBootstrapPlan([])
+    expect(plan.base).toBeUndefined()
   })
 
   it('[TC-JT2B] lets the --base flag win over env', async () => {
@@ -66,7 +72,7 @@ describe('resolveBootstrapPlan', () => {
     expect(plan.base).toBe('fromflag')
   })
 
-  it('[TC-C3QO] reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS)', async () => {
+  it('[TC-C3QO] reads repos from KB_SERVER_BASE_GIT_REPOS; KB_GIT_REPOS is ignored even when both are set', async () => {
     process.env.KB_GIT_REPOS = 'legacy.git'
     process.env.KB_SERVER_BASE_GIT_REPOS = 'a.git, b.git#dev'
     const plan = await resolveBootstrapPlan([])
@@ -75,6 +81,13 @@ describe('resolveBootstrapPlan', () => {
       { url: 'a.git', branch: undefined },
       { url: 'b.git', branch: 'dev' },
     ])
+  })
+
+  it('[TC-ENS2] KB_GIT_REPOS alone (no KB_SERVER_BASE_GIT_REPOS) resolves no repos at all', async () => {
+    process.env.KB_GIT_REPOS = 'legacy.git'
+    const plan = await resolveBootstrapPlan([])
+    expect(plan.source).toBe('none')
+    expect(plan.gitTargets).toEqual([])
   })
 
   it('[TC-Z0WI] lets --git flags win over env repos', async () => {

@@ -65,15 +65,15 @@ describe('server-connection', () => {
     expect(line).toContain('base: dogfood')
   })
 
-  it('[TC-JD2O] formatConnectionContext labels the server-default base', () => {
-    expect(formatConnectionContext({}, 'base', { serverDefault: true })).toContain(
-      'base: base (server default)'
+  it('[TC-JD2O] formatConnectionContext labels the unconfigured-fallback base', () => {
+    expect(formatConnectionContext({}, 'default', { isFallback: true })).toContain(
+      'base: default (no active base selected)'
     )
     // A locally selected active base is shown without the label.
-    expect(formatConnectionContext({}, 'dogfood', { serverDefault: false })).toContain(
+    expect(formatConnectionContext({}, 'dogfood', { isFallback: false })).toContain(
       'base: dogfood'
     )
-    expect(formatConnectionContext({}, 'dogfood')).not.toContain('server default')
+    expect(formatConnectionContext({}, 'dogfood')).not.toContain('no active base selected')
   })
 
   it('[TC-7VJJ] resolveActiveBaseName returns KB_BASE (explicit --base / connection-string) first', async () => {
@@ -95,6 +95,33 @@ describe('server-connection', () => {
     expect(conn.base).toBe('shared-base')
     if (prevBase === undefined) delete process.env.KB_BASE
     else process.env.KB_BASE = prevBase
+  })
+
+  it('[TC-FLBK] resolveActiveBaseName always resolves — falls back to the reserved "default" slug when nothing is configured, never undefined', async () => {
+    const { mkdtemp, rm } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const prevBase = process.env.KB_BASE
+    const prevActive = process.env.KB_ACTIVE_BASE
+    const prevHome = process.env.KB_HOME
+    delete process.env.KB_BASE
+    delete process.env.KB_ACTIVE_BASE
+    const kbHome = await mkdtemp(path.join(os.tmpdir(), 'kb-fallback-'))
+    process.env.KB_HOME = kbHome
+
+    const base = await resolveActiveBaseName({})
+    expect(base).toBe('default')
+
+    const conn = await resolveServerConnectionWithBase({})
+    expect(conn.base).toBe('default')
+
+    if (prevBase === undefined) delete process.env.KB_BASE
+    else process.env.KB_BASE = prevBase
+    if (prevActive === undefined) delete process.env.KB_ACTIVE_BASE
+    else process.env.KB_ACTIVE_BASE = prevActive
+    if (prevHome === undefined) delete process.env.KB_HOME
+    else process.env.KB_HOME = prevHome
+    await rm(kbHome, { recursive: true, force: true })
   })
 })
 

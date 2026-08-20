@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-16T20:30:00Z
+timestamp: 2026-08-20T21:50:00Z
 ---
 
 ### Intro
@@ -37,14 +37,14 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-4 | [UPDATED] Expose an answer-first MCP tool (`query`) that always synthesizes and — together with `submit_feedback` (FR-19) and `get_feedback_requests` (FR-20) — never exposes other tools; the default payload is lean (`query` + `answer` + `{path, symbols?}` sources + evidence/notes), with the full evidence dump behind `verbose: true`; an optional `base` argument overrides the MCP session's default base for that one call, the same per-call override FR-14's body `base` already offers over REST — an unresolvable slug is an error result (not a 404, MCP has no status codes) and a single-base server (no registry) ignores it |
 | FR-5 | Parse and run periodic reindex scheduler |
 | FR-6 | [UPDATED] Serialize IntentResult to a lean agent JSON body by default (MCP + REST: answer + `{path, symbols?}` sources + evidence/notes); `verbose: true` returns the full dump (GroupedSource with facts, raw `results`, `retrieval`); an answer that cites a file not among the retrieved sources downgrades `evidence` (not just a note), matching a path-qualified citation against the full source path (or a path suffix) and a bare filename against basename only |
-| FR-7 | Resolve bootstrap base, repos, branch, and ignore patterns from env and flags |
+| FR-7 | [UPDATED] Resolve bootstrap base, repos, branch, and ignore patterns from env and flags. Base: `--base` then `KB_SERVER_BASE_NAME`. Repos: `--git` then `KB_SERVER_BASE_GIT_REPOS`. `KB_BASE` and `KB_GIT_REPOS` are the client's env vars and are never read here, even when set |
 | FR-8 | Start server CLI with bootstrap logging and deferred scheduler |
 | FR-9 | Print package version for `--version` / `-V` without starting the daemon |
 | FR-10 | Store in-memory chat session history with TTL and caps |
 | FR-11 | Verify Slack signatures, route events, and deduplicate retries; chat replies use `formatChatReply({ flavor: 'slack', sourceRepos })` on the same `service.chat` answer event as `/v1/chat` (Markdown→mrkdwn + deduped Sources footer; blob links from `discoverBaseRepos` per slug) |
 | FR-12 | Manage the daemon by pid file: resolve the bind port, write/read the pid, and treat a dead pid as stopped |
 | FR-13 | Generate a launchd/systemd service that launches the release binary (never a repo dist path) |
-| FR-14 | Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base`; `GET /v1/bases` lists served bases |
+| FR-14 | [UPDATED] Serve many bases from one process: select per request via `X-KB-Base` (or `?base=` / body `base`); omitted ⇒ default base, unknown ⇒ `404 unknown_base` — except the reserved `default` slug, which is never unknown: a missing index for it is materialized on the spot (empty, migrated) instead of 404ing, even when this process booted on a different base; `GET /v1/bases` lists served bases |
 | FR-15 | One-shot `kb-server scan` runs adopt(optional) → scan → export(optional) then exits (no HTTP); `--from`/`--out` are local paths only; batch always replaces an existing adopt index and overwrites `--out` (no `--force`); `--json` emits ok true/false summary on stdout |
 | FR-16 | Browser CORS: reflect allow-listed `Origin` (or `*`); omit headers when CORS off / origin not listed; answer preflight `OPTIONS` with 204 without auth for allowed origins |
 | FR-17 | First-boot bootstrap (`health.indexing`) returns 503 on `/v1/query`, `/v1/chat`, and `/mcp` with progress; scheduled reindex (`health.reindexing`) does **not** block those routes |
@@ -55,8 +55,11 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 | FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
-| FR-25 | [NEW] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index; allowed on the empty built-in `default` base), `list`, and `delete --base <name>` (prompts unless `--yes`). `create` refuses the reserved `default` slug and any base that already exists; `add-repo` refuses an unknown non-`default` base; all three error when `--base` is missing. |
+| FR-25 | [UPDATED] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index — the reserved `default` base always has an index, the same as any other base, so it needs no special case), `list` (marks a base with an empty index as `[empty]`), and `delete --base <name>` (prompts unless `--yes`). `create` refuses the reserved `default` slug (it is created only by `kb-server init`) and any base that already exists; `add-repo` refuses an unknown base; all three error when `--base` is missing. |
 | FR-26 | [NEW] Each `/v1/chat` turn writes its run report with a length-capped transcript (`turns`: the user message plus the assistant answer) so a session is reconstructable from its logs after `/clear`; an errored turn still captures the user line. |
+| FR-27 | [NEW] `kb-server init` is the server's `initdb`: it creates `KB_HOME`'s `run`/`logs`/`state` directories and unconditionally materializes the reserved `default` base — a real directory holding an empty, fully-migrated `.kb-index.sqlite` — so a fresh install is listable, selectable, and servable before any repo is added. It takes no flags and records no configuration; re-running it is idempotent (reports the existing base instead of recreating it) |
+| FR-28 | [NEW] The server's boot-time default base has no persisted or configurable state. `kb-server start` binds `--base` \> `KB_SERVER_BASE_NAME` \> the hardcoded `default` constant, and never reads client-side state (the `kb base use` active-base file) or any state `kb-server init` might have left — because `init` leaves none. A server that starts on a fresh `KB_HOME` that never ran `init` self-heals into the identical base `init` would have produced |
+| FR-29 | [NEW] When `KB_BASE` or `KB_GIT_REPOS` (the client-scoped env vars) is set without its server-scoped counterpart (`KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`), `kb-server start` logs a warning naming both variables, so a same-machine install where the client's env leaks into the server's shell is observable rather than silently booting the wrong base |
 
 ### Known issues
 
@@ -105,9 +108,11 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-6SG4 | FR-7 | handles newline-separated multi-line values and ignores blanks | pass |
 | TC-O0YC | FR-7 | applies the default branch only when no inline branch is given | pass |
 | TC-C759 | FR-7 | returns [] for undefined/empty | pass |
-| TC-L9F8 | FR-7 | resolves base from KB_SERVER_BASE_NAME (preferred over KB_BASE) | pass |
+| TC-L9F8 | FR-7 | [UPDATED] resolves base from KB_SERVER_BASE_NAME; KB_BASE is ignored even when both are set | pass |
+| TC-ENS1 | FR-7 | [NEW] KB_BASE alone (no KB_SERVER_BASE_NAME) resolves no base at all | pass |
 | TC-JT2B | FR-7 | lets the --base flag win over env | pass |
-| TC-C3QO | FR-7 | reads repos from KB_SERVER_BASE_GIT_REPOS (preferred over KB_GIT_REPOS) | pass |
+| TC-C3QO | FR-7 | [UPDATED] reads repos from KB_SERVER_BASE_GIT_REPOS; KB_GIT_REPOS is ignored even when both are set | pass |
+| TC-ENS2 | FR-7 | [NEW] KB_GIT_REPOS alone (no KB_SERVER_BASE_GIT_REPOS) resolves no repos at all | pass |
 | TC-Z0WI | FR-7 | lets --git flags win over env repos | pass |
 | TC-PNLO | FR-7 | reads ignore patterns from KB_SERVER_IGNORE | pass |
 | TC-H3UU | FR-7 | reports source "none" and no ignore when nothing is declared | pass |
@@ -156,6 +161,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-SHF7 | FR-14 | registry resolves the default base without building | pass |
 | TC-VOAQ | FR-14 | registry lazily creates and caches another built base | pass |
 | TC-K2XB | FR-14 | registry throws BaseNotFoundError for a base with no index | pass |
+| TC-DFLT | FR-14 | [NEW] registry materializes the reserved "default" slug instead of 404ing, even when the process booted on a different base | pass |
 | TC-BNWZ | FR-14 | registry list() advertises the default plus every built base | pass |
 | TC-WEY5 | FR-15 | adopt(--from) → scan → export(--out) round-trips on local paths | pass |
 | TC-H0IH | FR-15 | scans a warm base in place with no --from / --out | pass |
@@ -234,10 +240,11 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-1E89 | FR-25 | base create refuses a base that already exists | pass |
 | TC-FI59 | FR-25 | base create builds a new named base from its repos | pass |
 | TC-OJWT | FR-25 | base add-repo refuses a non-existent named base | pass |
-| TC-PT5O | FR-25 | base add-repo allows adding a repo to the empty default base | pass |
+| TC-PT5O | FR-25 | [UPDATED] base add-repo allows adding a repo to the empty default base (no special-case: the same self-heal path as any other base) | pass |
 | TC-VLX0 | FR-25 | base add-repo requires at least one --git | pass |
 | TC-D8ZT | FR-25 | base list reports when no bases are initialized | pass |
 | TC-QCCG | FR-25 | base list shows an initialized base | pass |
+| TC-EMTY | FR-25 | [NEW] base list marks a genuinely empty (materialized but unindexed) base as [empty] | pass |
 | TC-SU4B | FR-25 | base delete requires a base name | pass |
 | TC-3T44 | FR-25 | base delete removes a base with --yes | pass |
 | TC-WTZX | FR-25 | base help lists the subcommands | pass |
@@ -250,6 +257,16 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-SVF8 | FR-6 | path-qualified citation's directory does not match a source with the same basename | reported as ungrounded |
 | TC-QS05 | FR-6 | path-qualified citation matches a source path suffix | not reported as ungrounded |
 | TC-Q6XO | FR-6 | bare filename citation with no directory component | still grounds by basename alone |
+| TC-INI1 | FR-27 | `kb-server init` creates KB_HOME's run/logs/state directories | pass |
+| TC-INI2 | FR-27 | `kb-server init` unconditionally materializes the reserved "default" base as an empty, migrated index | pass |
+| TC-INI3 | FR-27 | `kb-server init` is idempotent — a second run reports the existing base instead of recreating it | pass |
+| TC-INI4 | FR-27 | `kb-server init` records no default-base state — no server-side state file is ever written | pass |
+| TC-GLD1 | FR-28 | binds slug "default" when no base is declared and none is selected locally | pass |
+| TC-GLD2 | FR-28 | honors an explicit plan base over the golden default | pass |
+| TC-NOLK | FR-28 | ignores a locally-selected client active base — the server has no state of its own to leak into | pass |
+| TC-SLF1 | FR-28 | self-heals: materializes a real, empty, migrated index even though `kb-server init` never ran | pass |
+| TC-ENW1 | FR-29 | warns when the client-scoped KB_BASE is set without KB_SERVER_BASE_NAME | pass |
+| TC-ENW2 | FR-29 | does not warn when KB_BASE is unset | pass |
 
 ### Related docs
 
