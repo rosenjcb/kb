@@ -14,18 +14,34 @@
 
 import { isOpenableSourcePath } from '@kb/core/core/fact-uri.js'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
-import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { type BaseRepo, resolveBaseRepoRegistry } from '@kb/core/storage/base-repos.js'
 import type { QuerySource } from './serialize.js'
 
 export type ChatReplyFlavor = 'plain' | 'slack'
 
 /** One tracked clone, ready for blob-link construction. */
 export interface ChatSourceRepo {
+  /** Local clone dir name and fact provenance tag. Infrastructure — never displayed. */
   slug: string
   /** HTTPS browse root (no trailing slash), e.g. `https://github.com/org/repo`. */
   browseUrl: string
   /** Clone HEAD branch — that repo's primary for blob links. */
   branch: string
+  /** Public identity from the remote (`org/repo`) — the only repo name users see. */
+  repoId: string
+}
+
+/**
+ * Public repo identity (`org/repo`) from a browse root. The local clone dir name
+ * is an artifact of how this node was provisioned (`rosenjcb-kb`,
+ * `kb-2026-08-15-1419-kb`), so it must never appear in a citation.
+ */
+function repoIdFromBrowseUrl(browseUrl: string): string {
+  try {
+    return new URL(browseUrl).pathname.replace(/^\/+|\/+$/g, '')
+  } catch {
+    return ''
+  }
 }
 
 export interface ChatReplyFormatOptions {
@@ -53,7 +69,7 @@ export interface ChatSourceDisplay {
  * sources carry identical `href`s.
  */
 export async function resolveSourceRepos(baseDir: string): Promise<ChatSourceRepo[]> {
-  return chatSourceReposFromBaseRepos(await discoverBaseRepos(baseDir))
+  return chatSourceReposFromBaseRepos(await resolveBaseRepoRegistry(baseDir))
 }
 
 /** Build browsable source-repo entries from the base volume registry. */
@@ -69,7 +85,9 @@ export function chatSourceReposFromBaseRepos(repos: BaseRepo[]): ChatSourceRepo[
     // left Slack (but not the demo, which defaults to `HEAD`) with unlinked
     // sources for the same base — so keep them and let `HEAD` stand in.
     const branch = (repo.gitBranch || '').trim() || 'HEAD'
-    out.push({ slug, browseUrl, branch })
+    const repoId = repoIdFromBrowseUrl(browseUrl)
+    if (!repoId) continue
+    out.push({ slug, browseUrl, branch, repoId })
   }
   return out
 }
@@ -120,19 +138,22 @@ export function resolveChatSourceDisplay(
     (firstSeg && bySlug.has(firstSeg) ? firstSeg : undefined)
   const repo = slug ? bySlug.get(slug) : undefined
 
+  // Strip the clone dir name whether or not the registry resolved it. `gitRepo` is
+  // the fact's provenance tag, so an unregistered clone still yields a clean
+  // repo-relative path instead of leaking `kb-2026-08-15-1419-kb/…` to the user.
+  const prefix = slug || (hinted && raw.startsWith(`${hinted}/`) ? hinted : '')
   let relPath = raw
-  if (slug && raw === slug) {
+  if (prefix && raw === prefix) {
     relPath = ''
-  } else if (slug && raw.startsWith(`${slug}/`)) {
-    relPath = raw.slice(slug.length + 1)
+  } else if (prefix && raw.startsWith(`${prefix}/`)) {
+    relPath = raw.slice(prefix.length + 1)
   }
 
-  if (!relPath && !slug) return null
+  if (!relPath) return null
 
-  const label =
-    slug && multi && relPath
-      ? `${slug}/${relPath}`
-      : relPath || slug || raw
+  // Repo-relative by default; qualified by public identity only when the answer
+  // spans repos. The clone dir name is never a component of either form.
+  const label = repo && multi ? `${repo.repoId}/${relPath}` : relPath
 
   let href: string | undefined
   if (repo && relPath) {

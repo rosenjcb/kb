@@ -29,7 +29,7 @@ describe('serializeQueryResult', () => {
       },
     }
 
-    const body = serializeQueryResult(result)
+    const body = serializeQueryResult(result, { sourceRepos: [] })
 
     expect(body.status).toBe('accepted')
     expect(body.answer).toBe('Base resolution walks up for a .kb file.')
@@ -48,7 +48,7 @@ describe('serializeQueryResult', () => {
   })
 
   it('[TC-0CD9] returns null answer when none is present', () => {
-    const body = serializeQueryResult({ status: 'accepted', data: { results: [] } })
+    const body = serializeQueryResult({ status: 'accepted', data: { results: [] } }, { sourceRepos: [] })
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
     expect(body.evidence).toBeUndefined()
@@ -72,7 +72,7 @@ describe('serializeQueryResult', () => {
           },
         ],
       },
-    })
+    }, { sourceRepos: [] })
     // filePath must be the openable physical path, never the opaque fact:// id.
     expect(body.results[0].filePath).toBe('src/ast/langs/typescript.ts')
     expect(body.results[0].symbol).toBe('parseModule')
@@ -85,7 +85,7 @@ describe('serializeQueryResult', () => {
       data: {
         results: [{ metadata: { id: 'fact-2', title: 't', filePath: 'fact://def456' } }],
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.results[0].filePath).toBe('fact://def456')
   })
 
@@ -99,7 +99,7 @@ describe('serializeQueryResult', () => {
           { metadata: { id: 'f3', title: 'unknown', filePath: 'fact://deadbeef' } },
         ],
       },
-    })
+    }, { sourceRepos: [] })
     // Two facts for src/a.ts collapse to one file with both symbols; the fact:// row drops.
     expect(body.sources).toHaveLength(1)
     expect(body.sources[0]).toMatchObject({
@@ -118,7 +118,7 @@ describe('serializeQueryResult', () => {
         results: [],
         traceFile: '/tmp/kb/traces/qtrace-1.json',
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.traceFile).toBe('/tmp/kb/traces/qtrace-1.json')
   })
 })
@@ -140,7 +140,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('src/auth/login.ts', 'loginHandler'), factItem('src/auth/session.ts')],
         retrieval: { method: 'facts-loop', detail: 'passes:1;ponds:6;stop:answerable_plateau' },
       },
-    })
+    }, { sourceRepos: [] })
     expect(body).toEqual({
       status: 'accepted',
       answer: 'Login flows through `login.ts` and `session.ts`.',
@@ -154,6 +154,38 @@ describe('serializeMcpQueryResult', () => {
     expect(body).not.toHaveProperty('retrieval')
   })
 
+  it('[TC-6KDA] carries both citation forms: repo-relative path and blob href', () => {
+    // The lean payload used to regroup without the registry, so an agent got a
+    // clone-slug path and never got a link. Both forms come from one registry.
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'Login flows through `login.ts`.',
+          results: [factItem('rosenjcb-kb/src/auth/login.ts', 'loginHandler')],
+          retrieval: {},
+        },
+      },
+      {
+        sourceRepos: [
+          {
+            slug: 'rosenjcb-kb',
+            browseUrl: 'https://github.com/rosenjcb/kb',
+            branch: 'main',
+            repoId: 'rosenjcb/kb',
+          },
+        ],
+      }
+    )
+    expect(body.sources).toEqual([
+      {
+        path: 'src/auth/login.ts',
+        symbols: ['loginHandler'],
+        href: 'https://github.com/rosenjcb/kb/blob/main/src/auth/login.ts',
+      },
+    ])
+  })
+
   it('[TC-Q93N] adds a verify note when evidence is below the floor', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
@@ -163,7 +195,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('src/auth/login.ts')],
         retrieval: {},
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.notes).toEqual([
       'Retrieval evidence was weak — verify the cited sources before relying on this answer.',
     ])
@@ -182,7 +214,7 @@ describe('serializeMcpQueryResult', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: { answer: 'See `a.ts`.', results, retrieval: {} },
-    })
+    }, { sourceRepos: [] })
     expect(body.sources).toHaveLength(5)
     expect(body.sources[0]).toEqual({ path: 'src/a.ts', symbols: ['alpha', 'beta'] })
     expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
@@ -196,7 +228,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
         retrieval: {},
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.notes).toHaveLength(1)
     expect(body.notes?.[0]).toContain('dto.ts')
     expect(body.notes?.[0]).not.toContain('reversal.ts')
@@ -207,7 +239,7 @@ describe('serializeMcpQueryResult', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
       data: { results: [factItem('src/a.ts')], retrieval: {} },
-    })
+    }, { sourceRepos: [] })
     expect(body.answer).toBeNull()
     expect(body.notes).toEqual([
       'No synthesized answer was produced — open the cited sources directly.',
@@ -223,7 +255,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
         retrieval: {},
       },
-    })
+    }, { sourceRepos: [] })
     // A note alone isn't enough — the top-level label an agent scans for must
     // reflect the same mismatch the note describes.
     expect(body.evidence).toBe('weak')
@@ -238,7 +270,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
         retrieval: {},
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.evidence).toBe('strong')
   })
 
@@ -251,7 +283,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
         retrieval: { unsupportedClaims: ['import POSTs the flow to the backend and persists it'] },
       },
-    })
+    }, { sourceRepos: [] })
     // The file name is grounded, so the file-name check stays silent — but the claim check fires.
     expect(body.evidence).toBe('weak')
     const claimNote = (body.notes ?? []).find(n => n.includes('do not directly support'))
@@ -269,7 +301,7 @@ describe('serializeMcpQueryResult', () => {
         results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
         retrieval: { method: 'hybrid', unsupportedClaims: ['Import persists to the backend'] },
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.retrieval.unsupportedClaims).toEqual(['Import persists to the backend'])
   })
 
@@ -345,7 +377,7 @@ describe('synthesis failure surfacing', () => {
   }
 
   it('[TC-H88X] Given synthesis failed, then the REST body carries answerError alongside the sources', () => {
-    const body = serializeQueryResult(resultWithFailure)
+    const body = serializeQueryResult(resultWithFailure, { sourceRepos: [] })
     expect(body.answer).toBeNull()
     expect(body.answerError).toEqual(failure)
     // Retrieval succeeded, so the caller still gets something actionable.
@@ -353,7 +385,7 @@ describe('synthesis failure surfacing', () => {
   })
 
   it('[TC-86UB] Given synthesis failed, then the MCP note names the outage instead of blaming the evidence', () => {
-    const body = serializeMcpQueryResult(resultWithFailure)
+    const body = serializeMcpQueryResult(resultWithFailure, { sourceRepos: [] })
     expect(body.answer).toBeNull()
     expect(body.answerError).toEqual(failure)
     const notes = body.notes ?? []
@@ -385,7 +417,7 @@ describe('synthesis failure surfacing', () => {
         },
         results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.answer).toBe('An answer.')
     expect((body.notes ?? []).join(' ')).toContain('curation (rate_limit)')
   })
@@ -398,7 +430,7 @@ describe('synthesis failure surfacing', () => {
         retrieval: { method: 'facts-loop' },
         results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
       },
-    })
+    }, { sourceRepos: [] })
     expect(body.notes).toEqual([
       'No synthesized answer was produced — open the cited sources directly.',
     ])

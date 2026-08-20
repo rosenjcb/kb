@@ -14,6 +14,7 @@ import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { getCurrentBranch, getHeadSha, getRemoteUrl } from '@kb/core/ops/git-sync.js'
 import { REPOS_SUBDIR } from '@kb/core/storage/repo-slug.js'
+import { readSnapshotManifest } from '@kb/core/storage/snapshot.js'
 
 /** One git clone tracked by a base, as read back off the volume. */
 export interface BaseRepo {
@@ -69,4 +70,32 @@ export async function discoverBaseRepos(baseDir: string): Promise<BaseRepo[]> {
     }
   }
   return repos
+}
+
+/**
+ * The base's tracked-repo registry for **every** consumer (citations, `/v1/bases`,
+ * scan). Live clones first; a snapshot manifest's provenance when the base carries
+ * no clones.
+ *
+ * A serve-only node hydrates from a snapshot and prunes `repos/*`, so
+ * {@link discoverBaseRepos} alone returns `[]` there and every citation silently
+ * loses its blob link. The manifest recorded the same `{gitUrl, gitBranch, slug}`
+ * at export time, so it stands in exactly.
+ */
+export async function resolveBaseRepoRegistry(baseDir: string): Promise<BaseRepo[]> {
+  const clones = await discoverBaseRepos(baseDir)
+  if (clones.length > 0) return clones
+  let manifest: Awaited<ReturnType<typeof readSnapshotManifest>>
+  try {
+    manifest = await readSnapshotManifest(baseDir)
+  } catch {
+    return []
+  }
+  return (manifest?.provenance.repos ?? []).map(repo => ({
+    gitUrl: repo.gitUrl,
+    gitBranch: repo.gitBranch,
+    slug: repo.slug,
+    dir: path.join(REPOS_SUBDIR, repo.slug),
+    ...(repo.headSha ? { headSha: repo.headSha } : {}),
+  }))
 }
