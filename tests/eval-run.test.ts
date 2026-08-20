@@ -204,7 +204,9 @@ describe('parseQueryText', () => {
     'evidence> 10 facts',
     'retrieval> hybrid (docs=5,symbols=3,facts=2,hops=1)',
     'matches> 42 ranked facts',
-    'sources> top 10 of 42 ranked: fact://abc; fact://def',
+    'sources> 2',
+    'source> src/a.ts · alpha',
+    'source> docs/b.md',
   ].join('\n')
 
   it('[TC-E17K] extracts the final answer, not the first partial one', () => {
@@ -215,10 +217,10 @@ describe('parseQueryText', () => {
   it('[TC-03XB] extracts result count from matches line', () => {
     expect(parseQueryText(sampleOutput).result_count).toBe(42)
   })
-  it('[TC-0XES] extracts provenance from sources line', () => {
+  it('[TC-0XES] extracts provenance from per-source lines, dropping folded symbols', () => {
     const r = parseQueryText(sampleOutput)
-    expect(r.provenance).toContain('fact://abc')
-    expect(r.provenance).toContain('fact://def')
+    expect(r.provenance).toContain('src/a.ts')
+    expect(r.provenance).toContain('docs/b.md')
   })
   it('[TC-MG5D] extracts retrieval method', () => {
     expect(parseQueryText(sampleOutput).retrieval.method).toBe('hybrid')

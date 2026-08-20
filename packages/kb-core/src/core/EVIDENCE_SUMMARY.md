@@ -44,7 +44,8 @@ evidence> 200 facts → LLM (full text) · mix: 120 doc · 80 code · repos: aut
 |------|------|
 | `retrieval>` | method + full loop detail string |
 | `matches>` | `{N} ranked facts` (count only) |
-| `sources>` | top 10 fact URIs by rank (`top N of M ranked: …`; all when M ≤ 10) |
+| `sources>` | count of cited **files** |
+| `source>` | one per cited file: `<owner/repo/path> · sym1, sym2` (same `groupSources` model as MCP / chat / Slack) |
 
 ## Tests
 

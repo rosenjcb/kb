@@ -68,11 +68,6 @@ export class Printer {
     this.out.log(formatOrchestrationMetaLine('assistant', normalized))
   }
 
-  source(id: string, title?: string): void {
-    const display = title ? `${id} — ${title}` : id
-    this.orchestrationMeta('source', display)
-  }
-
   /**
    * One source-centric citation line: `label · sym1, sym2`, with the label made a
    * clickable OSC-8 hyperlink when a blob `href` is known and stdout is a TTY.

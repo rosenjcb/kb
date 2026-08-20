@@ -39,7 +39,7 @@ Every piece of output belongs to exactly one of these tiers. Get the tier wrong 
 
 ### Tier 1 — Metadata (immediate, permanent, grey)
 
-Orchestration wire lines written with `formatOrchestrationMetaLine(key, value)` — `retrieval>`, `evidence>`, `sources>`, `matches>`, `sep>`, `thinking>`, etc.
+Orchestration wire lines written with `formatOrchestrationMetaLine(key, value)` — `retrieval>`, `evidence>`, `sources>` (count) and `source>` (one per cited file), `matches>`, `sep>`, `thinking>`, etc.
 
 - Written immediately via `chatIO.write()` / `printer.orchestrationMeta()`.
 - Classified by `classifyChatIOLine` → `category: 'meta'`.

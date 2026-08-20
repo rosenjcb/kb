@@ -30,7 +30,6 @@ tests:
   - ../../../../tests/cli/kb-ignore.test.ts
   - ../../../../tests/cli/logs-cli.test.ts
   - ../../../../tests/cli/repo-slug.test.ts
-  - ../../../../tests/cli/retrieval-fallback.test.ts
   - ../../../../tests/cli/session-cli.test.ts
   - ../../../../tests/cli/skill-installer.test.ts
   - ../../../../tests/cli/startup-notices.test.ts
@@ -38,7 +37,7 @@ tests:
   - ../../../../tests/cli/uninstall-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
-timestamp: 2026-08-02T23:10:00Z
+timestamp: 2026-08-19T20:30:00Z
 ---
 
 ### Intro
@@ -82,7 +81,7 @@ See companion doc for full vocabulary where applicable.
 | FR-25 | KB config loader merges defaults, file config, and env overrides |
 | FR-26 | kb.ignore patterns exclude paths from indexing |
 | FR-27 | Logs CLI reads structured run reports from the logs directory |
-| FR-30 | Retrieval fallback degrades gracefully when deep retrieval fails |
+| FR-30 | [REMOVED] Bespoke `sources> all N file(s): a; b` preview string. The cited-files footer now uses the shared `groupSources` model — see FR-24 |
 | FR-31 | Skill installer copies bundled skills to agent home directories, installs hooks, and syncs Cursor/Claude/Antigravity MCP `kb` entries to the active connection (localhost default) — opt-in via `kb skills install` / `kb mcp install`; CLI and TUI startup never auto-install skills or rewrite MCP configs. The kb-first reminder hook fires only on repo-search commands in command position (grep/rg/find/…, `git grep`, `kb query` — never VCS/build/cloud tooling or pipeline-filter greps), throttles to one reminder per session per 15-minute window, and honors `KB_HOOK_REMINDER=false` |
 | FR-32 | Startup notices print one-time migration and version hints |
 | FR-33 | Sync CLI refreshes the split GitHub Release runtimes and rewires stable client/server binary links |
@@ -275,7 +274,7 @@ See companion doc for full vocabulary where applicable.
 | TC-D5E3 | FR-24 | parses query flags and query session support | pass |
 | TC-L7KC | FR-24 | rejects unknown public commands | pass |
 | TC-A5U9 | FR-24 | only treats query as an intent command | pass |
-| TC-U3RI | FR-24 | formats read_facts results in human mode | pass |
+| TC-U3RI | FR-24 | formats read_facts results in human mode | `sources> <count>`, then one `source> <path>` line per cited file |
 | TC-J2NW | FR-24 | prints minimal intent help with only the supported commands | pass |
 | TC-M8QE | FR-24 | renders orchestration footer through printer helpers | pass |
 | TC-313O | FR-24 | prints non-read_facts results without treating them as query results | pass |
@@ -347,9 +346,6 @@ See companion doc for full vocabulary where applicable.
 | TC-7AE2 | FR-27 | Given no subcommand, then returns help text | pass |
 | TC-R6T4 | FR-27 | Given --help, then returns help text | pass |
 | TC-1207 | FR-27 | Given unknown subcommand, then throws with the subcommand name | pass |
-| TC-J09B | FR-30 | Given more than TOP_SOURCE_PREVIEW_LIMIT cited files, then footer says top N of M file(s) | pass |
-| TC-XOR5 | FR-30 | Given at most TOP_SOURCE_PREVIEW_LIMIT files, then footer says all M file(s), folding symbols | pass |
-| TC-5JE4 | FR-30 | Given no openable hits (incl. dropped fact:// refs), then footer is (none) | pass |
 | TC-K98I | FR-31 | Given no existing skill files, then installs all agents and returns installed actions | pass |
 | TC-PSA0 | FR-31 | Given already-installed skill with matching hash, then action is skipped | pass |
 | TC-CHPS | FR-31 | Given stale skill hash, then action is updated | pass |
