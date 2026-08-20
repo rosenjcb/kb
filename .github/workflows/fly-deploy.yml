@@ -28,14 +28,25 @@ on:
       - "fly.builder.toml"
       - "scripts/fly/**"
 
-concurrency:
-  group: fly-deploy
-  cancel-in-progress: false
+# Concurrency is per-job, NOT workflow-level. A single `fly-deploy` group meant a
+# builder job hung on a cold build (twice observed running to GitHub's 6h ceiling)
+# queued the *next* merge's whole run behind it — serving deploy included — so a
+# merge could silently not reach kb-demo for hours and then surface as `cancelled`
+# rather than a failure.
 
 jobs:
   deploy-serving:
     name: Deploy kb-demo (serving)
     runs-on: ubuntu-latest
+    # Newer main supersedes an in-flight release: the older image is already stale,
+    # and `fly deploy` on an app with a normal [http_service] release process is
+    # safe to interrupt — Fly either completed the release or rolls it back.
+    concurrency:
+      group: fly-deploy-serving
+      cancel-in-progress: true
+    # Boot serially imports up to 10 bases, hence the 15m --wait-timeout below;
+    # this bounds the whole job so a wedged release cannot idle for 6h.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -51,6 +62,17 @@ jobs:
   deploy-builder:
     name: Deploy kb-demo-builder (recreate scheduler)
     runs-on: ubuntu-latest
+    # NOT cancel-in-progress, unlike serving: the recreate step destroys the
+    # scheduled machine before running the new one, so a cancel landing inside that
+    # window leaves the app with no scheduler at all and the nightly refresh stops
+    # silently. Let a run finish; queue the next one behind it.
+    concurrency:
+      group: fly-deploy-builder
+      cancel-in-progress: false
+    # A cold build is slow but bounded (the toml allows COLD_BUILD_TIMEOUT=5400s).
+    # Anything past this is wedged, not working — fail here instead of holding the
+    # builder queue until GitHub's 6h ceiling kills the run.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
