@@ -5,7 +5,7 @@ sources: [../../../kb-client/src/tui, ./TUI.md]
 tests: [../../../../tests/tui]
 description: Behavioral specification for TUI
 tags: [spec, kb]
-timestamp: 2026-06-28T04:05:30Z
+timestamp: 2026-08-19T21:10:00Z
 ---
 
 ### Intro
@@ -51,6 +51,7 @@ See companion doc for full vocabulary where applicable.
 | TC-B5OA | FR-2 | classifies orchestration wire lines as META | pass |
 | TC-KS6O | FR-2 | classifies init/scan progress lines as META | pass |
 | TC-RG7T | FR-2 | preserves full wire line as content for META | pass |
+| TC-J4XM | FR-2 | classifies a source> line carrying an OSC-8 hyperlink as META | pass |
 | TC-APKJ | FR-2 | strips assistant> prefix and classifies as ASSISTANT | pass |
 | TC-WLF2 | FR-2 | does NOT classify assistant> as META | pass |
 | TC-999B | FR-2 | classifies plain text as ASSISTANT | pass |

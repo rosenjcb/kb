@@ -5,7 +5,7 @@ sources: [../ui]
 tests: [../../../../tests/ui]
 description: Behavioral specification for UI Primitives
 tags: [spec, kb]
-timestamp: 2026-06-28T04:05:31Z
+timestamp: 2026-08-19T21:10:00Z
 ---
 
 ### Intro
@@ -45,6 +45,10 @@ See companion doc for full vocabulary where applicable.
 | TC-P6EW | FR-2 | Given no progress sink in tui mode, progress is dropped (no transcript spam) | pass |
 | TC-P9QS | FR-2 | condenseProgressText folds whitespace and tail-truncates to the latest text | pass |
 | TC-RCVU | FR-2 | createReasoningProgressSink accumulates deltas and pushes the running tail | pass |
+| TC-H4KX | FR-2 | Given cli mode on a real TTY, a source with an href renders as an OSC-8 hyperlink | pass |
+| TC-QQ2M | FR-2 | Given tui mode on a real TTY, a source with an href also renders as an OSC-8 hyperlink | pass |
+| TC-9EAF | FR-2 | Given no real TTY (piped CLI or headless tui), the label stays plain | pass |
+| TC-KZ1R | FR-2 | Given no href, the label stays plain even on a real TTY | pass |
 
 ### Related docs
 

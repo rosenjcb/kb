@@ -33,6 +33,12 @@ describe('tui/chat-io-classify', () => {
       expect(result.category).toBe(CHAT_IO_CATEGORY.META)
       expect(result.content).toBe('retrieval> hybrid;iterations:2')
     })
+
+    it('[TC-J4XM] classifies a source> line carrying an OSC-8 hyperlink as META — the escape bytes sit after the prefix, not inside it', () => {
+      const osc8 = '\x1b]8;;https://github.com/rosenjcb/kb/blob/main/src/a.ts\x07src/a.ts\x1b]8;;\x07'
+      const result = classifyChatIOLine(`source> ${osc8} · foo`)
+      expect(result.category).toBe(CHAT_IO_CATEGORY.META)
+    })
   })
 
   describe('classifyChatIOLine — T3 assistant content', () => {

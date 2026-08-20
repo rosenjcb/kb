@@ -14,12 +14,22 @@ function terminalHyperlink(label: string, href: string): string {
 export class Printer {
   private spinner: Ora | null = null
   private readonly tty: boolean
+  private readonly hyperlinks: boolean
 
   constructor(
     private readonly out: CliOutput,
     private readonly mode: CmdMode
   ) {
     this.tty = mode === 'cli' && !!process.stdout.isTTY
+    // Separate from `tty`: that flag also gates chalk.dim() styling of the whole
+    // wire line (`orchestrationMeta`), and coloring the `source>` prefix itself
+    // would break `isOrchestrationMetaLine`'s `^key>` match in the TUI's line
+    // classifier. Hyperlinks are safe there — the OSC-8 bytes land only inside the
+    // label a citation renders, after the prefix, same as CLI TTY mode. The Ink TUI
+    // only ever starts against a real terminal (`index.ts` gates it on
+    // `process.stdout.isTTY`), so `mode === 'tui'` already implies one; the isTTY
+    // check stays for defense (e.g. a test harness constructing 'tui' headless).
+    this.hyperlinks = this.tty || (mode === 'tui' && !!process.stdout.isTTY)
   }
 
   content(text: string): void {
@@ -70,13 +80,15 @@ export class Printer {
 
   /**
    * One source-centric citation line: `label · sym1, sym2`, with the label made a
-   * clickable OSC-8 hyperlink when a blob `href` is known and stdout is a TTY.
-   * Non-TTY (pipes, CI) gets the plain label so captured output stays clean — the
-   * same grouped source the REST/MCP/demo surfaces carry, just rendered for a term.
+   * clickable OSC-8 hyperlink to the same blob `href` Slack and the chat demo
+   * link to — same registry, same URL, just a terminal-native link instead of
+   * Slack's `<url|label>` or the demo's `<a href>`. Displayed text stays the
+   * filepath either way. Non-TTY (pipes, CI) gets the plain label so captured
+   * output stays clean.
    */
   sourceCitation(label: string, opts: { href?: string; symbols?: string[] } = {}): void {
     const suffix = opts.symbols && opts.symbols.length > 0 ? ` · ${opts.symbols.join(', ')}` : ''
-    const shown = opts.href && this.tty ? terminalHyperlink(label, opts.href) : label
+    const shown = opts.href && this.hyperlinks ? terminalHyperlink(label, opts.href) : label
     this.orchestrationMeta('Source', `${shown}${suffix}`)
   }
 
