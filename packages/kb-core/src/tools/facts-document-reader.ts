@@ -5,6 +5,11 @@ import type { RunCollector } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import type { LLMProvider } from '../core/types'
 import { type CuratorRequery, type CurationRecord, curateFacts, shouldCurate } from './fact-curator'
+import {
+  causalTargetProbe,
+  detectCausalTarget,
+  isNegativeClaimGuardEnabled,
+} from '../query/causal-claim-intent.js'
 import { type Embedder, createEmbedder } from '../core/embeddings'
 import {
   DEFAULT_FACT_LIMIT,
@@ -227,11 +232,16 @@ export class FactsDocumentReader {
     const curatorQuery = process.env.KB_ABLATE_CURATOR_RAW_Q?.trim()
       ? process.env.KB_ABLATE_CURATOR_RAW_Q.trim()
       : query
+    // Negative-claim guard (#228): for "does X affect Y", oblige retrieval to actually visit Y's
+    // own code. Costs one extra shallow hybrid pass on matching questions and no LLM call.
+    const causal = isNegativeClaimGuardEnabled() ? detectCausalTarget(curatorQuery) : null
+
     const { results, record } = await curateFacts({
       llm: this.llm,
       query: curatorQuery,
       results: response.results,
       requery,
+      ...(causal ? { requiredGaps: [causalTargetProbe(causal)] } : {}),
       collector,
     })
 
