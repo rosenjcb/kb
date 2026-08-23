@@ -18,7 +18,11 @@ import {
 } from '@kb/core/core/telemetry.js'
 import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
-import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
+import {
+  countKbIndexRows,
+  isKbIndexEmpty,
+  SPARSE_KB_INDEX_MAX_ROWS,
+} from '@kb/core/tools/sqlite-kb-index.js'
 import { basename } from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
@@ -85,7 +89,8 @@ export async function runQueryPipeline(
   // An empty base (no repos indexed yet — the default base before anyone adds one) has
   // nothing to retrieve. Answer with a clear, actionable message instead of running the
   // pipeline over an empty index and returning a hollow "no evidence" answer.
-  if (isKbIndexEmpty(kbIndexDbPath(baseDir))) {
+  const dbPath = kbIndexDbPath(baseDir)
+  if (isKbIndexEmpty(dbPath)) {
     const baseName = basename(baseDir)
     return {
       status: 'uncertain',
@@ -94,6 +99,14 @@ export async function runQueryPipeline(
       recommendedAction: `An operator can add one on the server: \`kb-server base add-repo --base ${baseName} --git <url>\`.`,
     }
   }
+
+  // Near-empty indexes (often a bare slug like `raylib` while the eval harness
+  // indexed `eval-raylib`) used to look like ordinary "no evidence" answers.
+  const indexRows = countKbIndexRows(dbPath)
+  const sparseBaseNote =
+    indexRows > 0 && indexRows <= SPARSE_KB_INDEX_MAX_ROWS
+      ? `This base ("${basename(baseDir)}") has very little indexed content (${indexRows} rows). Bare suite names in \`kb base list\` are often unindexed shells — eval harnesses use \`eval-<suite>\` (e.g. eval-raylib). Confirm KB_BASE / --base / X-KB-Base.`
+      : undefined
 
   const llmCounter =
     rawLlmProvider && params.collector ? new TokenCountingProvider(rawLlmProvider) : undefined
@@ -306,7 +319,7 @@ export async function runQueryPipeline(
         params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
       }
     }
-    return verified
+    return attachSparseBaseNote(verified, sparseBaseNote)
   }
 
   if (params.collector && isReadFactsResult(aligned)) {
@@ -316,12 +329,23 @@ export async function runQueryPipeline(
     }
   }
 
-  return aligned
+  return attachSparseBaseNote(aligned, sparseBaseNote)
   } finally {
     if (params.trace) {
       if (prevTraceEnv === undefined) process.env.KB_QUERY_TRACE = undefined
       else process.env.KB_QUERY_TRACE = prevTraceEnv
     }
+  }
+}
+
+/** Append near-empty-index guidance onto the intent result (#233). */
+function attachSparseBaseNote(result: IntentResult, note: string | undefined): IntentResult {
+  if (!note) return result
+  const prior = result.explanation?.trim()
+  if (prior?.includes('very little indexed content')) return result
+  return {
+    ...result,
+    explanation: prior ? `${prior}\n${note}` : note,
   }
 }
 

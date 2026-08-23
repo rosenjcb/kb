@@ -88,7 +88,8 @@ export function resolveMcpEndpointUrl(serverUrl: string): string {
 function buildMcpHeaders(apiKey?: string, base?: string): JsonObject | undefined {
   const headers: JsonObject = {}
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`
-  const trimmedBase = base?.trim()
+  // Strip CR/LF so a hostile base slug cannot split the HTTP header block.
+  const trimmedBase = base?.trim().replace(/[\r\n]/g, '')
   if (trimmedBase) headers['X-KB-Base'] = trimmedBase
   return Object.keys(headers).length > 0 ? headers : undefined
 }

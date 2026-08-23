@@ -11,7 +11,7 @@ tests:
   - ../../../../tests/cli/server-connection-error-propagation.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-08-23T07:15:00Z
+timestamp: 2026-08-23T21:00:00Z
 ---
 
 ### Intro
@@ -147,3 +147,5 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-XJ1F | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |
 | TC-4RGX | FR-26 | Given an `answer` SSE event carrying `sources: GroupedSource[]` | `onSources` is called with the same array |
 | TC-XB33 | FR-9 | [NEW] Given MCP entry builders with a base slug | Headers include `X-KB-Base` alongside optional Bearer |
+| TC-XBCR | FR-9 | [NEW] Given a base slug containing CR/LF | Written `X-KB-Base` has CR/LF stripped |
+| TC-SQMB | FR-9 | [NEW] Given `syncKbMcpConfigs({ base: 'eval-raylib' })` | Cursor entry headers pin `X-KB-Base: eval-raylib` |

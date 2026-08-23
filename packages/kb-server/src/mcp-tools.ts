@@ -361,14 +361,15 @@ export async function dispatchMcpToolCall(
     const sourceRepos = await resolveSourceRepos(svc.baseDir)
     // Default is the trimmed agent payload (answer + citations + notes); the full
     // fact dump and retrieval metadata are opt-in via verbose.
+    const servedBase = svc.health().base
     const body: Record<string, unknown> = {
       query: q,
       // Echo the base that actually answered — agents otherwise cannot tell a
       // sticky wrong-base session from a correct one (#233).
-      base: svc.health().base,
+      base: servedBase,
       ...(verbose
-        ? serializeQueryResult(result, { sourceRepos })
-        : serializeMcpQueryResult(result, { sourceRepos })),
+        ? serializeQueryResult(result, { sourceRepos, base: servedBase })
+        : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })),
     }
     if (opts.requestId) body.requestId = opts.requestId
     // Sampled feedback ask — trimmed payload only; verbose callers are debugging.

@@ -100,6 +100,13 @@ describe('build*KbMcpEntry', () => {
       headers: { 'X-KB-Base': 'default' },
     })
   })
+
+  it('[TC-XBCR] strips CR/LF from X-KB-Base so header injection cannot split the block', () => {
+    expect(buildCursorKbMcpEntry('http://localhost:38117/mcp', undefined, 'dog\r\nfood')).toEqual({
+      url: 'http://localhost:38117/mcp',
+      headers: { 'X-KB-Base': 'dogfood' },
+    })
+  })
 })
 
 describe('hasExplicitServerHost', () => {
@@ -127,6 +134,14 @@ describe('syncKbMcpConfigs', () => {
       url: 'http://localhost:38117/mcp',
       headers: { Authorization: 'Bearer testkey', 'X-KB-Base': 'default' },
     })
+  })
+
+  it('[TC-SQMB] Given options.base, pins that slug as X-KB-Base instead of default', async () => {
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs({ base: 'eval-raylib' })
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb.headers['X-KB-Base']).toBe('eval-raylib')
   })
 
   it('[TC-6ZYN] requireExplicitHost still refuses the implicit localhost default', async () => {

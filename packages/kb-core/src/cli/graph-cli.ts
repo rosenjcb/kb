@@ -50,7 +50,7 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     '  Surfaces the document ↔ code-symbol map (flat links, no edge traversal).',
     `  ${cmd('graph --file', mode)} reports index coverage for one source path`,
     '  (code_file_state / code_symbols / documents) and exits non-zero when the',
-    '  file has state but no searchable rows.',
+    '  file has state but no searchable rows, or when no index DB exists.',
     '',
     'Examples:',
     `  ${cmd('graph', mode)}`,
@@ -111,8 +111,25 @@ function countTable(db: DatabaseSync, sql: string): number {
  * Exits non-zero when state exists but nothing searchable was written — the
  * text-only indexer trap that left `.fish` invisible to hybrid retrieval.
  */
+function normalizeCoveragePath(rawPath: string): string {
+  const rel = rawPath.replace(/\\/g, '/').replace(/^\.\//, '').trim()
+  if (
+    !rel ||
+    rel.startsWith('/') ||
+    rel.includes('\0') ||
+    /(^|\/)\.\.(\/|$)/.test(rel) ||
+    path.isAbsolute(rawPath)
+  ) {
+    throw new GraphCommandError(
+      `Invalid --file path "${rawPath}" — use a repo-relative path without '..' or absolute prefixes.`,
+      1
+    )
+  }
+  return rel
+}
+
 function reportFileCoverage(db: DatabaseSync, rawPath: string, out: GraphOut): void {
-  const rel = rawPath.replace(/\\/g, '/').replace(/^\.\//, '')
+  const rel = normalizeCoveragePath(rawPath)
   const hasState =
     db.prepare('SELECT 1 AS n FROM code_file_state WHERE file_path = ?').get(rel) !== undefined
   const symbols = db
@@ -154,7 +171,11 @@ export async function runGraphCommand(
 ): Promise<void> {
   const dbPath = path.join(baseDir, '.kb-index.sqlite')
   if (!existsSync(dbPath)) {
-    out.log('No KB index found. Run `kb init` to build the knowledge base.')
+    const msg = 'No KB index found. Run `kb init` to build the knowledge base.'
+    if (opts.file) {
+      throw new GraphCommandError(msg, 1)
+    }
+    out.log(msg)
     return
   }
 

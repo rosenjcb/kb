@@ -79,7 +79,9 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 | `kb mcp install` | Same, using the active connection (localhost default) |
 | `kb skills install` | Same MCP sync as `kb mcp install`, using the active connection |
 
-Each written entry includes **`X-KB-Base`** from `resolveActiveBaseName` (same resolution as the CLI: `KB_BASE` → `kb base use` → `default`). Without that header, MCP sessions bind the server boot base and can silently answer from the wrong index. A Bearer is included when an API key is configured.
+Each written entry includes **`X-KB-Base`** from `resolveActiveBaseName` (same resolution as the CLI: `KB_BASE` → `kb base use` → `default`). Without that header, MCP sessions bind the server boot base and can silently answer from the wrong index. A Bearer is included when an API key is configured. After `kb base use <slug>`, re-run `kb mcp install` so the sticky MCP entry picks up the new header.
+
+Bare suite names in `kb base list` (e.g. `raylib`) are **not** aliases of eval harness bases (`eval-raylib`). Prefer the slug that was actually indexed, or you will get empty/near-empty answers with no hard error.
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 

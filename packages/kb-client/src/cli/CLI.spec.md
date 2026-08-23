@@ -37,7 +37,7 @@ tests:
   - ../../../../tests/cli/uninstall-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
-timestamp: 2026-08-23T07:15:00Z
+timestamp: 2026-08-23T21:00:00Z
 ---
 
 ### Intro
@@ -424,6 +424,8 @@ See companion doc for full vocabulary where applicable.
 | TC-GF34 | FR-12 | [NEW] Given graph --file flag | parser returns file coverage options |
 | TC-CF34 | FR-12 | [NEW] path with file-level code_symbol | coverage report shows searchable symbols |
 | TC-CS34 | FR-12 | [NEW] code_file_state without searchable rows | GraphCommandError exit non-zero |
+| TC-NF34 | FR-12 | [NEW] --file when index DB is missing | GraphCommandError exit non-zero |
+| TC-PT34 | FR-12 | [NEW] --file with `..` or absolute path | GraphCommandError exit non-zero |
 
 ### Related docs
 

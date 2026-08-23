@@ -127,6 +127,8 @@ kb query "how does authentication work?"
 
 You should get an answer plus source citations. For agents, `kb mcp install` pins the same host **and** active base into Cursor/Claude MCP config.
 
+**Base names and eval harnesses:** `kb base list` may show short suite names (`raylib`) next to fully indexed eval bases (`eval-raylib`). Those are different slugs — not aliases. Empty or near-empty bare names return “no evidence” while `eval-*` answers well. Prefer the `eval-*` name the harness created, or `kb --base <slug>` / `KB_BASE` / re-run `kb mcp install` after `kb base use`. Query responses echo `base` and add a note when no sources came back.
+
 **Try chat mode**, the thing most people stick with:
 
 ```bash

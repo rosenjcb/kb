@@ -345,6 +345,32 @@ export function isKbIndexEmpty(dbPath: string): boolean {
   }
 }
 
+/**
+ * Total retrievable rows in an index (documents + symbols + facts). Used to
+ * surface near-empty bases (#233 raylib vs eval-raylib) without treating them
+ * as fully empty.
+ */
+export function countKbIndexRows(dbPath: string): number {
+  if (!existsSync(dbPath)) return 0
+  let db: DatabaseSync | undefined
+  try {
+    db = new DatabaseSync(dbPath)
+    const row = db
+      .prepare(
+        'SELECT (SELECT COUNT(*) FROM documents) + (SELECT COUNT(*) FROM code_symbols) + (SELECT COUNT(*) FROM facts) AS n'
+      )
+      .get() as { n: number } | undefined
+    return row?.n ?? 0
+  } catch {
+    return 0
+  } finally {
+    db?.close()
+  }
+}
+
+/** Index row counts at or below this are treated as "near-empty" for caller notes. */
+export const SPARSE_KB_INDEX_MAX_ROWS = 25
+
 export class SqliteKbIndexer {
   private readonly db: DatabaseSync
   private readonly modelId: string

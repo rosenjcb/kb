@@ -550,6 +550,43 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
+  it('[TC-H234] heals legacy text-only state (hash match, zero symbols) on re-index', async () => {
+    await mkdir(join(repoRoot, 'share', 'completions'), { recursive: true })
+    const rel = 'share/completions/scp.fish'
+    await writeFile(
+      join(repoRoot, 'share', 'completions', 'scp.fish'),
+      'complete -c scp -a "(__fish_complete_path)"\n'
+    )
+
+    const factIndexer1 = new SqliteKbIndexer({ dbPath })
+    const indexer1 = new TreeSitterIndexer(dbPath, factIndexer1)
+    await indexer1.indexProject(repoRoot)
+    indexer1.close()
+    factIndexer1.close()
+
+    // Simulate a pre-#234 index: file state present, no searchable symbols.
+    const wipe = new Database(dbPath)
+    runMigrations(wipe)
+    wipe.prepare('DELETE FROM code_symbols').run()
+    expect(querySymbol(wipe, 'scp.fish', rel)).toBe(false)
+    expect(queryCodeFileState(wipe, rel)).toBe(true)
+    wipe.close()
+
+    const factIndexer2 = new SqliteKbIndexer({ dbPath })
+    const indexer2 = new TreeSitterIndexer(dbPath, factIndexer2)
+    const second = await indexer2.indexProject(repoRoot)
+    indexer2.close()
+    factIndexer2.close()
+
+    expect(second.skipped).toBe(0)
+    expect(second.symbols).toBeGreaterThanOrEqual(1)
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'scp.fish', rel)).toBe(true)
+    expect(querySymbolKind(db, 'scp.fish', rel)).toBe('file')
+    db.close()
+  })
+
   it('[TC-UPJ4] ignores unknown extensions not in the allowlist', async () => {
     await writeFile(join(repoRoot, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
     await writeFile(join(repoRoot, 'go.sum'), 'github.com/foo/bar v1.0.0 h1:abc=')

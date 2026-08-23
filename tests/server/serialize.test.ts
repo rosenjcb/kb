@@ -377,6 +377,19 @@ describe('empty-base explanation on the wire', () => {
       'An operator can add one on the server: `kb-server base add-repo --base default --git <url>`.',
     ])
   })
+
+  it('[TC-NS33] notes the served base when no sources return (wrong-base / bare-vs-eval visibility)', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'uncertain',
+        evidence: 'none',
+        data: { results: [] },
+      },
+      { sourceRepos: [], base: 'raylib' }
+    )
+    expect(body.notes?.some(n => n.includes('No sources from base "raylib"'))).toBe(true)
+    expect(body.notes?.some(n => n.includes('eval-raylib'))).toBe(true)
+  })
 })
 
 describe('synthesis failure surfacing', () => {

@@ -157,4 +157,28 @@ describe('runGraphCommand — output routing', () => {
       GraphCommandError
     )
   })
+
+  it('[TC-NF34] exits non-zero for --file when the index DB is missing', async () => {
+    const emptyDir = await mkdtemp(path.join(os.tmpdir(), 'kb-graph-nofile-'))
+    try {
+      const out = { log: () => {} }
+      await expect(
+        runGraphCommand(emptyDir, { file: 'share/completions/scp.fish' }, out)
+      ).rejects.toMatchObject({ name: 'GraphCommandError', exitCode: 1 })
+    } finally {
+      await rm(emptyDir, { recursive: true, force: true })
+    }
+  })
+
+  it('[TC-PT34] rejects --file paths with .. or absolute prefixes', async () => {
+    const out = { log: () => {} }
+    await expect(runGraphCommand(tempDir, { file: '../etc/passwd' }, out)).rejects.toMatchObject({
+      name: 'GraphCommandError',
+      exitCode: 1,
+    })
+    await expect(runGraphCommand(tempDir, { file: '/etc/passwd' }, out)).rejects.toMatchObject({
+      name: 'GraphCommandError',
+      exitCode: 1,
+    })
+  })
 })
