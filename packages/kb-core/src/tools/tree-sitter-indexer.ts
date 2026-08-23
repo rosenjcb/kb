@@ -23,6 +23,7 @@ import {
   codeSymbolKey,
   deleteStaleCodeSymbols,
   getCodeFileState,
+  hasSearchableIndexRows,
   upsertCodeSymbol,
   upsertCodeFileState,
 } from './code-fact-writer'
@@ -632,10 +633,14 @@ export class TreeSitterIndexer implements LanguageIndexer {
       // behind by the legacy ts-morph extractor are re-indexed so their facts are rewritten in
       // the tree-sitter scheme (same source_refs, so no duplicates survive reconciliation).
       const existing = getCodeFileState(this.db, rel)
+      // Skip only when content is unchanged *and* retrieval can already see the
+      // file. Pre-#234 text-only indexes left code_file_state with zero symbols;
+      // those must re-enter the file-level symbol path on normal rescan.
       if (
         existing?.content_hash === contentHash &&
         contentHash !== '' &&
-        existing.extractor === SOURCE
+        existing.extractor === SOURCE &&
+        hasSearchableIndexRows(this.db, rel)
       ) {
         stats.skipped++
         return
@@ -673,6 +678,10 @@ export class TreeSitterIndexer implements LanguageIndexer {
         }
       }
       if (!compiled) {
+        // Text-only allowlist (.fish, .yaml, …): discovery already ran, but hybrid
+        // retrieval only reads `code_symbols` / documents — a bare code_file_state
+        // row is invisible. Emit one file-level symbol so path/content queries hit.
+        await this.writeFileLevelSymbol(rel, src, stats)
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
         return
       }
@@ -683,7 +692,10 @@ export class TreeSitterIndexer implements LanguageIndexer {
         parser.setLanguage(compiled.language)
         tree = parser.parse(parseSrc)
       } catch {
+        // Parse failed — still emit a searchable file-level symbol so the path is
+        // not invisible the way the old text-only state-only path was (#234).
         stats.errors++
+        await this.writeFileLevelSymbol(rel, src, stats)
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
         return
       }
@@ -843,6 +855,26 @@ export class TreeSitterIndexer implements LanguageIndexer {
     }
 
     return stats
+  }
+
+  /** One searchable `kind=file` symbol so text-only / parse-fail paths are hybrid-visible. */
+  private async writeFileLevelSymbol(
+    rel: string,
+    src: string,
+    stats: CodeIndexStats
+  ): Promise<void> {
+    const basename = path.basename(rel)
+    const capped =
+      src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+        ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+        : src
+    const sourceText = `${rel}\n${capped}`
+    await this.symbolIndexer.runInTransaction(() => {
+      this.symbolIndexer.deleteCodeSymbolsForFile(this.gitRepo ?? '', rel)
+      upsertCodeSymbol(this.symbolIndexer, rel, basename, 'file', sourceText, this.gitRepo)
+      stats.symbolKeys.add(codeSymbolKey(rel, basename))
+      stats.symbols++
+    })
   }
 
   private async ensureParser(): Promise<void> {

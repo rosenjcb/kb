@@ -35,7 +35,7 @@ Thin terminal front-end for kb. Taxonomy: [CLIENT.md](./CLIENT.md), [CONNECTION.
 | FR-5 | Query uses `POST /v1/query`; chat/TUI uses `POST /v1/chat` SSE |
 | FR-6 | Client-only: `skills`, `uninstall`, `sync`, `base use`, `mcp` |
 | FR-7 | Daemon lifecycle uses the `kb-server` binary, not a `kb server` subcommand |
-| FR-8 | Git-repo indexing is configured on kb-server (`KB_GIT_REPOS`) |
+| FR-8 | Git-repo indexing is configured on kb-server (`KB_SERVER_BASE_GIT_REPOS`) |
 | FR-9 | Global `--host` overrides connection env for one invocation |
 | FR-10 | Connection context (`host` + `base`) is shown on CLI banner, TUI status bar, and chat open |
 

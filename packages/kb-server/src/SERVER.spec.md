@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-23T05:50:00Z
+timestamp: 2026-08-23T07:30:00Z
 ---
 
 ### Intro
@@ -60,6 +60,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-27 | [NEW] `kb-server init` is the server's `initdb`: it creates `KB_HOME`'s `run`/`logs`/`state` directories and unconditionally materializes the reserved `default` base — a real directory holding an empty, fully-migrated `.kb-index.sqlite` — so a fresh install is listable, selectable, and servable before any repo is added. It takes no flags and records no configuration; re-running it is idempotent (reports the existing base instead of recreating it) |
 | FR-28 | [UPDATED] The server's boot-time default base has no persisted or configurable state. `kb-server start` binds `--base` \> `KB_SERVER_BASE_NAME` \> the hardcoded `default` constant, and never reads client-side state (the `kb base use` active-base file) or any state `kb-server init` might have left — because `init` leaves none. Resolving which base to boot guarantees only that base's **directory** exists; its index is deliberately **not** materialized at that point, so a genuinely fresh volume still reads as fresh to snapshot adoption (`--from` / `KB_SERVER_SNAPSHOT`) and to `--bootstrap-policy snapshot-only`'s refusal gate, both of which run immediately after. The index is self-healed — an empty, fully-migrated `.kb-index.sqlite` — once bootstrap has confirmed there is genuinely nothing to build (no snapshot adopted, no repos declared, none already cloned) and, under `auto` policy, that self-heal always completes by the time the server starts listening, matching what `kb-server init` would have produced even though it never ran. The server also pre-warms the golden `default` base at boot even when it bound to a different one, so the service registry's per-request self-heal for `default` rarely has to run synchronously inline in a request. |
 | FR-29 | [UPDATED] When `KB_BASE` or `KB_GIT_REPOS` (the client-scoped env vars) is set without its server-scoped counterpart (`KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`), `kb-server start` logs a warning naming both variables, so a same-machine install where the client's env leaks into the server's shell is observable rather than silently booting the wrong base. `start --daemon` surfaces the identical warning from its own parent process — the interactive shell still attached before it detaches — not only from the foreground boot path, since the detached child's stderr goes to `kb-server.err.log`, which an operator watching only the `-d` invocation's own output would not otherwise see. |
+| FR-30 | [NEW] `/v1/query` and MCP `query` responses include the served `base` slug from the resolved service health |
 
 ### Known issues
 
@@ -276,6 +277,8 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-DMW3 | FR-29 | [NEW] the KB_GIT_REPOS / KB_SERVER_BASE_GIT_REPOS pair warns independently of the KB_BASE pair | pass |
 | TC-DMW4 | FR-29 | [NEW] both pairs unset their server-scoped counterpart at once → two warnings | pass |
 | TC-DMW5 | FR-29 | [NEW] every server-scoped counterpart set → no warnings | pass |
+| TC-B233 | FR-30 | [NEW] MCP query against a stub whose health base is `base` | response JSON includes `"base": "base"` |
+| TC-H233 | FR-30 | [NEW] authorized `/v1/query` against a stub whose health base is `base` | response JSON includes `"base": "base"` |
 
 ### Related docs
 

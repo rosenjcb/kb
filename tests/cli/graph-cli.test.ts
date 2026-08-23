@@ -53,6 +53,12 @@ describe('graph-cli parsing', () => {
   it('[TC-KY82] Given graph format flag, then parser returns export format option', () => {
     expect(parseGraphCommand(['--format', 'json'])).toEqual({ format: 'json' })
   })
+
+  it('[TC-GF34] Given graph --file flag, then parser returns file coverage options', () => {
+    expect(parseGraphCommand(['--file', 'share/completions/scp.fish'])).toEqual({
+      file: 'share/completions/scp.fish',
+    })
+  })
 })
 
 describe('graph-cli help', () => {
@@ -61,6 +67,7 @@ describe('graph-cli help', () => {
     expect(help).toContain('kb graph commands')
     expect(help).toContain('Inspect:')
     expect(help).toContain('Examples:')
+    expect(help).toContain('graph --file')
   })
 })
 
@@ -116,5 +123,62 @@ describe('runGraphCommand — output routing', () => {
     await runGraphCommand(tempDir, { entity: 'Unknown' }, out)
 
     expect(lines.some(l => l.includes('No documents or symbols matching'))).toBe(true)
+  })
+
+  it('[TC-CF34] reports searchable coverage for a path with a file-level code_symbol', async () => {
+    const db = new Database(dbPath)
+    db.prepare(
+      `INSERT INTO code_file_state (file_path, content_hash, extractor, indexed_at)
+       VALUES ('share/completions/scp.fish', 'abc', 'tree-sitter', ?)`
+    ).run(new Date().toISOString())
+    db.prepare(
+      `INSERT INTO code_symbols (id, git_repo, rel_path, name, kind, source_text, content_hash, indexed_at)
+       VALUES ('sym-scp', '', 'share/completions/scp.fish', 'scp.fish', 'file', 'complete -c scp', 'abc', ?)`
+    ).run(new Date().toISOString())
+    db.close()
+
+    const lines: string[] = []
+    const out = { log: (msg: string) => lines.push(msg) }
+    await runGraphCommand(tempDir, { file: 'share/completions/scp.fish' }, out)
+    expect(lines.some(l => l.includes('Coverage for share/completions/scp.fish'))).toBe(true)
+    expect(lines.some(l => l.includes('code_symbols:    1'))).toBe(true)
+  })
+
+  it('[TC-CS34] exits non-zero when code_file_state exists without searchable rows', async () => {
+    const db = new Database(dbPath)
+    db.prepare(
+      `INSERT INTO code_file_state (file_path, content_hash, extractor, indexed_at)
+       VALUES ('orphan.yaml', 'abc', 'tree-sitter', ?)`
+    ).run(new Date().toISOString())
+    db.close()
+
+    const out = { log: () => {} }
+    await expect(runGraphCommand(tempDir, { file: 'orphan.yaml' }, out)).rejects.toBeInstanceOf(
+      GraphCommandError
+    )
+  })
+
+  it('[TC-NF34] exits non-zero for --file when the index DB is missing', async () => {
+    const emptyDir = await mkdtemp(path.join(os.tmpdir(), 'kb-graph-nofile-'))
+    try {
+      const out = { log: () => {} }
+      await expect(
+        runGraphCommand(emptyDir, { file: 'share/completions/scp.fish' }, out)
+      ).rejects.toMatchObject({ name: 'GraphCommandError', exitCode: 1 })
+    } finally {
+      await rm(emptyDir, { recursive: true, force: true })
+    }
+  })
+
+  it('[TC-PT34] rejects --file paths with .. or absolute prefixes', async () => {
+    const out = { log: () => {} }
+    await expect(runGraphCommand(tempDir, { file: '../etc/passwd' }, out)).rejects.toMatchObject({
+      name: 'GraphCommandError',
+      exitCode: 1,
+    })
+    await expect(runGraphCommand(tempDir, { file: '/etc/passwd' }, out)).rejects.toMatchObject({
+      name: 'GraphCommandError',
+      exitCode: 1,
+    })
   })
 })

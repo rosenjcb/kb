@@ -316,6 +316,8 @@ function computeQueryGrounding(params: {
   degraded?: LLMFailure[]
   answerError?: LLMFailure
   hasSources: boolean
+  /** Served base slug — used for wrong-base visibility when nothing was retrieved. */
+  base?: string
 }): { notes: string[]; evidence?: EvidenceLabel } {
   const notes: string[] = []
   let evidence = params.evidence
@@ -365,6 +367,14 @@ function computeQueryGrounding(params: {
     )
   }
 
+  // No sources: make the served base impossible to miss (wrong sticky MCP base / bare
+  // vs eval-* slug). Echo alone is easy to ignore when only reading answer+evidence.
+  if (!params.hasSources && params.base?.trim()) {
+    notes.push(
+      `No sources from base "${params.base.trim()}". Confirm KB_BASE / --base / X-KB-Base matches the repo you are working in. Eval harness bases are often named eval-<suite> (e.g. eval-raylib), not the bare suite slug.`
+    )
+  }
+
   return { notes, evidence }
 }
 
@@ -377,6 +387,8 @@ export interface SerializeQueryOptions {
    * paths. Pass `[]` only when the base genuinely has no browsable remote.
    */
   sourceRepos: ChatSourceRepo[]
+  /** Served base slug — included in no-source notes so wrong-base routing is visible. */
+  base?: string
 }
 
 /**
@@ -427,7 +439,17 @@ export function serializeQueryResult(
     degraded,
     answerError: data.answerError,
     hasSources: sources.length > 0,
+    base: options.base,
   })
+
+  // Empty-base (and other intent-level) explanations used to stay CLI-only —
+  // REST/MCP saw a hollow "no evidence" payload. Surface them as notes so an
+  // agent can tell "this base has no index" from "retrieval found nothing".
+  if (result.explanation?.trim()) {
+    notes.push(result.explanation.trim())
+    const action = result.recommendedAction?.trim()
+    if (action) notes.push(action)
+  }
 
   return {
     status: result.status,

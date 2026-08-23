@@ -11,7 +11,7 @@ tests:
   - ../../../../tests/cli/server-connection-error-propagation.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-08-23T05:53:00Z
+timestamp: 2026-08-23T21:00:00Z
 ---
 
 ### Intro
@@ -51,7 +51,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-6 | One-shot CLI (non-JSON stdout) prints connection context under the version banner |
 | FR-7 | TUI status bar always shows host and base on one pinned row |
 | FR-8 | Chat sessions print connection context before the first user prompt |
-| FR-9 | `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from the active connection (`--host` / `KB_CONNECTION_STRING` / `KB_HOST` / `config.server.host` / localhost default) and Bearer from env or `config.server.apiKey` |
+| FR-9 | [UPDATED] `syncKbMcpConfigs` writes Cursor + Claude + Antigravity `kb` entries to `${server}/mcp` from the active connection (`--host` / `KB_CONNECTION_STRING` / `KB_HOST` / `config.server.host` / localhost default), Bearer from env or `config.server.apiKey`, and `X-KB-Base` from `resolveActiveBaseName` (or an explicit `base` option) |
 | FR-10 | MCP sync is idempotent, preserves sibling MCP servers, defaults to localhost when no host is set (matching CLI/TUI), optionally returns `needs-host` when `requireExplicitHost` is set, and clears a stale Bearer when no API key is configured |
 | FR-11 | `uninstallKbMcpConfigs` removes only the managed `kb` MCP entries |
 | FR-12 | `readKbMcpStatus` / `kb mcp status` reports env host + current agent MCP URLs |
@@ -88,7 +88,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-DLOM | FR-9 | Given server URL with trailing slash | `resolveMcpEndpointUrl` → `…/mcp` |
 | TC-J1S1 | FR-9 | Given Cursor entry builder | url + optional Bearer header |
 | TC-KUXM | FR-9 | Given Claude entry builder | includes `type: "http"` |
-| TC-SQMH | FR-10 | Given no explicit host | sync installs `http://localhost:38117/mcp` |
+| TC-SQMH | FR-9 | [UPDATED] Given no explicit host | sync installs `http://localhost:38117/mcp` with `X-KB-Base: default` |
 | TC-6ZYN | FR-10 | Given `requireExplicitHost` and only the implicit localhost default | Refuses the implicit default instead of syncing it |
 | TC-41V9 | FR-9 | Given `KB_HOST`/`KB_PORT`/`KB_SSLMODE` | MCP URL uses that host `/mcp` |
 | TC-QD7E | FR-10 | Given matching entry | action is skipped |
@@ -146,3 +146,6 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-GTHU | FR-4 | Given a non-401 server error carrying an `error` field | Passes the server message through unchanged |
 | TC-XJ1F | FR-4 | Given an error body with no `error` field | Falls back to `server error (<status>)` |
 | TC-4RGX | FR-26 | Given an `answer` SSE event carrying `sources: GroupedSource[]` | `onSources` is called with the same array |
+| TC-XB33 | FR-9 | [NEW] Given MCP entry builders with a base slug | Headers include `X-KB-Base` alongside optional Bearer |
+| TC-XBCR | FR-9 | [NEW] Given a base slug containing CR/LF | Written `X-KB-Base` has CR/LF stripped |
+| TC-SQMB | FR-9 | [NEW] Given `syncKbMcpConfigs({ base: 'eval-raylib' })` | Cursor entry headers pin `X-KB-Base: eval-raylib` |

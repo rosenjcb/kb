@@ -26,6 +26,19 @@ export function getCodeFileState(db: DatabaseSync, filePath: string): CodeFileSt
     .get(filePath) as CodeFileStateRow | undefined
 }
 
+/**
+ * True when hybrid retrieval can see this path — at least one `code_symbols` or
+ * `documents` row. Used to refuse content-hash skip when an older text-only pass
+ * left state without searchable rows (#234 heal).
+ */
+export function hasSearchableIndexRows(db: DatabaseSync, relPath: string): boolean {
+  return (
+    db.prepare('SELECT 1 AS n FROM code_symbols WHERE rel_path = ? LIMIT 1').get(relPath) !==
+      undefined ||
+    db.prepare('SELECT 1 AS n FROM documents WHERE rel_path = ? LIMIT 1').get(relPath) !== undefined
+  )
+}
+
 export function upsertCodeFileState(
   db: DatabaseSync,
   filePath: string,

@@ -6,7 +6,7 @@ tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-16T21:10:00Z
+timestamp: 2026-08-23T21:00:00Z
 ---
 
 ### Intro
@@ -75,6 +75,7 @@ them.
 | FR-2 | Parses inline `<script>` blocks in .vue/.svelte files through the JS/TS grammar and indexes their exported symbols |
 | FR-3 | Falls back to text-state indexing for .vue/.svelte with no parseable inline script, and always for .astro and the .svlete alias |
 | FR-4 | Indexes a non-exported top-level function or function-valued constant in an embedded .vue/.svelte script, without extending that rule to standalone .ts/.js files |
+| FR-5 | [UPDATED] Text-only allowlist files write one `kind=file` code_symbol; content-hash skip requires searchable rows so legacy state-only indexes heal on rescan; parse failures also emit a file-level symbol |
 
 ### QA Test Cases
 
@@ -93,7 +94,7 @@ them.
 | TC-2EDD | FR-1 | indexes functions and classes | pass |
 | TC-YBB8 | FR-1 | indexes functions and structs | pass |
 | TC-5QN9 | FR-1 | indexes elements with id attributes | pass |
-| TC-ATAZ | FR-1 | creates a code_file_state entry for non-code files without extracting symbols | pass |
+| TC-ATAZ | FR-5 | [UPDATED] creates code_file_state plus a file-level code_symbol for text-only files | pass |
 | TC-UPJ4 | FR-1 | ignores unknown extensions not in the allowlist | pass |
 | TC-ROFO | FR-1 | indexes code and text files together in one pass | pass |
 | TC-YUE1 | FR-1 | does not emit EXTENDS/IMPLEMENTS structural facts (v1 symbols only) | pass |
@@ -107,6 +108,8 @@ them.
 | TC-FBSK | FR-3 | falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases | pass |
 | TC-VUEF | FR-4 | indexes non-exported top-level functions and function-valued constants from .vue/.svelte script setup blocks | pass |
 | TC-VUEN | FR-4 | does not extend non-exported function capture to plain .ts/.js modules | pass |
+| TC-F234 | FR-5 | [NEW] indexes `share/completions/scp.fish` as a searchable file-level symbol | pass |
+| TC-H234 | FR-5 | [NEW] re-index after wiping symbols but keeping matching content_hash state | emits `kind=file` symbol again; skipped stays 0 |
 
 ### Related docs
 

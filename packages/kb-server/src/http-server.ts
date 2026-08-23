@@ -624,10 +624,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
       // Resolve the per-repo registry once so grouped sources carry blob hrefs —
       // the same links Slack and the demo get, now on REST/MCP too.
       const sourceRepos = await resolveSourceRepos(svc.baseDir)
+      const servedBase = svc.health().base
       const serialized =
         body.verbose === true
-          ? serializeQueryResult(result, { sourceRepos })
-          : serializeMcpQueryResult(result, { sourceRepos })
+          ? serializeQueryResult(result, { sourceRepos, base: servedBase })
+          : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })
       const answerError = serialized.answerError
       const full = body.verbose === true ? (serialized as ReturnType<typeof serializeQueryResult>) : null
       log.info('query complete', {
@@ -644,7 +645,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
           : {}),
         durationMs: Date.now() - ctx.startMs,
       })
-      sendJson(res, 200, serialized)
+      // Echo the served base so clients can detect silent wrong-base routing (#233).
+      sendJson(res, 200, { ...serialized, base: servedBase })
       // Retrieval succeeded and the caller still gets its sources, so this stays a 200 —
       // but recording it as a plain success would hide provider outages from telemetry
       // exactly when the RunReports are what you'd go looking at.

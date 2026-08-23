@@ -15,7 +15,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { hasExplicitConnectionOverride, resolveServerConnection } from '../api/server-connection.js'
+import {
+  hasExplicitConnectionOverride,
+  resolveActiveBaseName,
+  resolveServerConnection,
+} from '../api/server-connection.js'
 import { applyHostCliOverride } from './cli-global-flags.js'
 
 export const KB_MCP_SERVER_NAME = 'kb'
@@ -51,6 +55,12 @@ export interface SyncKbMcpOptions {
    * can write the auth header without exporting the env var first.
    */
   apiKey?: string
+  /**
+   * Base slug written as `X-KB-Base` on the MCP entry. Defaults to
+   * `resolveActiveBaseName` (same resolution as the CLI), so agents pin the
+   * same base the operator has selected rather than the server boot default.
+   */
+  base?: string
   config?: KbConfig
 }
 
@@ -74,36 +84,60 @@ export function resolveMcpEndpointUrl(serverUrl: string): string {
   return `${root}/mcp`
 }
 
-export function buildCursorKbMcpEntry(mcpUrl: string, apiKey?: string): JsonObject {
+/** Build the optional headers object (Bearer + X-KB-Base). Omits `headers` when empty. */
+function buildMcpHeaders(apiKey?: string, base?: string): JsonObject | undefined {
+  const headers: JsonObject = {}
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  // Strip CR/LF so a hostile base slug cannot split the HTTP header block.
+  const trimmedBase = base?.trim().replace(/[\r\n]/g, '')
+  if (trimmedBase) headers['X-KB-Base'] = trimmedBase
+  return Object.keys(headers).length > 0 ? headers : undefined
+}
+
+export function buildCursorKbMcpEntry(mcpUrl: string, apiKey?: string, base?: string): JsonObject {
   const entry: JsonObject = { url: mcpUrl }
-  if (apiKey) {
-    entry.headers = { Authorization: `Bearer ${apiKey}` }
-  }
+  const headers = buildMcpHeaders(apiKey, base)
+  if (headers) entry.headers = headers
   return entry
 }
 
 /** Claude Code HTTP transport requires `type: "http"` (url-only is treated as stdio). */
-export function buildClaudeKbMcpEntry(mcpUrl: string, apiKey?: string): JsonObject {
+export function buildClaudeKbMcpEntry(mcpUrl: string, apiKey?: string, base?: string): JsonObject {
   const entry: JsonObject = {
     type: 'http',
     url: mcpUrl,
   }
-  if (apiKey) {
-    entry.headers = { Authorization: `Bearer ${apiKey}` }
-  }
+  const headers = buildMcpHeaders(apiKey, base)
+  if (headers) entry.headers = headers
   return entry
 }
 
 /** Antigravity uses serverUrl key for HTTP/SSE MCP connections. */
-export function buildAntigravityKbMcpEntry(mcpUrl: string, apiKey?: string): JsonObject {
+export function buildAntigravityKbMcpEntry(
+  mcpUrl: string,
+  apiKey?: string,
+  base?: string
+): JsonObject {
   const entry: JsonObject = {
     serverUrl: mcpUrl,
     url: mcpUrl,
   }
-  if (apiKey) {
-    entry.headers = { Authorization: `Bearer ${apiKey}` }
-  }
+  const headers = buildMcpHeaders(apiKey, base)
+  if (headers) entry.headers = headers
   return entry
+}
+
+function mcpHeadersMatch(existing: unknown, expected: unknown): boolean {
+  if (expected === undefined) {
+    // No headers expected — leftover Authorization or X-KB-Base is stale.
+    if (!isPlainObject(existing)) return true
+    return existing.Authorization === undefined && existing['X-KB-Base'] === undefined
+  }
+  if (!isPlainObject(existing) || !isPlainObject(expected)) return false
+  return (
+    existing.Authorization === expected.Authorization &&
+    existing['X-KB-Base'] === expected['X-KB-Base']
+  )
 }
 
 function mcpEntryMatches(
@@ -115,15 +149,7 @@ function mcpEntryMatches(
   if (expected.serverUrl !== undefined && existing.serverUrl !== expected.serverUrl) return false
   if (expected.url !== undefined && existing.url !== expected.url) return false
   if (requireType && existing.type !== expected.type) return false
-
-  const expectedHeaders = expected.headers
-  if (expectedHeaders === undefined) {
-    // No key configured — treat a leftover Authorization as stale so sync clears it.
-    if (!isPlainObject(existing.headers)) return true
-    return existing.headers.Authorization === undefined
-  }
-  if (!isPlainObject(existing.headers)) return false
-  return existing.headers.Authorization === (expectedHeaders as JsonObject).Authorization
+  return mcpHeadersMatch(existing.headers, expected.headers)
 }
 
 async function readJsonObject(filePath: string): Promise<JsonObject> {
@@ -230,10 +256,13 @@ export async function syncKbMcpConfigs(options: SyncKbMcpOptions = {}): Promise<
   const connection = resolveServerConnection(config)
   const mcpUrl = resolveMcpEndpointUrl(connection.url)
   const apiKey = options.apiKey?.trim() || connection.apiKey
+  // Pin the same base the CLI would send — without this, MCP sessions bind the
+  // server boot base and silently answer from the wrong index (#233).
+  const base = options.base?.trim() || (await resolveActiveBaseName(config))
 
-  const cursorExpected = buildCursorKbMcpEntry(mcpUrl, apiKey)
-  const claudeExpected = buildClaudeKbMcpEntry(mcpUrl, apiKey)
-  const antigravityExpected = buildAntigravityKbMcpEntry(mcpUrl, apiKey)
+  const cursorExpected = buildCursorKbMcpEntry(mcpUrl, apiKey, base)
+  const claudeExpected = buildClaudeKbMcpEntry(mcpUrl, apiKey, base)
+  const antigravityExpected = buildAntigravityKbMcpEntry(mcpUrl, apiKey, base)
 
   return Promise.all([
     upsertKbMcpEntry({

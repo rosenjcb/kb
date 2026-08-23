@@ -88,6 +88,25 @@ describe('build*KbMcpEntry', () => {
       headers: { Authorization: 'Bearer k' },
     })
   })
+
+  it('[TC-XB33] pins X-KB-Base alongside Bearer when a base slug is given', () => {
+    expect(buildCursorKbMcpEntry('http://localhost:38117/mcp', 'secret', 'dogfood')).toEqual({
+      url: 'http://localhost:38117/mcp',
+      headers: { Authorization: 'Bearer secret', 'X-KB-Base': 'dogfood' },
+    })
+    expect(buildClaudeKbMcpEntry('http://localhost:38117/mcp', undefined, 'default')).toEqual({
+      type: 'http',
+      url: 'http://localhost:38117/mcp',
+      headers: { 'X-KB-Base': 'default' },
+    })
+  })
+
+  it('[TC-XBCR] strips CR/LF from X-KB-Base so header injection cannot split the block', () => {
+    expect(buildCursorKbMcpEntry('http://localhost:38117/mcp', undefined, 'dog\r\nfood')).toEqual({
+      url: 'http://localhost:38117/mcp',
+      headers: { 'X-KB-Base': 'dogfood' },
+    })
+  })
 })
 
 describe('hasExplicitServerHost', () => {
@@ -113,8 +132,16 @@ describe('syncKbMcpConfigs', () => {
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
     expect(cursor.mcpServers.kb).toEqual({
       url: 'http://localhost:38117/mcp',
-      headers: { Authorization: 'Bearer testkey' },
+      headers: { Authorization: 'Bearer testkey', 'X-KB-Base': 'default' },
     })
+  })
+
+  it('[TC-SQMB] Given options.base, pins that slug as X-KB-Base instead of default', async () => {
+    process.env.KB_SERVER_API_KEY = 'testkey'
+    const results = await syncKbMcpConfigs({ base: 'eval-raylib' })
+    expect(results.every(r => r.action === 'installed')).toBe(true)
+    const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
+    expect(cursor.mcpServers.kb.headers['X-KB-Base']).toBe('eval-raylib')
   })
 
   it('[TC-6ZYN] requireExplicitHost still refuses the implicit localhost default', async () => {
@@ -147,10 +174,9 @@ describe('syncKbMcpConfigs', () => {
     expect(results.every(r => r.url === 'https://kb.internal/mcp')).toBe(true)
 
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
-    expect(cursor.mcpServers.kb).toEqual({
-      url: 'https://kb.internal/mcp',
-      headers: { Authorization: 'Bearer from-config' },
-    })
+    expect(cursor.mcpServers.kb.url).toBe('https://kb.internal/mcp')
+    expect(cursor.mcpServers.kb.headers.Authorization).toBe('Bearer from-config')
+    expect(cursor.mcpServers.kb.headers['X-KB-Base']).toBeTruthy()
   })
 
   it('[TC-749M] Given --host override, installs even when env unset', async () => {
@@ -166,14 +192,14 @@ describe('syncKbMcpConfigs', () => {
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
     expect(cursor.mcpServers.kb).toEqual({
       url: 'http://localhost:38117/mcp',
-      headers: { Authorization: 'Bearer testkey' },
+      headers: { Authorization: 'Bearer testkey', 'X-KB-Base': 'default' },
     })
 
     const claude = JSON.parse(await readFile(path.join(fakeHome, '.claude.json'), 'utf8'))
     expect(claude.mcpServers.kb).toEqual({
       type: 'http',
       url: 'http://localhost:38117/mcp',
-      headers: { Authorization: 'Bearer testkey' },
+      headers: { Authorization: 'Bearer testkey', 'X-KB-Base': 'default' },
     })
   })
 
@@ -184,10 +210,13 @@ describe('syncKbMcpConfigs', () => {
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
     expect(cursor.mcpServers.kb).toEqual({
       url: 'https://kb.example.com/mcp',
-      headers: { Authorization: 'Bearer from-flag' },
+      headers: { Authorization: 'Bearer from-flag', 'X-KB-Base': 'default' },
     })
     const claude = JSON.parse(await readFile(path.join(fakeHome, '.claude.json'), 'utf8'))
-    expect(claude.mcpServers.kb.headers).toEqual({ Authorization: 'Bearer from-flag' })
+    expect(claude.mcpServers.kb.headers).toEqual({
+      Authorization: 'Bearer from-flag',
+      'X-KB-Base': 'default',
+    })
   })
 
   it('[TC-UJ7R] apiKey option overrides KB_SERVER_API_KEY env', async () => {
@@ -196,7 +225,10 @@ describe('syncKbMcpConfigs', () => {
     expect(results.every(r => r.action === 'installed')).toBe(true)
 
     const cursor = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
-    expect(cursor.mcpServers.kb.headers).toEqual({ Authorization: 'Bearer from-flag' })
+    expect(cursor.mcpServers.kb.headers).toEqual({
+      Authorization: 'Bearer from-flag',
+      'X-KB-Base': 'default',
+    })
   })
 
   it('[TC-QD7E] Given matching entry, action is skipped', async () => {
@@ -232,11 +264,11 @@ describe('syncKbMcpConfigs', () => {
     expect(doc.mcpServers.other).toEqual({ url: 'http://other/mcp' })
     expect(doc.mcpServers.kb).toEqual({
       url: 'http://new:38117/mcp',
-      headers: { Authorization: 'Bearer newkey' },
+      headers: { Authorization: 'Bearer newkey', 'X-KB-Base': 'default' },
     })
   })
 
-  it('[TC-JI78] Given no API key but existing Bearer, clears Authorization', async () => {
+  it('[TC-JI78] Given no API key but existing Bearer, clears Authorization and keeps X-KB-Base', async () => {
     await mkdir(path.join(fakeHome, '.cursor'), { recursive: true })
     await writeFile(
       path.join(fakeHome, '.cursor', 'mcp.json'),
@@ -257,8 +289,10 @@ describe('syncKbMcpConfigs', () => {
     expect(results.find(r => r.agent === 'cursor')?.action).toBe('updated')
 
     const doc = JSON.parse(await readFile(path.join(fakeHome, '.cursor', 'mcp.json'), 'utf8'))
-    expect(doc.mcpServers.kb).toEqual({ url: 'http://remote:38117/mcp' })
-    expect(doc.mcpServers.kb.headers).toBeUndefined()
+    expect(doc.mcpServers.kb).toEqual({
+      url: 'http://remote:38117/mcp',
+      headers: { 'X-KB-Base': 'default' },
+    })
   })
 
 })

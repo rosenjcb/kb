@@ -84,6 +84,7 @@ describe('dispatchMcpToolCall', () => {
     expect(result.isError).toBeUndefined()
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBe('synth:true')
+    expect(body.base).toBe('base')
     expect(body.sources).toEqual([
       { path: 'src/auth/login.ts', relPath: 'src/auth/login.ts', symbols: ['loginHandler'] },
     ])
@@ -93,6 +94,12 @@ describe('dispatchMcpToolCall', () => {
     expect(result.content[0].text).not.toContain('facts-loop')
     expect(result.content[0].text).not.toContain('snippet')
     expect(result.content[0].text).not.toContain('factCount')
+  })
+
+  it('[TC-B233] echoes the served base so agents can detect wrong-base routing', async () => {
+    const result = await dispatchMcpToolCall(makeStubService(), 'query', { q: 'auth' })
+    const body = JSON.parse(result.content[0].text)
+    expect(body.base).toBe('base')
   })
 
   it('[TC-ONSY] verbose:true opts into the full evidence payload', async () => {

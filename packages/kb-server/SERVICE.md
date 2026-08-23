@@ -52,6 +52,20 @@ Idempotent — safe to re-run. Everything lives under `KB_HOME` (default
 start` on a completely fresh `KB_HOME` self-heals to the same `default` base
 without `init` ever having run.
 
+A base with no repos cannot answer queries. Attach at least one remote, then start:
+
+```bash
+export GEMINI_API_KEY=<key>            # or OPENAI_API_KEY / ANTHROPIC_API_KEY
+export KB_SERVER_API_KEY=<strong-token>
+kb-server base add-repo --base default --git https://github.com/acme/auth
+kb-server start --with-mcp             # or: kb-server start -d --with-mcp
+```
+
+Use server-scoped env names (`KB_SERVER_BASE_NAME`, `KB_SERVER_BASE_GIT_REPOS`) for the daemon — not client `KB_BASE` / `KB_GIT_REPOS`.
+
+**Bare suite names vs `eval-*`:** listable bases like `raylib` are not aliases of `eval-raylib`. Eval tooling often indexes only the `eval-<suite>` slug; querying the bare name looks like “no evidence” with no error. Check `kb base list`, prefer the indexed slug, and pin it with client `KB_BASE` / `--base` / `kb mcp install` (`X-KB-Base`). Responses echo the served `base` and note when the index is empty or near-empty.
+
+
 ## Configuration
 
 kb-server is configured through environment variables (same names as the Docker

@@ -11,9 +11,12 @@ sources:
   - ../../../kb-client/src/cli/remote-commands.ts
 tests:
   - ../../../../tests/service/query-response-parity.test.ts
+  - ../../../../tests/server/serialize.test.ts
+  - ../../../../tests/server/mcp-tools.test.ts
+  - ../../../../tests/server/http-server.test.ts
 description: Shared query payload semantics across REST, MCP, CLI, TUI, and chat surfaces
 tags: [spec, query, parity, serialization]
-timestamp: 2026-08-16T21:29:00Z
+timestamp: 2026-08-23T21:00:00Z
 ---
 
 ### Intro
@@ -45,6 +48,9 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | FR-1 | The canonical serializer returns grouped sources and includes blob href values when source repos are available |
 | FR-2 | The canonical serializer computes grounding notes and adjusted evidence once, and both REST and MCP carry the same values |
 | FR-3 | CLI and TUI query output render the shared notes and grouped source lines from the payload without custom re-derivation |
+| FR-4 | [NEW] The serializer puts `IntentResult.explanation` and `recommendedAction` into `notes` so empty-base messages reach REST and MCP |
+| FR-5 | [NEW] HTTP `/v1/query` and MCP `query` responses include the served `base` slug from the resolved service |
+| FR-6 | [NEW] When a query returns no sources, the serializer notes the served base and reminds the caller to check KB_BASE / eval-* naming |
 
 ### QA Test Cases
 
@@ -53,3 +59,7 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | TC-GEV5 | FR-1 | Serializer gets a slug-prefixed source path and a matching source-repo registry | Output source label strips slug and includes a blob href |
 | TC-0T3O | FR-2 | Serializer gets unsupported claims, ungrounded file text, and degraded retrieval | REST and MCP both return the same notes and weak evidence label |
 | TC-TBPH | FR-3 | CLI printer renders one grouped source with symbols | Output line uses one source entry with symbol suffix on the same line |
+| TC-E233 | FR-4 | [NEW] Empty-base IntentResult with explanation and recommendedAction | Lean MCP body notes list both strings; answer stays null |
+| TC-B233 | FR-5 | [NEW] MCP query against a stub service whose health base is `base` | Response JSON includes `"base": "base"` |
+| TC-H233 | FR-5 | [NEW] authorized `/v1/query` against a stub whose health base is `base` | response JSON includes `"base": "base"` |
+| TC-NS33 | FR-6 | [NEW] Lean serialize with base `raylib` and zero sources | Notes name the base and mention eval-raylib naming drift |
