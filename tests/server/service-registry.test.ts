@@ -14,6 +14,8 @@ vi.mock('@kb/core/service/kb-service.js', () => ({
 }))
 
 import { createKbService } from '@kb/core/service/kb-service.js'
+import { DEFAULT_BASE_SLUG } from '@kb/core/storage/base-selection.js'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 import {
   BaseNotFoundError,
   createKbServiceRegistry,
@@ -84,6 +86,19 @@ describe('createKbServiceRegistry', () => {
       config: {},
     })
     expect(() => registry.resolve('missing')).toThrow(BaseNotFoundError)
+  })
+
+  it('[TC-DFLT] materializes the reserved "default" slug instead of 404ing, even when the process booted on a different base', async () => {
+    const defaultDir = await makeBase('acme')
+    const registry = createKbServiceRegistry({
+      defaultService: fakeDefault(defaultDir),
+      config: {},
+    })
+    expect(() => registry.resolve(DEFAULT_BASE_SLUG)).not.toThrow()
+    const service = registry.resolve(DEFAULT_BASE_SLUG)
+    const dbPath = path.join(home, 'sessions', DEFAULT_BASE_SLUG, '.kb-index.sqlite')
+    expect(service.baseDir).toBe(path.join(home, 'sessions', DEFAULT_BASE_SLUG))
+    expect(isKbIndexEmpty(dbPath)).toBe(true)
   })
 
   it('[TC-BNWZ] list() advertises the default plus every built base', async () => {

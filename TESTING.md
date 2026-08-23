@@ -136,7 +136,7 @@ pnpm run integration:test
 
 - **CI:** `.github/workflows/integration.yml` on **push to `main`** (and `workflow_dispatch`). Not part of feature-branch `ci.yml`.
 - **LLM in CI:** WireMock sidecar — no secrets required with current runner. Repo secrets can be wired in `integration.yml` if you move to a real provider on main.
-- **Requirements:** Docker + `docker compose`. First boot clones `KB_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
+- **Requirements:** Docker + `docker compose`. First boot clones `KB_SERVER_BASE_GIT_REPOS` (default: small public repo) before `/healthz` reports `indexMtime`.
 - **Unit coverage:** in-process handlers live in `tests/server/`; integration exercises the full container stack.
 
 See [`packages/kb-server/http/HTTP.md`](packages/kb-server/http/HTTP.md), [`packages/kb-server/INTEGRATION_TEST.md`](packages/kb-server/INTEGRATION_TEST.md), [`packages/kb-server/docker/wiremock/WIREMOCK.md`](packages/kb-server/docker/wiremock/WIREMOCK.md).

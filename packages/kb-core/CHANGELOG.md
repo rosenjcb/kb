@@ -1,5 +1,19 @@
 # @kb/core
 
+## 2.0.6
+
+### Patch Changes
+
+- Qualify every cited path with `owner/repo`.
+
+  A base can hold many repos, so a bare repo-relative path never said which repo a file came from, and the qualification that did exist was conditional on the answer spanning repos. Every surface now shows `owner/repo/relPath` (GitHub `nameWithOwner`). Citations also carry `repo` and `relPath` as separate fields — including on the lean MCP/REST payload — so a consumer can open the file locally without splitting the string, which is guesswork when the owner contains slashes (GitLab subgroups). `LeanSource` gains `repo`/`relPath`/`href`, and the CLI now renders `href` on lean payloads instead of discarding it.
+
+- Make `kb-server init` a real `initdb`, and stop the client and server env vars from colliding.
+
+  `kb-server init` now unconditionally materializes the reserved `default` base — a real directory with an empty, fully-migrated index — instead of a bare `mkdir`. `default` is a hardcoded constant, never recorded or configurable server state: `kb-server start` self-heals into the identical base even on a `KB_HOME` that never ran `init`, and requesting `X-KB-Base: default` never 404s, even when the process booted on a different base. The server no longer reads `KB_BASE` / `KB_GIT_REPOS` at all (only `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`) — those are the client's own vars, and on a same-machine install they used to collide; a boot-time warning now catches the mistake. The client mirrors `libpq`'s own default: `resolveActiveBaseName` always resolves to a concrete base name and always sends an explicit `X-KB-Base` (falling back to `default` when nothing is configured), so `kb base use` no longer has any way to steer which base the daemon binds, and the old `(server default)` display — discovered over the network — is replaced by a purely local `(no active base selected)` label. Also removed: the dead `config.server.base` precedence tier, the unused `writeDefaultConfig` / `ensureDefaultConfig` helpers, the interactive `questionIO` prompting in `kb init` / `kb scan` (both are server-only with no TTY, so a missing base or git remote is now always an immediate error), and four pre-v2 base-migration paths.
+
+  Pre-v2 installs lose their auto-migrated legacy base state and must re-run `kb base use <name>` once.
+
 ## 2.0.5
 
 ### Patch Changes

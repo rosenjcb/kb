@@ -2,6 +2,7 @@
  * Server-side kb command dispatch — runs indexing, docs, facts, graph, logs, etc.
  * against the server's KB_HOME. Invoked by POST /v1/admin/cli.
  */
+import path from 'node:path'
 import {
   ReportWriter,
   RunCollector,
@@ -9,15 +10,10 @@ import {
 } from '@kb/core/core/telemetry.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import {
-  initCancelledNotice,
-} from '@kb/core/config/cli-prerequisites.js'
-import { baseNameFromGitUrl } from '@kb/core/ops/git-sync.js'
-import { isInitCancelledError, parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'
+import { parseInitCommand, runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import {
   listAllBases,
-  resolveEffectiveBaseDir,
   resolveKbStorageDirFromArgs,
   stripCliFlagWithValue,
 } from '@kb/core/storage/base-selection.js'
@@ -35,6 +31,7 @@ import {
   runEntitiesCommand,
 } from '@kb/core/cli/entities-cli.js'
 import { runLogsCommand } from '@kb/core/cli/logs-cli.js'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 import { runSessionCommand } from '@kb/core/cli/session-cli.js'
 import {
   printBaseHelp,
@@ -141,9 +138,6 @@ export async function runServerCommandWithOutput(
     try {
       const parsed = parseInitCommand(args.slice(1))
       const initCollector = new RunCollector('init', { sessionId })
-      if (!parsed.base && parsed.gitTargets && parsed.gitTargets.length > 0) {
-        parsed.base = baseNameFromGitUrl(parsed.gitTargets[0].url)
-      }
       const result = await runKbInit({
         ...parsed,
         collector: initCollector,
@@ -153,17 +147,6 @@ export async function runServerCommandWithOutput(
       await reporter.append(initCollector.finish('success', undefined, result.base))
       return 0
     } catch (error) {
-      if (isInitCancelledError(error)) {
-        let baseName: string | undefined
-        try {
-          baseName = (await resolveEffectiveBaseDir()).baseName
-        } catch {
-          baseName = undefined
-        }
-        await reporter.append(collector.finish('success', undefined, baseName))
-        out.log(initCancelledNotice(baseName))
-        return 0
-      }
       const message = error instanceof Error ? error.message : String(error)
       await reporter.append(collector.finish('error', message))
       out.error(`❌ ${message}`)
@@ -318,7 +301,8 @@ async function runServerBaseCommand(
     } else {
       for (const b of bases) {
         const tagStr = b.isActive ? '  [active]' : ''
-        lines.push(`  ${b.name}${tagStr}`)
+        const emptyStr = isKbIndexEmpty(path.join(b.path, '.kb-index.sqlite')) ? '  [empty]' : ''
+        lines.push(`  ${b.name}${tagStr}${emptyStr}`)
         lines.push(`    ${b.path}`)
       }
     }

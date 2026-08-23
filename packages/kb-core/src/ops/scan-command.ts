@@ -24,7 +24,7 @@ export async function runScanCommand(
   if (count === 0) {
     throw new Error(
       'This base has no indexed repos to scan. Declare repos via KB_SERVER_BASE_GIT_REPOS ' +
-        '(or KB_GIT_REPOS) and restart to build the index.'
+        'and restart to build the index.'
     )
   }
   return `Scanned ${count} repo(s) for base "${path.basename(baseDir)}".`

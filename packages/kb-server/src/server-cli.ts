@@ -13,17 +13,17 @@ import {
   persistInferredLLMProvider,
 } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
+import { KB_ENV } from '@kb/core/config/kb-env.js'
 import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
 import { createKbService } from '@kb/core/service/kb-service.js'
 import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import {
   DEFAULT_BASE_SLUG,
+  ensureBaseExists,
   ensureOperationalBaseDir,
   readOptionalCliValue,
-  resolveEffectiveBaseDir,
 } from '@kb/core/storage/base-selection.js'
 import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
 import { type SnapshotRepoProvenance, readSnapshotManifest } from '@kb/core/storage/snapshot.js'
@@ -107,28 +107,30 @@ interface ResolvedBase {
 
 /**
  * Resolve which base to build + serve. The name comes from the bootstrap plan
- * (`--base` flag > `KB_SERVER_BASE_NAME` / `KB_BASE` env); when none is
- * declared, prefer a base the operator already selected locally (`kb base use`),
- * and otherwise bind the golden default slug `default` — the cluster's well-known
- * base, à la Postgres's `postgres` maintenance DB. `kb-server start` never
- * requires naming a base to boot.
+ * (`--base` flag > `KB_SERVER_BASE_NAME` env); when neither is declared, the golden
+ * default slug `default` — a hardcoded constant, à la Postgres's `postgres`
+ * maintenance DB, never a recorded/configurable choice. `kb-server start` never
+ * requires naming a base to boot, and has no default-base *state* of its own to
+ * consult: it never reads client-side state (`kb base use`'s `active-base` file) —
+ * that would let an operator's shell silently change which base the daemon binds —
+ * and it never reads anything `kb-server init` might have written, because `init`
+ * writes nothing beyond materializing the same hardcoded `default` this function
+ * already falls back to.
+ *
+ * Only the **directory** is guaranteed here — deliberately not the index. Whether
+ * an index already exists at this base is a load-bearing signal for the caller:
+ * `adoptLocalSnapshotIfProvided` and `--bootstrap-policy snapshot-only` both key
+ * off "does `.kb-index.sqlite` exist" to tell a fresh volume from a warm one, and
+ * eagerly creating an empty index here would make every volume look warm,
+ * silently skipping snapshot adoption and defeating the snapshot-only refusal
+ * gate. The self-heal to a real, empty, migrated index (the guarantee `init`
+ * would have produced) happens later, in `planBootstrapTask`'s empty-base branch,
+ * once those checks have already run.
  */
 export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
-  if (plan.base) {
-    return { baseDir: await ensureOperationalBaseDir(plan.base), baseRef: plan.base }
-  }
-  try {
-    const resolved = await resolveEffectiveBaseDir()
-    return { baseDir: resolved.baseDir, baseRef: resolved.baseName }
-  } catch (error) {
-    if (error instanceof Error && error.message === CLI_ERROR_NO_KB_BASE) {
-      return {
-        baseDir: await ensureOperationalBaseDir(DEFAULT_BASE_SLUG),
-        baseRef: DEFAULT_BASE_SLUG,
-      }
-    }
-    throw error
-  }
+  const baseRef = plan.base || DEFAULT_BASE_SLUG
+  const baseDir = await ensureOperationalBaseDir(baseRef)
+  return { baseDir, baseRef }
 }
 
 interface BootstrapTask {
@@ -182,6 +184,12 @@ async function planBootstrapTask(
     }
   }
 
+  // Nothing to build from — this is the base's genuinely-empty resting state, not
+  // a fresh-volume-awaiting-a-snapshot state (those were already ruled out by the
+  // `existsSync` check above and the snapshot-only gate before this function ran).
+  // Materialize the real, empty, migrated index now, so the base is a first-class,
+  // listable, queryable object rather than just a directory.
+  await ensureBaseExists(base.baseRef)
   log(
     `Base "${base.baseRef}" is empty — no repos indexed yet. Add one to start archiving:
     kb-server base add-repo --base ${base.baseRef} --git <url>
@@ -341,6 +349,55 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
  * `kb-server start [--base <name>] [--port <n>] [--with-mcp]
  *                  [--git <url[#branch]>]… [--branch <name>]`
  */
+/**
+ * `KB_BASE` / `KB_GIT_REPOS` are the **client's** env vars (the base a `kb`
+ * invocation targets; unused by the client for repos at all) — the server only
+ * ever reads `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`. On a same-machine
+ * install it is easy to export the client-scoped name and expect it to steer the
+ * daemon too, so warn loudly rather than silently booting the wrong base.
+ */
+const CLIENT_SCOPED_BASE_ENV: ReadonlyArray<{
+  client: string
+  server: string
+  flag: string
+  action: string
+}> = [
+  {
+    client: KB_ENV.BASE,
+    server: 'KB_SERVER_BASE_NAME',
+    flag: '--base',
+    action: 'steer which base this server boots',
+  },
+  {
+    client: KB_ENV.GIT_REPOS,
+    server: 'KB_SERVER_BASE_GIT_REPOS',
+    flag: '--git',
+    action: 'declare repos for this server to build',
+  },
+]
+
+/**
+ * Pure — returns the warning lines rather than printing them, so both the
+ * foreground boot path (`runServerCommand`) and `start --daemon`'s parent
+ * process (the interactive shell the operator actually sees before it
+ * detaches) can surface the same check. A background daemon's own stderr
+ * still goes to `kb-server.err.log`, which an operator watching only the
+ * foreground `-d` output would otherwise never see.
+ */
+export function clientScopedBaseEnvWarnings(): string[] {
+  return CLIENT_SCOPED_BASE_ENV.filter(
+    ({ client, server }) => process.env[client]?.trim() && !process.env[server]?.trim()
+  ).map(
+    ({ client, server, flag, action }) =>
+      `⚠  ${client} is set but is the client's variable — kb-server reads ${server} instead. ` +
+      `Set that (or ${flag}) to ${action}.`
+  )
+}
+
+function warnOnClientScopedBaseEnv(out: ServerLogger): void {
+  for (const warning of clientScopedBaseEnvWarnings()) out.error(warning)
+}
+
 export async function runServerCommand(
   args: string[],
   out: ServerLogger,
@@ -355,6 +412,8 @@ export async function runServerCommand(
     throw new Error('--port must be a positive integer')
   }
 
+  warnOnClientScopedBaseEnv(out)
+
   // Infer + announce LLM provider once at server boot.
   const inferred = await persistInferredLLMProvider({ config })
   const resolvedConfig = inferred.config
@@ -364,6 +423,14 @@ export async function runServerCommand(
 
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
+
+  // Pre-warm the golden `default` base even when this process boots on a
+  // different one, so `service-registry.ts`'s per-request self-heal — a
+  // synchronous mkdir + sqlite migration — rarely has to run inline in a
+  // request's hot path. `default` always exists once boot completes.
+  if (base.baseRef !== DEFAULT_BASE_SLUG) {
+    await ensureBaseExists(DEFAULT_BASE_SLUG)
+  }
 
   // Bring in locally-supplied prepared state (mounted volume / unpacked artifact)
   // before planning bootstrap, so `start --from <dir>` serves it without building.
@@ -572,7 +639,8 @@ Commands:
   stop          Stop the running kb-server (SIGTERM, then SIGKILL).
   restart       Stop then start -d.
   status        Report whether kb-server is running (pid + /healthz).
-  init          Bootstrap KB_HOME and server config, then print next steps.
+  init          Bootstrap KB_HOME and materialize the "default" base (initdb-style;
+                takes no flags — start alone self-heals to the same state).
   base <list | create | add-repo | delete> --base <name> [--git <url>…] [--yes]
         Operator base management. \`create\`/\`add-repo\` build or extend a base from
         \`--git\` repos; \`list\` shows initialized bases; \`delete\` removes one base and
@@ -629,9 +697,9 @@ export async function runServerMain(argv: string[]): Promise<void> {
     return
   }
 
-  const { ensureDefaultConfig } = await import('@kb/core/config/kb-config.js')
-  const config = await ensureDefaultConfig()
-  const rest = command === 'start' ? argv.slice(1) : argv.slice(1)
+  const { readKbConfig } = await import('@kb/core/config/kb-config.js')
+  const config = await readKbConfig()
+  const rest = argv.slice(1)
 
   switch (command) {
     case 'start':

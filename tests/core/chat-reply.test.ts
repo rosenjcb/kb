@@ -92,14 +92,20 @@ describe('groupSources', () => {
       ],
       { sourceRepos: [kbRepo] },
     )
-    expect(out.map(g => ({ path: g.path, href: g.href, symbols: g.symbols }))).toEqual([
+    expect(
+      out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href, symbols: g.symbols })),
+    ).toEqual([
       {
-        path: 'packages/kb-core/src/core/CHAT.md',
+        path: 'rosenjcb/kb/packages/kb-core/src/core/CHAT.md',
+        repo: 'rosenjcb/kb',
+        relPath: 'packages/kb-core/src/core/CHAT.md',
         href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
         symbols: [],
       },
       {
-        path: 'src/tools/x.ts',
+        path: 'rosenjcb/kb/src/tools/x.ts',
+        repo: 'rosenjcb/kb',
+        relPath: 'src/tools/x.ts',
         href: 'https://github.com/rosenjcb/kb/blob/main/src/tools/x.ts',
         symbols: ['foo'],
       },
@@ -125,13 +131,17 @@ describe('groupSources', () => {
       ],
       { sourceRepos: [kbRepo, raylibRepo] },
     )
-    expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
+    expect(out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))).toEqual([
       {
         path: 'rosenjcb/kb/packages/kb-core/src/core/CHAT.md',
+        repo: 'rosenjcb/kb',
+        relPath: 'packages/kb-core/src/core/CHAT.md',
         href: 'https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md',
       },
       {
         path: 'raysan5/raylib/src/raudio.c',
+        repo: 'raysan5/raylib',
+        relPath: 'src/raudio.c',
         href: 'https://github.com/raysan5/raylib/blob/master/src/raudio.c',
       },
     ])
@@ -141,8 +151,8 @@ describe('groupSources', () => {
     const out = groupSources([{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }], {
       sourceRepos: [kbRepo],
     })
-    expect(out.map(g => ({ path: g.path, href: g.href }))).toEqual([
-      { path: 'README.md', href: undefined },
+    expect(out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))).toEqual([
+      { path: 'README.md', repo: undefined, relPath: 'README.md', href: undefined },
     ])
   })
 
@@ -155,7 +165,7 @@ describe('groupSources', () => {
     for (const sourceRepos of [[], [kbRepo], [kbRepo, raylibRepo]]) {
       for (const g of groupSources(facts, { sourceRepos })) {
         expect(g.path).not.toContain(cloneSlug)
-        expect(g.path).toBe('packages/kb-core/src/core/CHAT.md')
+        expect(g.relPath).toBe('packages/kb-core/src/core/CHAT.md')
       }
     }
   })
@@ -175,7 +185,7 @@ describe('formatGroupedChatReply', () => {
         'Hello.',
         '',
         'Sources',
-        '1. [packages/kb-core/src/core/CHAT.md](https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md)',
+        '1. [rosenjcb/kb/packages/kb-core/src/core/CHAT.md](https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md)',
       ].join('\n'),
     )
   })
@@ -188,7 +198,7 @@ describe('formatGroupedChatReply', () => {
     const text = formatGroupedChatReply('Hello.', grouped, 'slack')
     expect(text).toContain('*Sources*')
     expect(text).toContain(
-      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|packages/kb-core/src/core/CHAT.md>',
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|rosenjcb/kb/packages/kb-core/src/core/CHAT.md>',
     )
   })
 

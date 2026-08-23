@@ -23,10 +23,16 @@ export interface IntentResultPrinter {
   metadata(label: string, value: string): void
   separator(): void
   orchestrationMeta(label: string, value: string): void
+  sourceCitation(label: string, opts?: { href?: string; symbols?: string[] }): void
 }
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session.js'
-import { formatReadDocumentSourcesPreview } from './retrieval-fallback.js'
+import { toSource } from '@kb/core/service/serialize.js'
+import {
+  DEFAULT_SOURCE_LIMIT,
+  type GroupedSource,
+  groupSources,
+} from '@kb/core/service/source-grouping.js'
 
 export function formatRetrievalMatchesMeta(retrievedCount: number): string {
   if (retrievedCount === 0) return '0'
@@ -329,26 +335,61 @@ export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): 
   ].join('\n')
 }
 
+/**
+ * Cited files for the local path, from the same {@link groupSources} model the
+ * MCP, chat, Slack, and remote-CLI surfaces render. No registry is available
+ * here, so paths come back repo-relative and unlinked — the shape is shared even
+ * when the blob href is not.
+ *
+ * Grouped uncapped (`maxSources: Number.MAX_SAFE_INTEGER`) so `total` is the true
+ * distinct-file count, then sliced to the same display cap the server-backed
+ * surfaces use. Reporting `shown.length` instead of `total` would silently pass
+ * off a truncated count as the real one whenever a local read cites more files
+ * than the cap — the printed `source>` lines are capped for readability, but the
+ * `sources> <count>` line itself must not be.
+ */
+function citedFiles(results: ReadDocumentsResultItem[]): {
+  shown: GroupedSource[]
+  total: number
+} {
+  const all = groupSources(results.map(toSource), {
+    sourceRepos: [],
+    maxSources: Number.MAX_SAFE_INTEGER,
+  })
+  return { shown: all.slice(0, DEFAULT_SOURCE_LIMIT), total: all.length }
+}
+
+/**
+ * `sources> <count>` then one `source> <path> · syms` line per file — the same
+ * two-part shape `kb query` against a server emits. Deliberately primitive: a
+ * count plus one line each, rather than the packed `all N file(s): a; b` string
+ * this used to build, which nothing else produced and the eval parser had already
+ * drifted away from.
+ */
 function appendReadDocumentsSourcesToLines(
   lines: string[],
   results: ReadDocumentsResultItem[]
 ): void {
-  if (results.length === 0) {
-    lines.push(formatOrchestrationMetaLine('sources', '(none)'))
-    return
+  const { shown, total } = citedFiles(results)
+  lines.push(formatOrchestrationMetaLine('sources', String(total)))
+  for (const source of shown) {
+    const suffix = source.symbols.length > 0 ? ` · ${source.symbols.join(', ')}` : ''
+    lines.push(formatOrchestrationMetaLine('source', `${source.path}${suffix}`))
   }
-  lines.push(formatOrchestrationMetaLine('sources', formatReadDocumentSourcesPreview(results)))
 }
 
 function printReadDocumentsSourcesBlock(
   printer: IntentResultPrinter,
   results: ReadDocumentsResultItem[]
 ): void {
-  if (results.length === 0) {
-    printer.metadata('Sources', '(none)')
-    return
+  const { shown, total } = citedFiles(results)
+  printer.metadata('Sources', String(total))
+  for (const source of shown) {
+    printer.sourceCitation(source.path, {
+      ...(source.href ? { href: source.href } : {}),
+      symbols: source.symbols,
+    })
   }
-  printer.metadata('Sources', formatReadDocumentSourcesPreview(results))
 }
 
 /** Same orchestration block as `kb query` human output (after the answer + ---). */

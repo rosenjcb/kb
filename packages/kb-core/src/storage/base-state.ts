@@ -1,4 +1,15 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+/**
+ * Line-file state under `$KB_HOME/state/`.
+ *
+ * `active-base` is the **client's** chosen base (`kb base use`, or `KB_ACTIVE_BASE`),
+ * sent as `X-KB-Base`. It lives under `$KB_HOME` only because that's where client
+ * state already lives — it is written only by the `kb` client, read only by the `kb`
+ * client. The server has no analogous file: it never records a default base. See the
+ * "Two separate base concepts" note in `resolveServerBaseDir`
+ * (`@kb/server/server-cli.js`) for why that split matters.
+ */
+
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -34,35 +45,4 @@ export async function readActiveBaseName(): Promise<string | undefined> {
 
 export async function writeActiveBaseName(base: string): Promise<void> {
   await writeLineFile(ACTIVE_BASE_FILE, base)
-}
-
-/** One-time migration of the removed config.json active base into the state file. */
-export async function migrateLegacyConfigJsonBases(
-  legacy: { activeBase?: string }
-): Promise<void> {
-  const configPath = path.join(kbHomeDir(), 'config.json')
-  const legacyActivePath = path.join(kbHomeDir(), 'active-base')
-  // The persistent client default base was removed — the server owns the default now.
-  // Drop any leftover default-base state so it can never silently override the active base.
-  const legacyDefaultPath = path.join(kbHomeDir(), 'default-base')
-  const stateDefaultPath = statePath('default-base')
-
-  if (legacy.activeBase && !(await readLineFile(ACTIVE_BASE_FILE))) {
-    await writeActiveBaseName(legacy.activeBase)
-  }
-
-  // Migrate the flat active-base file from earlier env-only rollout.
-  try {
-    const flatActive = (await readFile(legacyActivePath, 'utf8')).trim()
-    if (flatActive && !(await readLineFile(ACTIVE_BASE_FILE))) {
-      await writeActiveBaseName(flatActive)
-    }
-  } catch {
-    // no flat file
-  }
-
-  await rm(configPath, { force: true })
-  await rm(legacyActivePath, { force: true })
-  await rm(legacyDefaultPath, { force: true })
-  await rm(stateDefaultPath, { force: true })
 }

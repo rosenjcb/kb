@@ -50,9 +50,16 @@ export interface QuerySource {
 
 /** Lean agent citation (default `/v1/query` and MCP `query` without verbose). */
 export interface LeanSource {
+  /** Qualified `owner/repo/relPath` — says which repo the file came from. */
   path: string
+  /** `owner/repo` (GitHub `nameWithOwner`) when known. */
+  repo?: string
+  /** Repo-relative path on its own, for opening the file locally. */
+  relPath: string
   /** Folded fact subjects when known; omitted when empty. */
   symbols?: string[]
+  /** Blob deep link when the server's repo registry resolved one. */
+  href?: string
 }
 
 /** One underlying fact folded under its file. */
@@ -64,7 +71,13 @@ export interface GroupedSourceFact {
 
 /** Source-centric citation: one cited file with its folded fact subjects + blob href. */
 export interface GroupedSource {
+  /** Qualified `owner/repo/relPath`. */
   path: string
+  /** `owner/repo` (GitHub `nameWithOwner`) when known. */
+  repo?: string
+  /** Repo-relative path on its own. */
+  relPath: string
+  /** Origin clone slug. Provenance only — never displayed. */
   gitRepo?: string
   label: string
   href?: string

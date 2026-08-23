@@ -3,7 +3,7 @@
 # Runtime model:
 #   - Single container, persistent volume mounted at /data (KB_HOME=/data) so the
 #     SQLite index + derived docs survive restarts (no reindex on boot).
-#   - First boot builds the index from KB_GIT_REPOS (or rescans a base that already
+#   - First boot builds the index from KB_SERVER_BASE_GIT_REPOS (or rescans a base that already
 #     tracks repos); later boots reuse the persisted index.
 #   - An in-process scheduler reindexes on a cadence (KB_REINDEX_INTERVAL).
 
@@ -48,5 +48,6 @@ ENV NODE_PATH=/app/packages/kb-core/node_modules:/app/node_modules
 RUN mkdir -p /data
 EXPOSE 38117
 # Serves /v1/* and (with --with-mcp) /mcp. Configure via env: KB_SERVER_API_KEY,
-# a provider key (e.g. GEMINI_API_KEY), KB_BASE, KB_GIT_REPOS, KB_REINDEX_INTERVAL.
+# a provider key (e.g. GEMINI_API_KEY), KB_SERVER_BASE_NAME, KB_SERVER_BASE_GIT_REPOS,
+# KB_REINDEX_INTERVAL.
 CMD ["node", "packages/kb-server/dist/bin/kb-server.js", "start", "--with-mcp"]

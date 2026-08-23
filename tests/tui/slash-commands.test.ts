@@ -98,16 +98,6 @@ describe('slash command helpers', () => {
     expect(suggestions.some(s => s.command === '/facts list')).toBe(true)
   })
 
-  it('[TC-R1K4] shows /cancel only in init-flow contexts, not at idle', () => {
-    expect(resolveSlashSuggestions('/ca', 'scan-base-picker').some(s => s.command === '/cancel')).toBe(
-      true
-    )
-    expect(resolveSlashSuggestions('/ca', 'init-free-text').some(s => s.command === '/cancel')).toBe(
-      true
-    )
-    expect(resolveSlashSuggestions('/ca', 'idle').some(s => s.command === '/cancel')).toBe(false)
-  })
-
   it('[TC-FV3W] completes multi-segment commands', () => {
     const [suggestion] = resolveSlashSuggestions('/logs sh', 'idle')
     expect(applySelectedSuggestion(suggestion, '/logs sh')).toBe('/logs show ')

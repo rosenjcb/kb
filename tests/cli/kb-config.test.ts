@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,7 +7,6 @@ import {
   LLMKeyMissingError,
   assertLLMKeyAvailable,
   createLLMProviderFromConfig,
-  ensureDefaultConfig,
   isLLMConfigured,
   listSupportedConfigPaths,
   normalizeKbConfig,
@@ -15,7 +14,6 @@ import {
   readKbConfig,
   resolveFactRetrievalMethod,
   resolveLLMProvider,
-  writeDefaultConfig,
   writeKbConfig,
 } from '@kb/core/config/kb-config.js'
 
@@ -53,18 +51,6 @@ describe('readKbConfig', () => {
     expect(result.features).toMatchObject(DEFAULT_FEATURES)
   })
 
-  it('[TC-HAQH] migrates legacy config.json active base into line files', async () => {
-    await writeFile(
-      path.join(kbHomeDir, 'config.json'),
-      `${JSON.stringify({ activeBase: 'legacy', defaultBase: 'def' }, null, 2)}\n`,
-      'utf8'
-    )
-    const result = await readKbConfig()
-    expect(result.activeBase).toBe('legacy')
-    // The persistent default base was removed — legacy defaultBase is dropped, not migrated.
-    expect(result).not.toHaveProperty('defaultBase')
-  })
-
   it('[TC-ZLRD] reads server profile from KB_HOST/KB_PORT env', async () => {
     process.env.KB_HOST = 'kb.example.com'
     process.env.KB_PORT = '9999'
@@ -72,27 +58,6 @@ describe('readKbConfig', () => {
     expect(result.server?.host).toBe('kb.example.com')
     expect(result.server?.port).toBe(9999)
   })
-})
-
-describe('writeDefaultConfig', () => {
-  it('[TC-VE4A] returns config with default features enabled', async () => {
-    const result = await writeDefaultConfig()
-    expect(result.features).toMatchObject(DEFAULT_FEATURES)
-  })
-
-  it('[TC-VVB1] matches readKbConfig output', async () => {
-    const written = await writeDefaultConfig()
-    const readBack = await readKbConfig()
-    expect(readBack.features?.sqliteIndex).toBe(written.features?.sqliteIndex)
-  })
-})
-
-describe('ensureDefaultConfig', () => {
-  it('[TC-YAO2] returns fresh config with defaults', async () => {
-    const result = await ensureDefaultConfig()
-    expect(result.features?.sqliteIndex).toBe(true)
-  })
-
 })
 
 describe('isLLMConfigured', () => {

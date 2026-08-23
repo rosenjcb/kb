@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -40,15 +41,29 @@ describe('resolveServerBaseDir golden default', () => {
 
   const emptyPlan: BootstrapPlan = { gitTargets: [], source: 'none' }
 
-  it('binds slug "default" when no base is declared and none is selected locally', async () => {
+  it('[TC-GLD1] binds slug "default" when no base is declared and none is selected locally', async () => {
     const resolved = await resolveServerBaseDir(emptyPlan)
     expect(resolved.baseRef).toBe('default')
     expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
   })
 
-  it('honors an explicit plan base over the golden default', async () => {
+  it('[TC-GLD2] honors an explicit plan base over the golden default', async () => {
     const resolved = await resolveServerBaseDir({ ...emptyPlan, base: 'acme' })
     expect(resolved.baseRef).toBe('acme')
     expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'acme'))
+  })
+
+  it('[TC-NOLK] ignores a locally-selected client active base — the server has no state of its own to leak into', async () => {
+    process.env.KB_ACTIVE_BASE = 'raylib'
+    const resolved = await resolveServerBaseDir(emptyPlan)
+    expect(resolved.baseRef).toBe('default')
+    expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
+  })
+
+  it('[TC-SLF1] ensures the base directory but defers index materialization — an index-existence check right after resolving must still see a fresh volume', async () => {
+    const resolved = await resolveServerBaseDir(emptyPlan)
+    expect(existsSync(resolved.baseDir)).toBe(true)
+    const dbPath = path.join(resolved.baseDir, '.kb-index.sqlite')
+    expect(existsSync(dbPath)).toBe(false)
   })
 })

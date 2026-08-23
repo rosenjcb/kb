@@ -45,9 +45,12 @@ kb-server stop
 kb-server init
 ```
 
-Ensures `~/.kb/{run,logs,state}` and a default `~/.kb/config.json`, then prints
-the next steps. Idempotent — safe to re-run. Everything lives under `KB_HOME`
-(default `~/.kb`; override by exporting `KB_HOME`).
+Ensures `~/.kb/{run,logs,state}` and materializes the reserved `default` base
+(an empty, fully-migrated index — no repos yet), then prints the next steps.
+Idempotent — safe to re-run. Everything lives under `KB_HOME` (default
+`~/.kb`; override by exporting `KB_HOME`). Not a prerequisite: `kb-server
+start` on a completely fresh `KB_HOME` self-heals to the same `default` base
+without `init` ever having run.
 
 ## Configuration
 
@@ -58,8 +61,8 @@ guide). The essentials:
 |---|---|---|
 | `KB_SERVER_API_KEY` | **yes** | Bearer token(s) for `/v1/*` and `/mcp`. Empty ⇒ unauthenticated (logs a warning). |
 | `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | **one** | LLM provider for answer synthesis. |
-| `KB_SERVER_BASE_NAME` (alias `KB_BASE`) | recommended | Base to build + serve. |
-| `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | `url[#branch]` list to index on an empty base. |
+| `KB_SERVER_BASE_NAME` | recommended | Base to build + serve. Defaults to `default`. |
+| `KB_SERVER_BASE_GIT_REPOS` | first boot | `url[#branch]` list to index on an empty base. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence (`1h`, `30m`, `0` to disable). |
 | `KB_HOME` | no | Data dir (default `~/.kb`). |
 | `PORT` | no | Listen port (default `38117`). |

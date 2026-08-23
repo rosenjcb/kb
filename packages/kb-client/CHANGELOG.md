@@ -1,5 +1,20 @@
 # @kb/client
 
+## 2.0.6
+
+### Patch Changes
+
+- Qualify every cited path with `owner/repo`.
+
+  A base can hold many repos, so a bare repo-relative path never said which repo a file came from, and the qualification that did exist was conditional on the answer spanning repos. Every surface now shows `owner/repo/relPath` (GitHub `nameWithOwner`). Citations also carry `repo` and `relPath` as separate fields — including on the lean MCP/REST payload — so a consumer can open the file locally without splitting the string, which is guesswork when the owner contains slashes (GitLab subgroups). `LeanSource` gains `repo`/`relPath`/`href`, and the CLI now renders `href` on lean payloads instead of discarding it.
+
+- Make `kb-server init` a real `initdb`, and stop the client and server env vars from colliding.
+
+  `resolveActiveBaseName` now always resolves to a concrete base name and always sends an explicit `X-KB-Base` on every request — falling back to the reserved `default` slug when nothing is configured, mirroring `libpq`'s own client-side `dbname` default rather than omitting the header and asking the server what its default is. The old server-discovered `(server default)` display is gone; the status bar / CLI banner / chat header now show a purely local `(no active base selected)` label with no network round-trip. `kb base use` remains entirely client-local and, as of this release, has no way to steer which base `kb-server start` binds. The dead `config.server.base` precedence tier is removed.
+
+- Updated dependencies
+  - @kb/core@2.0.6
+
 ## 2.0.5
 
 ### Patch Changes

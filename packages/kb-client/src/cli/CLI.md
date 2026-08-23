@@ -17,12 +17,12 @@ Monorepo context → [`../../CLIENT.md`](../../CLIENT.md) · Connection detail �
 
 | Concern | Where it runs |
 |---|---|
-| Git clone + index + reindex | **kb-server** (`KB_GIT_REPOS`, `KB_REINDEX_INTERVAL`) |
+| Git clone + index + reindex | **kb-server** (`KB_SERVER_BASE_GIT_REPOS`, `KB_REINDEX_INTERVAL`) |
 | `kb query`, chat TUI | Client → HTTP → server (`/v1/query`, `/v1/chat`) |
 | `kb facts`, `graph`, `entities`, `logs`, `session`, … | Client → `POST /v1/admin/cli` on server |
 | `kb base use`, `skills`, `sync` | Client-only (local state / release-runtime install) |
 
-**Server daemon:** `kb-server start` (not a `kb` subcommand). **Indexing:** configure `KB_GIT_REPOS` on kb-server. **Configuration:** `KB_*` environment variables in your shell profile.
+**Server daemon:** `kb-server start` (not a `kb` subcommand). **Indexing:** configure `KB_SERVER_BASE_GIT_REPOS` on kb-server. **Configuration:** `KB_*` environment variables in your shell profile.
 
 ## Entry points
 
@@ -82,7 +82,7 @@ kb base use <name>               # client-local: writes ~/.kb/state/active-base
 The repos a base indexes come from the server's `KB_SERVER_BASE_GIT_REPOS`; ignore
 patterns from `KB_SERVER_IGNORE`. There is no client-side repo/ignore CRUD.
 
-Uninitialized base → `uninitializedBaseNotice` (points to `KB_GIT_REPOS`, not `kb init`).
+Uninitialized base → `uninitializedBaseNotice` (points to `KB_SERVER_BASE_GIT_REPOS`, not `kb init`).
 
 ## Skills, uninstall
 

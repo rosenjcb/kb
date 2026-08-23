@@ -1,5 +1,18 @@
 # kb-server
 
+## 2.0.6
+
+### Patch Changes
+
+- Make `kb-server init` a real `initdb`, and stop the client and server env vars from colliding.
+
+  `kb-server init` now unconditionally materializes the reserved `default` base — a real directory with an empty, fully-migrated index — instead of a bare `mkdir`, and takes no flags: `default` is a hardcoded constant, never recorded or configurable server state. `kb-server start` self-heals into the identical base even on a `KB_HOME` that never ran `init`, and never consults client-side state (`kb base use`'s active-base file) when choosing its boot base. Requesting `X-KB-Base: default` never 404s, even when the process booted on a different base. The server no longer reads `KB_BASE` / `KB_GIT_REPOS` at all — only `KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS` — and a boot-time warning fires when the client-scoped names are set without their server-scoped counterpart, since those used to collide on a same-machine install. `kb-server base add-repo --base default` no longer needs a special case. Also removed: the interactive `questionIO` prompting in `kb init` / `kb scan` (both are server-only with no TTY, so a missing base or git remote is now always an immediate error) and four pre-v2 base-migration paths.
+
+  Pre-v2 installs lose their auto-migrated legacy base state and must re-run `kb base use <name>` once. Deploy configs (`fly.toml`, `fly.builder.toml`, `docker-compose.yml`, `.env.example`) move from `KB_BASE`/`KB_GIT_REPOS` to `KB_SERVER_BASE_NAME`/`KB_SERVER_BASE_GIT_REPOS`.
+
+- Updated dependencies
+  - @kb/core@2.0.6
+
 ## 2.0.5
 
 ### Patch Changes

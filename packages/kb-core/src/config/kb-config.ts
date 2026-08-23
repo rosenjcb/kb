@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import dayjs from 'dayjs'
@@ -9,7 +9,7 @@ import {
   parseBooleanEnv,
 } from '@kb/core/config/env-boolean.js'
 import { KB_ENV, envVarHint, readEnvHost, readEnvPort } from '@kb/core/config/kb-env.js'
-import { migrateLegacyConfigJsonBases, readActiveBaseName } from '@kb/core/storage/base-state.js'
+import { readActiveBaseName } from '@kb/core/storage/base-state.js'
 
 export type FactRetrievalMethod = 'query_expansion' | 'all_facts'
 
@@ -20,7 +20,6 @@ export interface KbConfig {
     host?: string
     port?: number
     apiKey?: string
-    base?: string
   }
   factRetrievalMethod?: FactRetrievalMethod
   graph?: {
@@ -59,11 +58,6 @@ export function getKbConfigDir(): string {
   return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
 }
 
-/** @internal Legacy path used only for one-time migration. */
-export function getKbConfigFile(): string {
-  return path.join(getKbConfigDir(), 'config.json')
-}
-
 export function getClientFirstRunMarker(): string {
   return path.join(getKbConfigDir(), '.client-initialized')
 }
@@ -84,7 +78,6 @@ const SUPPORTED_CONFIG_PATHS = [
   'server.host',
   'server.port',
   'server.apiKey',
-  'server.base',
   'fact_retrieval_method',
   'graph',
   'graph.enabled',
@@ -131,23 +124,6 @@ export const DEFAULT_FEATURES: Required<NonNullable<KbConfig['features']>> = {
   laneRouting: true,
 }
 
-async function migrateLegacyConfigJsonOnce(): Promise<void> {
-  const legacyPath = path.join(getKbConfigDir(), 'config.json')
-  try {
-    await access(legacyPath)
-  } catch {
-    return
-  }
-  try {
-    const parsed = JSON.parse(await readFile(legacyPath, 'utf8')) as KbConfig
-    await migrateLegacyConfigJsonBases({
-      activeBase: parsed.activeBase,
-    })
-  } catch {
-    await rm(legacyPath, { force: true }).catch(() => {})
-  }
-}
-
 function buildConfigFromEnv(bases: {
   activeBase?: string
 }): KbConfig {
@@ -157,18 +133,19 @@ function buildConfigFromEnv(bases: {
     ...(bases.activeBase ? { activeBase: bases.activeBase } : {}),
   }
 
+  // KB_BASE deliberately does not gate this block: it is the client's target base,
+  // not a server connection detail, and (since the removal of config.server.base)
+  // has nothing to populate here.
   if (
     host ||
     process.env[KB_ENV.PORT]?.trim() ||
     process.env[KB_ENV.SSLMODE]?.trim() ||
-    process.env[KB_ENV.SERVER_API_KEY]?.trim() ||
-    process.env[KB_ENV.BASE]?.trim()
+    process.env[KB_ENV.SERVER_API_KEY]?.trim()
   ) {
     config.server = {
       host: host ?? 'localhost',
       port: readEnvPort(),
       apiKey: process.env[KB_ENV.SERVER_API_KEY]?.trim(),
-      base: process.env[KB_ENV.BASE]?.trim(),
     }
   }
 
@@ -220,22 +197,9 @@ function buildConfigFromEnv(bases: {
 }
 
 export async function readKbConfig(_configFile?: string): Promise<KbConfig> {
-  await migrateLegacyConfigJsonOnce()
   return buildConfigFromEnv({
     activeBase: await readActiveBaseName(),
   })
-}
-
-/**
- * Write a minimum viable config for first-time users.
- * All feature flags are enabled by default; llm keys come from env vars.
- */
-export async function writeDefaultConfig(): Promise<KbConfig> {
-  return readKbConfig()
-}
-
-export async function ensureDefaultConfig(): Promise<KbConfig> {
-  return readKbConfig()
 }
 
 /** Returns true if at least one LLM key is present in env (after applyConfigToEnv has run). */
@@ -359,8 +323,6 @@ export function getConfigValue(config: KbConfig, keyPath?: string): unknown {
       return requireConfigValue(normalized.server?.port, keyPath)
     case 'server.apiKey':
       return requireConfigValue(normalized.server?.apiKey, keyPath)
-    case 'server.base':
-      return requireConfigValue(normalized.server?.base, keyPath)
     default:
       throw new UnknownConfigKeyError(keyPath)
   }
@@ -663,7 +625,6 @@ export function normalizeKbConfig(input: KbConfig): KbConfig {
     if (input.server.host?.trim()) server.host = input.server.host.trim()
     if (input.server.port !== undefined) server.port = Number(input.server.port)
     if (input.server.apiKey?.trim()) server.apiKey = input.server.apiKey.trim()
-    if (input.server.base?.trim()) server.base = input.server.base.trim()
     if (Object.keys(server).length > 0) normalized.server = server
   }
 

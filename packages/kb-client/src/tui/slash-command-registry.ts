@@ -7,7 +7,7 @@ export interface SlashCommandSpec {
   /** ['facts','list'] → '/facts list' */
   path: string[]
   description: string
-  /** Where eligible. 'always' = available in every context (e.g. /exit, /cancel). */
+  /** Where eligible. 'always' = available in every context (e.g. /exit). */
   contexts: SlashInputContext[] | 'always'
 }
 
@@ -21,19 +21,8 @@ export interface SlashCommand {
  * (`@kb/core/commands/command-catalog`) so the TUI can never drift from the CLI:
  * a command added to the catalog appears here automatically, and the parity test
  * (`tests/commands/command-parity.test.ts`) fails if the two disagree.
- *
- * Only genuinely flow-local commands — ones with no top-level catalog entry — are
- * appended by hand. Today that is just `/cancel`, which `kb init` honors at its
- * free-text prompts, so it is offered only in those input contexts (never at idle).
  */
-export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [
-  ...catalogSlashSpecs(),
-  {
-    path: ['cancel'],
-    description: 'cancel the current flow',
-    contexts: ['init-free-text', 'scan-base-picker'],
-  },
-]
+export const SLASH_COMMAND_REGISTRY: SlashCommandSpec[] = [...catalogSlashSpecs()]
 
 function specToSlashCommand(spec: SlashCommandSpec): SlashCommand {
   return {

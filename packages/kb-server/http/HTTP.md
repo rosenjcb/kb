@@ -54,7 +54,7 @@ sequenceDiagram
 
 ### Test philosophy
 
-Assertions check **response structure** (status, JSON shape, SSE event names), not answer text — stable across `KB_GIT_REPOS` and mock LLM output.
+Assertions check **response structure** (status, JSON shape, SSE event names), not answer text — stable across `KB_SERVER_BASE_GIT_REPOS` and mock LLM output.
 
 Post-response scripts live in `{{ }}` blocks and must **`const assert = require('assert')`** inside each block (httpyac does not inject `assert` globally). Do **not** replace `{{` globally in `server.http` — that corrupts `{{baseUrl}}` / `{{apiKey}}` template variables.
 

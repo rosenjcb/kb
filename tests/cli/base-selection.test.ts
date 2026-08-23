@@ -4,6 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   deleteBase,
+  ensureBaseExists,
+  ensureBaseExistsSync,
   ensureOperationalBaseDir,
   formatDeleteBaseResult,
   formatUseCommandHelp,
@@ -18,6 +20,7 @@ import {
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
+import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 
 describe('base-selection', () => {
   let tempKbHome: string
@@ -75,53 +78,37 @@ describe('base-selection', () => {
     expect(raw.trim()).toBe('catalog')
   })
 
-  it('[TC-S9NT] migrates legacy session.json into active-base and removes session.json', async () => {
-    await writeFile(
-      path.join(getKbHomeDir(), 'session.json'),
-      `${JSON.stringify({ activeBase: 'legacy-base' }, null, 2)}\n`,
-      'utf8'
-    )
-    const config = await readBaseConfig()
-    expect(config.activeBase).toBe('legacy-base')
-    await expect(readFile(path.join(getKbHomeDir(), 'session.json'), 'utf8')).rejects.toThrow()
+  // ─── ensureBaseExists ──────────────────────────────────────────────────────
+
+  it('[TC-EBX1] ensureBaseExists creates an empty, migrated index and reports created:true', async () => {
+    const { baseDir, created } = await ensureBaseExists('fresh-base')
+
+    expect(baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'fresh-base'))
+    expect(created).toBe(true)
+    expect(isKbIndexEmpty(path.join(baseDir, '.kb-index.sqlite'))).toBe(true)
   })
 
-  // ─── legacy sqlite migration ──────────────────────────────────────────────
+  it('[TC-EBX2] ensureBaseExists is idempotent — a second call reports created:false', async () => {
+    const first = await ensureBaseExists('fresh-base')
+    const second = await ensureBaseExists('fresh-base')
 
-  it('[TC-DL0O] ensureOperationalBaseDir migrates legacy repo sqlite into KB home', async () => {
-    const cwd = await mkdtemp(path.join(os.tmpdir(), 'kb-repo-'))
-    const legacyDir = path.join(cwd, 'sessions', 'namespaces', 'catalog', 'documents')
-    await mkdir(legacyDir, { recursive: true })
-    await writeFile(path.join(legacyDir, '.kb-index.sqlite'), 'sqlite-bytes', 'utf8')
-
-    const resolved = await ensureOperationalBaseDir('catalog', cwd)
-
-    expect(resolved).toBe(path.join(getKbHomeDir(), 'sessions', 'catalog'))
-    expect(await readFile(path.join(resolved, '.kb-index.sqlite'), 'utf8')).toBe('sqlite-bytes')
-
-    await rm(cwd, { recursive: true, force: true })
+    expect(second.baseDir).toBe(first.baseDir)
+    expect(second.created).toBe(false)
   })
 
-  it('[TC-1BXW] ensureOperationalBaseDir migrates legacy KB home base directory into sessions namespace', async () => {
-    const legacyBaseDir = path.join(getKbHomeDir(), 'dogfood')
-    await mkdir(path.join(legacyBaseDir, 'checkpoints'), { recursive: true })
-    await writeFile(path.join(legacyBaseDir, '.kb-index.sqlite'), 'sqlite-bytes', 'utf8')
-    await writeFile(
-      path.join(legacyBaseDir, 'checkpoints', 'init-latest.checkpoint.json'),
-      '{"version":2}\n',
-      'utf8'
-    )
+  it('[TC-EBX3] listAllBases includes a base materialized by ensureBaseExists', async () => {
+    await ensureBaseExists('fresh-base')
 
-    const resolved = await ensureOperationalBaseDir('dogfood')
+    const bases = await listAllBases()
 
-    expect(resolved).toBe(path.join(getKbHomeDir(), 'sessions', 'dogfood'))
-    expect(await readFile(path.join(resolved, '.kb-index.sqlite'), 'utf8')).toBe('sqlite-bytes')
-    expect(
-      await readFile(path.join(resolved, 'checkpoints', 'init-latest.checkpoint.json'), 'utf8')
-    ).toContain('"version":2')
-    await expect(
-      readFile(path.join(getKbHomeDir(), 'dogfood', '.kb-index.sqlite'), 'utf8')
-    ).rejects.toThrow()
+    expect(bases.map(b => b.name)).toContain('fresh-base')
+  })
+
+  it('[TC-EBX4] ensureBaseExistsSync materializes the same way as the async version', () => {
+    const baseDir = ensureBaseExistsSync('sync-base')
+
+    expect(baseDir).toBe(path.join(getKbHomeDir(), 'sessions', 'sync-base'))
+    expect(isKbIndexEmpty(path.join(baseDir, '.kb-index.sqlite'))).toBe(true)
   })
 
   // ─── format helpers ───────────────────────────────────────────────────────

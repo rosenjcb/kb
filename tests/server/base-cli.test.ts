@@ -12,7 +12,7 @@ vi.mock('@kb/core/ops/init-cli.js', async importOriginal => {
 })
 
 import { runKbInit } from '@kb/core/ops/init-cli.js'
-import { resolveBaseToDir } from '@kb/core/storage/base-selection.js'
+import { ensureBaseExists, resolveBaseToDir } from '@kb/core/storage/base-selection.js'
 import { runServerBaseCommand } from '@kb/server/base-cli.js'
 
 const mockRunKbInit = vi.mocked(runKbInit)
@@ -53,7 +53,7 @@ describe('kb-server base create', () => {
   it('[TC-BZDP] refuses to create the reserved default base', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['create', '--base', 'default', '--git', 'https://x/y'], out)
-    expect(lines.join('\n')).toContain('always exists')
+    expect(lines.join('\n')).toContain('kb-server init')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
   })
@@ -71,6 +71,14 @@ describe('kb-server base create', () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['create', '--base', 'acme', '--git', 'https://x/y'], out)
     expect(lines.join('\n')).toContain('already exists')
+    expect(mockRunKbInit).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('[TC-DCS1] refuses a differently-cased or path-like spelling of the reserved default base', async () => {
+    const { out, lines } = makeOut()
+    await runServerBaseCommand(['create', '--base', 'Default', '--git', 'https://x/y'], out)
+    expect(lines.join('\n')).toContain('kb-server init')
     expect(mockRunKbInit).not.toHaveBeenCalled()
     expect(process.exitCode).toBe(1)
   })
@@ -131,6 +139,15 @@ describe('kb-server base list / delete', () => {
     expect(lines.join('\n')).toContain('acme')
   })
 
+  it('[TC-EMTY] marks a base with a genuinely empty (materialized but unindexed) index as [empty]', async () => {
+    await ensureBaseExists('fresh')
+    const { out, lines } = makeOut()
+    await runServerBaseCommand(['list'], out)
+    const line = lines.join('\n')
+    expect(line).toContain('fresh')
+    expect(line).toContain('[empty]')
+  })
+
   it('[TC-SU4B] delete requires a base name', async () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--yes'], out)
@@ -143,6 +160,18 @@ describe('kb-server base list / delete', () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--base', 'acme', '--yes'], out)
     expect(lines.join('\n')).toContain('Deleted base: acme')
+  })
+
+  it('[TC-DDEL] refuses to delete the reserved default base even with --yes', async () => {
+    await ensureBaseExists('default')
+    const { out, lines } = makeOut()
+    await runServerBaseCommand(['delete', '--base', 'default', '--yes'], out)
+    expect(lines.join('\n')).toContain('always exists')
+    expect(process.exitCode).toBe(1)
+    // Still there — not deleted.
+    const { existsSync } = await import('node:fs')
+    const { kbIndexDbPath } = await import('@kb/core/tools/kb-index-path.js')
+    expect(existsSync(kbIndexDbPath(resolveBaseToDir('default')))).toBe(true)
   })
 
   it('[TC-WTZX] help lists the base subcommands', async () => {

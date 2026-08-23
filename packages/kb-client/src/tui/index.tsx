@@ -13,7 +13,7 @@ export async function launchTui(
     startupNotices?: string[]
     serverHost?: string
     baseName?: string
-    baseIsServerDefault?: boolean
+    baseIsFallback?: boolean
   } = {}
 ): Promise<void> {
   const { waitUntilExit } = render(
@@ -22,7 +22,7 @@ export async function launchTui(
       startupNotices: options.startupNotices ?? [],
       serverHost: options.serverHost ?? 'localhost',
       initialBaseName: options.baseName,
-      initialBaseIsServerDefault: options.baseIsServerDefault,
+      initialBaseIsFallback: options.baseIsFallback,
     })
   )
   await waitUntilExit()

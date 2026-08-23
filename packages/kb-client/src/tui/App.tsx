@@ -43,8 +43,8 @@ interface Props {
   serverHost?: string
   /** Base resolved by the CLI before launch, so the status bar starts correct. */
   initialBaseName?: string
-  /** Whether initialBaseName is the server's own default base (no local active base). */
-  initialBaseIsServerDefault?: boolean
+  /** Whether initialBaseName is the client's own unconfigured fallback (no local active base). */
+  initialBaseIsFallback?: boolean
 }
 
 export function App({
@@ -52,7 +52,7 @@ export function App({
   startupNotices = [],
   serverHost = 'localhost',
   initialBaseName,
-  initialBaseIsServerDefault,
+  initialBaseIsFallback,
 }: Props) {
   const { exit } = useApp()
 
@@ -63,9 +63,7 @@ export function App({
   const [inputValue, setInputValue] = useState('')
   const [isRunning, setIsRunning] = useState(false)
   const [baseName, setBaseName] = useState(initialBaseName ?? '…')
-  const [baseIsServerDefault, setBaseIsServerDefault] = useState(
-    initialBaseIsServerDefault ?? false
-  )
+  const [baseIsFallback, setBaseIsFallback] = useState(initialBaseIsFallback ?? false)
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0)
   const [baseResolved, setBaseResolved] = useState(false)
 
@@ -133,46 +131,43 @@ export function App({
 
   // Single base resolver for the status bar: the displayed name comes from the same
   // `resolveDisplayBase` the CLI banner uses — the active base (also sent on the wire as
-  // `X-KB-Base`) or, when none is selected locally, the server's own default base. So the
-  // bar can never disagree with the base kb-server actually serves, and never shows a bare
-  // "(none)" when the server is in fact serving its default. The local dir (best effort)
-  // is only used for the uninitialized-index notice.
+  // `X-KB-Base`) or, when none is selected locally, the client's own unconfigured-fallback
+  // slug. Resolved entirely locally (no network round-trip), so it can never disagree with
+  // the base kb-server actually serves. The local dir (best effort) is only used for the
+  // uninitialized-index notice.
   const resolveBaseState = useCallback(async () => {
-    const display = await resolveDisplayBase(config).catch(() => ({
-      name: undefined,
-      isServerDefault: false,
-    }))
+    const display = await resolveDisplayBase(config)
     let dir = ''
     try {
       dir = (await resolveEffectiveBaseDir()).baseDir
     } catch {
       // No local base dir — remote base or none selected.
     }
-    return { name: display.name ?? '', isServerDefault: display.isServerDefault, dir }
+    return { name: display.name, isFallback: display.isFallback, dir }
   }, [config])
 
   const refreshBase = useCallback(() => {
     return resolveBaseState()
-      .then(({ name, isServerDefault, dir }) => {
+      .then(({ name, isFallback, dir }) => {
         storageDirRef.current = dir
         setBaseName(name)
-        setBaseIsServerDefault(isServerDefault)
+        setBaseIsFallback(isFallback)
       })
       .catch(() => {})
   }, [resolveBaseState])
 
   useEffect(() => {
     resolveBaseState()
-      .then(({ name, isServerDefault, dir }) => {
+      .then(({ name, isFallback, dir }) => {
         storageDirRef.current = dir
         setBaseName(name)
-        setBaseIsServerDefault(isServerDefault)
+        setBaseIsFallback(isFallback)
         setBaseResolved(true)
       })
       .catch(() => {
         storageDirRef.current = ''
         setBaseName('')
-        setBaseIsServerDefault(false)
+        setBaseIsFallback(false)
         setBaseResolved(true)
       })
   }, [resolveBaseState])
@@ -566,7 +561,7 @@ export function App({
       <StatusBar
         serverHost={serverHost}
         baseName={baseName}
-        baseIsServerDefault={baseIsServerDefault}
+        baseIsFallback={baseIsFallback}
       />
       <HistoryPane entries={history} />
       <InputBar

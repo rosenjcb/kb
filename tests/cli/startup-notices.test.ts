@@ -29,7 +29,7 @@ describe('uninitializedBaseNotice', () => {
   })
 
   it('[TC-RZYR] points the user to server-managed indexing', () => {
-    expect(uninitializedBaseNotice('any')).toContain('KB_GIT_REPOS')
+    expect(uninitializedBaseNotice('any')).toContain('KB_SERVER_BASE_GIT_REPOS')
   })
 
   it('[TC-U1O1] suggests switching base via kb base use', () => {

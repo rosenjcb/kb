@@ -76,9 +76,9 @@ function ensureEnvFile() {
   console.log(`▶ Created .env from .env.example → ${envPath}\n`)
   console.log('  Set these before starting the server, then re-run `pnpm run server:up`:')
   console.log('    • a provider key   — GEMINI_API_KEY (or ANTHROPIC_API_KEY / OPENAI_API_KEY)')
-  console.log('    • KB_SERVER_API_KEY — a strong bearer token (not the testkey default)')
-  console.log('    • KB_GIT_REPOS      — comma-separated git URLs to index on first boot')
-  console.log('    • GITHUB_TOKEN      — optional, for private GitHub repos over HTTPS')
+  console.log('    • KB_SERVER_API_KEY      — a strong bearer token (not the testkey default)')
+  console.log('    • KB_SERVER_BASE_GIT_REPOS — comma-separated git URLs to index on first boot')
+  console.log('    • GITHUB_TOKEN           — optional, for private GitHub repos over HTTPS')
   process.exit(0)
 }
 
@@ -100,10 +100,13 @@ function checkConfig() {
   }
 
   // First boot needs something to index; a warm volume (already-built index) does not.
-  const hasRepos = Boolean(effective(env, 'KB_SERVER_BASE_GIT_REPOS') || effective(env, 'KB_GIT_REPOS'))
+  // Only KB_SERVER_BASE_GIT_REPOS is actually forwarded into the container by
+  // docker-compose.yml — KB_GIT_REPOS is the retired client-scoped name and would
+  // silently do nothing, so it does not count toward "repos are configured" here.
+  const hasRepos = Boolean(effective(env, 'KB_SERVER_BASE_GIT_REPOS'))
   if (!hasRepos) {
     warnings.push(
-      'No KB_SERVER_BASE_GIT_REPOS / KB_GIT_REPOS — a fresh volume will start with an empty index ' +
+      'No KB_SERVER_BASE_GIT_REPOS — a fresh volume will start with an empty index ' +
         '(set repos before first boot, or use kb-server scan / the reindex scheduler later).'
     )
   }
@@ -136,7 +139,7 @@ function composeUp() {
 function printNextSteps(env) {
   const port = effective(env, 'PORT') || '38117'
   const apiKey = effective(env, 'KB_SERVER_API_KEY') || 'testkey'
-  const base = effective(env, 'KB_BASE') || 'demo'
+  const base = effective(env, 'KB_SERVER_BASE_NAME') || 'demo'
   console.log('\n✓ kb-server is starting. First boot clones + indexes your repos — watch progress:')
   console.log('    pnpm run server:docker:logs')
   console.log('\n  Health (unauthenticated):')

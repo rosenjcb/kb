@@ -276,9 +276,9 @@ Deep dive: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md
 
 One kb-server process serves many **bases** — like databases on a single Postgres cluster. A base is a built index over one or more repos.
 
-- **The default base is `base`.** `kb-server start` with no `--base` builds and serves it, and clients that don't ask for a base land on it. You don't name a base to connect — you name one only to create additional ones.
+- **The default base is `default`.** `kb-server start` with no `--base` builds and serves it, and the `kb` client always falls back to it locally when nothing else is configured. You don't name a base to connect — you name one only to create additional ones.
 - **More bases:** `kb-server start` (or `kb-server scan`) with `--base <name>` (or `KB_SERVER_BASE_NAME`), each built from its own repos.
-- **Pick a base from a client:** `kb --base <name> query "…"`, or a connection string `kb --connection-string kb://<key>@<host>:<port>/<name>`. Omit it to use the server's default.
+- **Pick a base from a client:** `kb --base <name> query "…"`, or a connection string `kb --connection-string kb://<key>@<host>:<port>/<name>`. The client always resolves and sends a concrete base itself — omit it and it falls back to `default`, never to a server-side default.
 - **List what a server has:** `curl <host>/v1/bases`.
 
 Repos and ignore paths are declared **on the server**, not in local files:
@@ -286,7 +286,7 @@ Repos and ignore paths are declared **on the server**, not in local files:
 - **Repos** — `--git <url[#branch]>` flags, or `KB_SERVER_BASE_GIT_REPOS` (comma / whitespace / newline-separated, each with an optional inline `#branch`).
 - **Ignore** — `KB_SERVER_IGNORE` (gitignore-style patterns).
 
-A base must be **built before you can query it** — building is `CREATE DATABASE`, querying is `CONNECT`. Asking for a base that was never built returns `404 unknown_base`; the server never silently builds one on connect. Full reference: [`packages/kb-server/README.md`](packages/kb-server/README.md).
+A base must be **built before you can query it** — building is `CREATE DATABASE`, querying is `CONNECT`. Asking for a base that was never built returns `404 unknown_base`, with one exception: `default` always self-heals instead of 404ing, the same way `kb-server init` would have built it. Full reference: [`packages/kb-server/README.md`](packages/kb-server/README.md).
 
 ## Building & contributing
 

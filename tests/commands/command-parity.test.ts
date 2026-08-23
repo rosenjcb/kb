@@ -102,7 +102,7 @@ describe('command catalog ↔ TUI slash registry parity', () => {
   })
 
   it('only uses live slash-input contexts', () => {
-    const LIVE = new Set(['idle', 'init-free-text', 'scan-base-picker'])
+    const LIVE = new Set(['idle'])
     for (const spec of SLASH_COMMAND_REGISTRY) {
       if (spec.contexts === 'always') continue
       for (const ctx of spec.contexts) {

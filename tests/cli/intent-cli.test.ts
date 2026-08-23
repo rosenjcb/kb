@@ -103,7 +103,8 @@ describe('intent-cli formatting', () => {
     expect(output).toContain('retrieval: 1 docs · 1 facts')
     expect(output).toContain('retrieval> hybrid (hybrid:docs=1,symbols=0,facts=1,hops=0)')
     expect(output).toContain('matches> 1 ranked facts')
-    expect(output).toContain('sources> all 1 file(s): /tmp/cli-facts.md')
+    expect(output).toContain('sources> 1')
+    expect(output).toContain('source> /tmp/cli-facts.md')
   })
 
   it('[TC-J2NW] prints minimal intent help with only the supported commands', () => {

@@ -12,7 +12,7 @@
 # provider key required. Stub details: docker/wiremock/WIREMOCK.md
 #
 # Persistent volume at /data (KB_HOME), first boot builds the index from
-# KB_GIT_REPOS, later boots reuse it.
+# KB_SERVER_BASE_GIT_REPOS, later boots reuse it.
 
 services:
   # Test-only LLM stub. Inert unless the `mock` profile is enabled (integration tests).
@@ -37,9 +37,9 @@ services:
     environment:
       KB_HOME: /data
       PORT: "38117"
-      KB_BASE: "${KB_BASE:-demo}"
+      KB_SERVER_BASE_NAME: "${KB_SERVER_BASE_NAME:-demo}"
       # Set on first boot to clone + index a fresh base; can be cleared afterwards.
-      KB_GIT_REPOS: "${KB_GIT_REPOS:-}"
+      KB_SERVER_BASE_GIT_REPOS: "${KB_SERVER_BASE_GIT_REPOS:-}"
       KB_SERVER_API_KEY: "${KB_SERVER_API_KEY:-testkey}"
       KB_REINDEX_INTERVAL: "${KB_REINDEX_INTERVAL:-1h}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"

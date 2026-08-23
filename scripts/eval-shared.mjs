@@ -223,15 +223,11 @@ function extractDirectQueryAnswer(beforeSep) {
 function parseQueryProvenance(text, answer) {
   const ids = new Set()
 
-  const rankedInline =
-    /^sources>\s*(?:top \d+ of \d+|all \d+) ranked:\s*(.+)$/m.exec(text)?.[1] ?? ''
-  for (const part of rankedInline.split(';')) {
-    const trimmed = part.trim()
-    if (trimmed) ids.add(trimmed)
-  }
-
+  // Every surface now emits `sources> <count>` followed by one `source> <path>`
+  // line per cited file. The old packed `sources> all N ranked: a; b` form is gone.
   for (const line of text.split('\n')) {
-    const sourceLine = /^source>\s*(.+)$/i.exec(line.trim())?.[1]?.trim()
+    // `source> <path> · sym1, sym2` — keep the path, drop the folded symbols.
+    const sourceLine = /^source>\s*(.+)$/i.exec(line.trim())?.[1]?.split(' · ')[0]?.trim()
     if (sourceLine) ids.add(sourceLine)
   }
 

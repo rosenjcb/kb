@@ -39,7 +39,7 @@ Every piece of output belongs to exactly one of these tiers. Get the tier wrong 
 
 ### Tier 1 — Metadata (immediate, permanent, grey)
 
-Orchestration wire lines written with `formatOrchestrationMetaLine(key, value)` — `retrieval>`, `evidence>`, `sources>`, `matches>`, `sep>`, `thinking>`, etc.
+Orchestration wire lines written with `formatOrchestrationMetaLine(key, value)` — `retrieval>`, `evidence>`, `sources>` (count) and `source>` (one per cited file), `matches>`, `sep>`, `thinking>`, etc.
 
 - Written immediately via `chatIO.write()` / `printer.orchestrationMeta()`.
 - Classified by `classifyChatIOLine` → `category: 'meta'`.
@@ -123,7 +123,7 @@ For commands that can mutate durable KB state or external systems, prefer a cons
 
 Current repo direction:
 
-- Indexing/reindex is **server-managed** (`KB_GIT_REPOS` on kb-server) — not a client command.
+- Indexing/reindex is **server-managed** (`KB_SERVER_BASE_GIT_REPOS` on kb-server) — not a client command.
 - Any preview-by-default command should, in interactive mode, show the plan then ask "Apply? [y/N]" rather than requiring the user to re-run with `--apply` manually.
 - Avoid inventing command-specific synonyms for "really do it" when `--apply` already fits.
 

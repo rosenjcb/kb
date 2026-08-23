@@ -13,7 +13,10 @@
  * `.kb-index.sqlite` already exists on disk. An unknown base is a
  * `BaseNotFoundError` (surfaced as HTTP 404) — base creation stays a separate
  * `kb init` / scan concern, exactly as `CREATE DATABASE` is separate from
- * connecting in Postgres.
+ * connecting in Postgres. The one exception is the golden `default` slug itself:
+ * like Postgres's `postgres` maintenance database, it always exists — requesting
+ * it materializes an empty index on the fly rather than 404ing, even when this
+ * process booted on a different base.
  */
 
 import path from 'node:path'
@@ -21,7 +24,12 @@ import { existsSync } from 'node:fs'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { createKbService, type KbService } from '@kb/core/service/kb-service.js'
 import type { ChatStreamFn } from '@kb/core/service/chat-types.js'
-import { listAllBases, resolveBaseToDir } from '@kb/core/storage/base-selection.js'
+import {
+  DEFAULT_BASE_SLUG,
+  ensureBaseExistsSync,
+  listAllBases,
+  resolveBaseToDir,
+} from '@kb/core/storage/base-selection.js'
 import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 
 /** Thrown when a requested base slug has no built index on this host. */
@@ -89,9 +97,14 @@ export function createKbServiceRegistry(options: RegistryOptions): KbServiceRegi
       const cached = lazyServices.get(baseDir)
       if (cached) return cached
 
-      // Serve-only: never build on connect. Missing index ⇒ 404.
+      // Serve-only: never build on connect. Missing index ⇒ 404 — except the golden
+      // `default` slug, which always exists (materialize it rather than 404).
       if (!existsSync(kbIndexDbPath(baseDir))) {
-        throw new BaseNotFoundError(trimmed)
+        if (trimmed === DEFAULT_BASE_SLUG) {
+          ensureBaseExistsSync(trimmed)
+        } else {
+          throw new BaseNotFoundError(trimmed)
+        }
       }
 
       // createKbService is synchronous, so there is no await gap to race on.

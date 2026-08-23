@@ -9,25 +9,22 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { CLIENT_VERSION } from '../version.js'
 import {
+  DEFAULT_BASE_SLUG,
   ensureOperationalBaseDir,
   formatUseCommandHelp,
-  migrateLegacyKbSessionJson,
   readBaseConfig,
   resolveBaseToDir,
   resolveEffectiveBaseDir,
   writeSessionBase,
 } from '@kb/core/storage/base-selection.js'
-import {
-  CLI_ERROR_NO_KB_BASE,
-  uninitializedBaseNotice,
-} from '@kb/core/config/cli-prerequisites.js'
+import { uninitializedBaseNotice } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd, cmdHelpHint, cmdIntro } from '@kb/core/config/cmd-ref.js'
 import { cliHelpCommands } from '@kb/core/commands/command-catalog.js'
 import {
   applyConfigToEnv,
-  ensureDefaultConfig,
   isFreshClientInstall,
   markClientInitialized,
+  readKbConfig,
 } from '@kb/core/config/kb-config.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import {
@@ -45,7 +42,6 @@ import {
 } from './skill-installer'
 import { printSyncHelp, runSyncCommand } from './sync-cli'
 import {
-  discoverRemoteDefaultBase,
   resolveDisplayBase,
   isClientLocalCommand,
   runRemoteCliCommand,
@@ -102,7 +98,7 @@ export function printCliHelp(mode: CmdMode = 'cli'): string {
     '  --port <port>              kb-server port, refines --host (else KB_PORT)',
     '  --sslmode <mode>           require|prefer|disable (else KB_SSLMODE, default prefer)',
     '  --api-key <key>            Bearer for the server (alias --key; else KB_SERVER_API_KEY)',
-    '  --base <slug>             server-side base to use (sent as X-KB-Base; else KB_BASE)',
+    '  --base <slug>              server-side base to use (sent as X-KB-Base; else KB_BASE, else "default")',
     '  --connection-string <uri>  kb://[apikey@]host[:port]/[base][?sslmode=] (else KB_CONNECTION_STRING)',
     '',
     'Core commands:',
@@ -178,8 +174,8 @@ function printBaseHelp(mode: CmdMode = 'cli'): string {
     `  ${cmd('base use <base>', mode)}               Switch the active base`,
     `  ${cmd('base use --show', mode)}               Show current base configuration`,
     '',
-    'With no active base selected you are on the server\'s own default base (shown as',
-    '"(server default)"); `base use <base>` switches to a named base for this client.',
+    'With no active base selected you are on this client\'s own fallback base, "default"',
+    '(shown as "(no active base selected)"); `base use <base>` switches to a named base.',
     '',
     'Bases are created and deleted on the server (operator actions): a base is built by',
     '`kb-server base create --base <name> --git <repo>` and removed by',
@@ -262,17 +258,12 @@ export async function runMainWithOutput(
           out.log(`Base: ${effective.baseName}`)
           out.log(`Resolved path: ${effective.baseDir}`)
         } else {
-          // No local active base — surface the server's own default so it's clear which
-          // base commands will actually hit (and that the user isn't truly baseless).
-          const serverDefault = await discoverRemoteDefaultBase(config)
-          if (serverDefault) {
-            out.log('Source: server default')
-            out.log(`Base: ${serverDefault} (server default)`)
-            out.log('No active base selected — using the server default.')
-            out.log(`Run \`${cmd('base use <base>', mode)}\` to switch to a named base.`)
-          } else {
-            out.log(CLI_ERROR_NO_KB_BASE)
-          }
+          // No local active base — this client falls back to the reserved `default`
+          // slug, the same hardcoded constant kb-server always materializes. No
+          // server probe needed; the client already knows its own base.
+          out.log('Source: default (no active base selected)')
+          out.log(`Base: ${DEFAULT_BASE_SLUG}`)
+          out.log(`Run \`${cmd('base use <base>', mode)}\` to switch to a named base.`)
         }
         if (configured.activeBase) {
           out.log(`Active base: ${configured.activeBase}`)
@@ -445,12 +436,10 @@ async function main() {
   const { args } = globalFlags
   applyConnectionOverrides(globalFlags)
 
-  await migrateLegacyKbSessionJson()
-
   // Launch TUI when invoked interactively with no arguments
   if (isTTY && args.length === 0) {
     const isFreshInstall = isFreshClientInstall()
-    const kbConfig = await ensureDefaultConfig()
+    const kbConfig = await readKbConfig()
     applyConfigToEnv(kbConfig)
 
     const startupNotices: string[] = []
@@ -461,18 +450,19 @@ async function main() {
     }
 
     const serverHost = formatServerAddress(resolveServerConnection(kbConfig))
-    // One base resolver for the wire and the UI; if none is selected locally, show
-    // the base kb-server will actually serve (its own default), labeled as such.
+    // One base resolver for the wire and the UI, resolved locally (no server probe);
+    // if none is selected locally, show the client's own unconfigured-fallback base,
+    // labeled as such.
     const display = await resolveDisplayBase(kbConfig)
     startupNotices.unshift(
-      formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
+      formatConnectionContext(kbConfig, display.name, { isFallback: display.isFallback })
     )
     const { launchTui } = await import('../tui/index.js')
     await launchTui(kbConfig, {
       startupNotices,
       serverHost,
       baseName: display.name,
-      baseIsServerDefault: display.isServerDefault,
+      baseIsFallback: display.isFallback,
     })
     return
   }
@@ -483,14 +473,12 @@ async function main() {
     return
   }
 
-  const kbConfig = await ensureDefaultConfig()
+  const kbConfig = await readKbConfig()
   applyConfigToEnv(kbConfig)
 
   console.log(`🤖 KB Agent Harness v${CLIENT_VERSION}\n`)
   const display = await resolveDisplayBase(kbConfig)
-  console.log(
-    formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault })
-  )
+  console.log(formatConnectionContext(kbConfig, display.name, { isFallback: display.isFallback }))
   console.log('')
   await runMainWithOutput(args, defaultCliOutput, kbConfig)
 }

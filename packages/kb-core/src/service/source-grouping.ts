@@ -31,9 +31,13 @@ export interface GroupedSourceFact {
 
 /** One cited file with its folded fact subjects. */
 export interface GroupedSource {
-  /** Openable repo-relative (or `slug/relPath` when multi-repo) path. */
+  /** Qualified `owner/repo/relPath`; bare `relPath` when the repo is unknown. */
   path: string
-  /** Origin repo slug when known. */
+  /** `owner/repo` (GitHub `nameWithOwner`) when the repo is known. */
+  repo?: string
+  /** Repo-relative path on its own, for opening/grepping the file locally. */
+  relPath: string
+  /** Origin clone slug when known. Provenance only — never displayed. */
   gitRepo?: string
   /** Display label (same as `path` today; kept distinct for future divergence). */
   label: string
@@ -88,6 +92,8 @@ export function groupSources(
       if (byPath.size >= maxSources) continue
       group = {
         path: display.label,
+        ...(display.repo ? { repo: display.repo } : {}),
+        relPath: display.relPath,
         ...(src.gitRepo ? { gitRepo: src.gitRepo } : {}),
         label: display.label,
         ...(display.href ? { href: display.href } : {}),

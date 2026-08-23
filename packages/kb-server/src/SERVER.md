@@ -203,19 +203,47 @@ Hosted demo backend on Fly (`kb-demo`): root [`fly.toml`](../../../fly.toml) set
 
 The server resolves + bootstraps one **default** base at boot, but can serve any
 already-built base on the same host — the psql/libpq postmaster model (one process,
-many databases). The boot base name is `--base` > `KB_SERVER_BASE_NAME` / `KB_BASE` >
-a locally-selected base (`kb base use`) > the golden default slug **`base`** (à la
-Postgres's `postgres` maintenance DB) — so `kb-server start` never requires naming a
-base. Selection is **per request** via the `X-KB-Base` header (or `?base=`
-on `/healthz`, or a body `base` on `/v1/query` / `/v1/chat`):
+many databases). The boot base name is `--base` > `KB_SERVER_BASE_NAME` > the golden
+default slug **`default`** — a hardcoded constant, not a recorded or configurable
+choice, à la Postgres's `postgres` maintenance DB. `kb-server start` never requires
+naming a base, and the boot chain never consults client-side state (`kb base use`'s
+`active-base` file is client-only — see *Client vs. server env vars* below). Selection
+is **per request** via the `X-KB-Base` header (or `?base=` on `/healthz`, or a body
+`base` on `/v1/query` / `/v1/chat`):
 
 - `service-registry.ts` keeps a `Map<baseDir, KbService>` — the default keeps its
   bootstrap/indexing lifecycle; other bases are created **lazily on first touch** and
   are **serve-only** (never built on connect).
 - An omitted base ⇒ the default base. An unknown base (no `.kb-index.sqlite`) ⇒ `404`
-  with `status: unknown_base` — base creation stays a `kb init` / scan concern.
+  with `status: unknown_base` — base creation stays a `kb init` / scan concern, **except**
+  the `default` slug itself, which always exists: requesting it materializes an empty
+  index on the fly rather than 404ing, even when this process booted on a different base.
 - Bases are separate SQLite files, so cross-base reads are naturally concurrent and the
   reindex write-guard is per-base.
+
+**`kb-server init`** is the `initdb` step: it bootstraps `KB_HOME` and unconditionally
+materializes the `default` base — a real directory with an empty, fully-migrated
+`.kb-index.sqlite` — so a fresh install is listable/selectable/servable before any repo
+is ever added. It takes no flags and records nothing: `kb-server start` alone, on a
+`KB_HOME` that never ran `init`, self-heals into the exact same state. `init` is a
+convenience (front-loads the materialization, prints onboarding instructions), never a
+prerequisite.
+
+**Client vs. server env vars.** `KB_BASE` is the **client's** target base (what `kb
+query` sends as `X-KB-Base`); `KB_SERVER_BASE_NAME` is the **server's** boot base.
+These are deliberately different names so a same-machine install can set both without
+one clobbering the other — the client always resolves and sends an explicit base (never
+omits `X-KB-Base`), the same way `libpq` always sends a `dbname`, defaulting client-side
+to the OS username before the connection opens; `default` is that same kind of
+client-side convention, not a value discovered from the server. If `KB_BASE` /
+`KB_GIT_REPOS` are set without their server-scoped counterpart, `kb-server start` logs a
+loud warning rather than silently booting the wrong base.
+
+| Scope | Vars |
+|---|---|
+| Server | `KB_SERVER_BASE_NAME`, `KB_SERVER_BASE_GIT_REPOS`, `KB_SERVER_IGNORE`, `KB_SERVER_API_KEY`, `KB_SERVER_BOOTSTRAP_POLICY`, `KB_SERVER_SNAPSHOT` |
+| Client | `KB_BASE`, `KB_ACTIVE_BASE`, `KB_HOST`, `KB_PORT`, `KB_SSLMODE`, `KB_CONNECTION_STRING` |
+| Shared | `KB_HOME` |
 
 `/mcp` is stateful (one `X-KB-Base` fixed for the whole session at `initialize`,
 since an agent's MCP client sends headers once, not per tool call), so `query`

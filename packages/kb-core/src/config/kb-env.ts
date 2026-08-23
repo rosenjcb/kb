@@ -10,6 +10,8 @@ export const KB_ENV = {
   SERVER_API_KEY: 'KB_SERVER_API_KEY',
   BASE: 'KB_BASE',
   ACTIVE_BASE: 'KB_ACTIVE_BASE',
+  /** Retired: never read by kb-server (see `KB_SERVER_BASE_GIT_REPOS`). Kept only so the boot-time collision warning can name it without a string literal. */
+  GIT_REPOS: 'KB_GIT_REPOS',
   LLM_PROVIDER: 'KB_LLM_PROVIDER',
   FACT_RETRIEVAL_METHOD: 'KB_FACT_RETRIEVAL_METHOD',
 } as const
@@ -41,8 +43,6 @@ export function envVarHint(keyPath: string): string | undefined {
       return KB_ENV.PORT
     case 'server.apiKey':
       return KB_ENV.SERVER_API_KEY
-    case 'server.base':
-      return KB_ENV.BASE
     case 'llm.provider':
       return KB_ENV.LLM_PROVIDER
     case 'fact_retrieval_method':

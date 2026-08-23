@@ -1,10 +1,13 @@
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
+import { existsSync, mkdirSync } from 'node:fs'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 import { type KbConfig, readKbConfig } from '@kb/core/config/kb-config.js'
 import { readActiveBaseName, writeActiveBaseName } from '@kb/core/storage/base-state.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 export interface BaseSelectionConfig {
   activeBase?: string
@@ -39,43 +42,14 @@ export function getKbHomeDir(): string {
   return override ? path.resolve(override) : path.join(os.homedir(), '.kb')
 }
 
-/** Legacy file; migrated into `active-base` and removed. */
-function getLegacySessionStateFile(): string {
-  return path.join(getKbHomeDir(), 'session.json')
-}
-
 /**
- * One-time migration: `~/.kb/session.json` → `active-base`, then delete legacy file.
+ * Resolve a `--base` value to an absolute directory. Accepts both forms already in
+ * use across the codebase: a bare alias (`raylib`) resolves under
+ * `~/.kb/sessions/<alias>`; a path-like value (starting with `/`, `.`, or `~`,
+ * including an already-resolved absolute `baseDir` some callers round-trip through
+ * `--base` — see `scan-cli.ts`/`refresh-cli.ts`) is returned verbatim (tilde-expanded
+ * and resolved against `cwd`).
  */
-export async function migrateLegacyKbSessionJson(): Promise<void> {
-  const legacyPath = getLegacySessionStateFile()
-  if (!(await pathExists(legacyPath))) {
-    return
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(await readFile(legacyPath, 'utf8'))
-  } catch {
-    await rm(legacyPath, { force: true })
-    return
-  }
-
-  const legacyActive =
-    parsed &&
-    typeof parsed === 'object' &&
-    'activeBase' in parsed &&
-    typeof (parsed as { activeBase?: unknown }).activeBase === 'string'
-      ? (parsed as { activeBase: string }).activeBase.trim()
-      : undefined
-
-  if (legacyActive && !(await readActiveBaseName())) {
-    await writeActiveBaseName(legacyActive)
-  }
-
-  await rm(legacyPath, { force: true })
-}
-
 export function resolveBaseToDir(base: string, cwd: string = process.cwd()): string {
   const trimmed = base.trim()
   if (!trimmed) {
@@ -91,6 +65,11 @@ export function resolveBaseToDir(base: string, cwd: string = process.cwd()): str
   return path.join(getKbHomeDir(), 'sessions', alias)
 }
 
+/**
+ * Resolve a base reference to an absolute directory, creating the directory for
+ * alias-style bases. Does **not** create an index — use {@link ensureBaseExists}
+ * when the base must be a fully-formed object.
+ */
 export async function ensureOperationalBaseDir(
   base: string,
   cwd: string = process.cwd()
@@ -101,26 +80,50 @@ export async function ensureOperationalBaseDir(
   }
 
   await mkdir(resolved, { recursive: true })
-  await migrateLegacyBaseDir(base, resolved)
-  const sqlitePath = path.join(resolved, '.kb-index.sqlite')
-  const legacySqlitePath = path.join(
-    cwd,
-    'sessions',
-    'namespaces',
-    normalizeAlias(base),
-    'documents',
-    '.kb-index.sqlite'
-  )
-  if (!(await pathExists(sqlitePath))) {
-    if (await pathExists(legacySqlitePath)) {
-      await copyFile(legacySqlitePath, sqlitePath)
-    }
-  }
   return resolved
 }
 
+/**
+ * Materialize a base: its directory **and** an empty, fully-migrated index.
+ *
+ * This is KB's `initdb` primitive. Every existence check in the codebase keys on
+ * `.kb-index.sqlite`, so a base without one is invisible to `listAllBases`, 404s in
+ * the service registry, and is refused by `kb base use`. Creating the file up front
+ * makes a repo-less base a first-class object that simply reports empty — the way
+ * Postgres's `postgres` database exists before anything is in it.
+ *
+ * Idempotent: an existing index is left untouched. Use `isKbIndexEmpty` to tell
+ * "created but nothing indexed yet" apart from "has content".
+ */
+export async function ensureBaseExists(
+  base: string,
+  cwd: string = process.cwd()
+): Promise<{ baseDir: string; created: boolean }> {
+  const baseDir = await ensureOperationalBaseDir(base, cwd)
+  return { baseDir, created: materializeIndex(baseDir) }
+}
+
+/**
+ * Synchronous {@link ensureBaseExists} for the service registry, whose `resolve()`
+ * is sync by contract. Returns the base directory.
+ */
+export function ensureBaseExistsSync(base: string, cwd: string = process.cwd()): string {
+  const baseDir = resolveBaseToDir(base, cwd)
+  if (isPathLike(base.trim())) return baseDir
+  mkdirSync(baseDir, { recursive: true })
+  materializeIndex(baseDir)
+  return baseDir
+}
+
+/** Create an empty, migrated index at `baseDir` if absent. Returns whether it created one. */
+function materializeIndex(baseDir: string): boolean {
+  const dbPath = kbIndexDbPath(baseDir)
+  if (existsSync(dbPath)) return false
+  new SqliteKbIndexer({ dbPath }).close()
+  return true
+}
+
 export async function readBaseConfig(): Promise<BaseSelectionConfig> {
-  await migrateLegacyKbSessionJson()
   return {
     activeBase: await readActiveBaseName(),
   }
@@ -292,41 +295,6 @@ async function pathExists(targetPath: string): Promise<boolean> {
     return true
   } catch {
     return false
-  }
-}
-
-async function migrateLegacyBaseDir(base: string, resolved: string): Promise<void> {
-  const alias = normalizeAlias(base)
-  if (!alias || alias === 'sessions') {
-    return
-  }
-
-  const legacyRoot = path.join(getKbHomeDir(), alias)
-  if (legacyRoot === resolved || !(await pathExists(legacyRoot))) {
-    return
-  }
-
-  const entries = await readdir(legacyRoot)
-  for (const entry of entries) {
-    const source = path.join(legacyRoot, entry)
-    const destination = path.join(resolved, entry)
-    if (await pathExists(destination)) {
-      continue
-    }
-    await movePath(source, destination)
-  }
-
-  await rm(legacyRoot, { recursive: true, force: true })
-}
-
-async function movePath(source: string, destination: string): Promise<void> {
-  await mkdir(path.dirname(destination), { recursive: true })
-  try {
-    await rename(source, destination)
-    return
-  } catch {
-    await cp(source, destination, { recursive: true, force: false })
-    await rm(source, { recursive: true, force: true })
   }
 }
 

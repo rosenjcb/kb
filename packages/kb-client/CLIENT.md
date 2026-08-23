@@ -71,7 +71,7 @@ kb mcp status
 # reconnect MCP in the agent
 ```
 
-Indexing happens on the server via `KB_GIT_REPOS` — not `kb init` on the laptop. README walkthrough: [Connect to a remote / team server](../../README.md#connect-to-a-remote--team-server).
+Indexing happens on the server via `KB_SERVER_BASE_GIT_REPOS` — not `kb init` on the laptop. README walkthrough: [Connect to a remote / team server](../../README.md#connect-to-a-remote--team-server).
 
 ## Always a host
 

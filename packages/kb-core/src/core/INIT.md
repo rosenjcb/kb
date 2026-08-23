@@ -258,16 +258,16 @@ lists above:
   hypothesis: the local embedder's one-time load is a real, ~200 MiB fixed
   cost, separate from the now-bounded per-fact cost above.
 
-## Upfront Questions
+## Upfront Requirements
 
-Before the scan begins, interactive `kb init` (no `--base`, not `kb scan`, not `--non-interactive`) asks two questions in order:
+`kb init` is non-interactive — it never prompts. Before the scan begins:
 
-| # | Prompt | Skipped when |
-|---|---|---|
-| 1 | Base name | `--base` provided or resuming checkpoint |
-| 2 | Git URL(s) — at least one **required** | `--base` provided, `--git` provided, or resuming |
+| Requirement | Resolution |
+|---|---|
+| Base name | `--base <name>` if given, else derived from the first `--git` URL, else `default` |
+| Git URL(s) — at least one **required** | Must come from `--git` (or a resumed checkpoint); missing this is an immediate hard error, not a prompt |
 
-Git URLs are mandatory; there is no blank-to-local option and no fact-category prompt. Each URL may carry an inline `#branch`; the `--branch` flag sets the default branch for repos that omit one (default `main`). `/cancel` at any prompt aborts and returns to the chat session.
+Git URLs are mandatory; there is no blank-to-local option and no fact-category prompt. Each URL may carry an inline `#branch`; the `--branch` flag sets the default branch for repos that omit one (default `main`).
 
 ## Multi-repo clone + index
 

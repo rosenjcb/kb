@@ -18,7 +18,7 @@ import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { getKbConfigDir } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
-import type { ServerLogger } from './server-cli.js'
+import { clientScopedBaseEnvWarnings, type ServerLogger } from './server-cli.js'
 
 /** `${KB_HOME}/run` — pid file lives here; `${KB_HOME}/logs` — daemon stdout/stderr. */
 export function runDir(): string {
@@ -168,6 +168,12 @@ function stripDaemonFlag(args: string[]): string[] {
  * then return control to the shell. The child owns the pid file.
  */
 export async function runServerStartDaemon(args: string[], out: ServerLogger): Promise<void> {
+  // Surfaced here too, not just at foreground boot: the detached child's own
+  // stderr goes to kb-server.err.log, which an operator running `start -d`
+  // never sees unless they think to tail it. This runs in the parent, still
+  // attached to the interactive shell, before it detaches.
+  for (const warning of clientScopedBaseEnvWarnings()) out.error(warning)
+
   const existing = readLivePid()
   if (existing !== null) {
     out.log(`kb-server already running (pid ${existing}). Use \`kb-server restart\` to reload.`)

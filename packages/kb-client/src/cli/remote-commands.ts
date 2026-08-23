@@ -14,9 +14,8 @@ import type {
   LLMFailureResponse,
 } from '../api/types.js'
 import {
-  resolveActiveBaseName,
-  resolveServerConnection,
   resolveServerConnectionWithBase,
+  resolveActiveBaseInfo,
   formatConnectionContext,
 } from '../api/server-connection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
@@ -37,7 +36,8 @@ function citationParts(source: LeanSource | GroupedSource): {
   if ('label' in source) {
     return { label: source.label, href: source.href, symbols: source.symbols }
   }
-  return { label: source.path, symbols: source.symbols }
+  // Lean payloads carry `href` too, so the CLI links them the same as verbose ones.
+  return { label: source.path, href: source.href, symbols: source.symbols }
 }
 
 /**
@@ -88,42 +88,24 @@ export async function ensureServerReady(config: KbConfig): Promise<void> {
   await client.connect()
 }
 
-/**
- * Discover the server's own default base for display when no base was resolved
- * locally (no `--base` and no active base). Best-effort: an
- * unreachable server just leaves the caller's existing "(none)" display as-is —
- * the actual command still gets a real connection error later.
- */
-export async function discoverRemoteDefaultBase(config: KbConfig): Promise<string | undefined> {
-  try {
-    const client = createKbApiClient(resolveServerConnection(config))
-    const health = await client.connect()
-    return health.base || undefined
-  } catch {
-    return undefined
-  }
-}
-
 export interface DisplayBase {
-  /** Base name to show, or undefined when the server is unreachable. */
-  name?: string
-  /** True when `name` is the server's own default base rather than a locally chosen active base. */
-  isServerDefault: boolean
+  /** Base name to show — always set (see `resolveActiveBaseName`). */
+  name: string
+  /** True when neither `KB_BASE` nor a local active base was configured, i.e. `name` is the client's own unconfigured-fallback slug. */
+  isFallback: boolean
 }
 
 /**
- * Resolve the base to *display* (TUI status bar, CLI banner, chat header). It is the
- * active base — what the wire sends as `X-KB-Base` — when one is selected; otherwise
- * the server's own default base, discovered over the wire. Surfacing the server default
- * (instead of "(none)") makes the base flow obvious: with no `kb base use <base>` you are
- * on the server's default, never truly baseless. Best-effort: an unreachable server
- * leaves `name` undefined and callers fall back to "(none)".
+ * Resolve the base to *display* (TUI status bar, CLI banner, chat header) — delegates
+ * to {@link resolveActiveBaseInfo}, the same three-tier resolution used for the wire,
+ * computed **locally, with no network round-trip**. There is nothing to discover from
+ * the server: the client always knows its own base before it ever connects. Kept as a
+ * thin re-export (rather than every display call site importing from `api/`) so the
+ * precedence logic lives in exactly one place.
  */
 export async function resolveDisplayBase(config: KbConfig, cwd?: string): Promise<DisplayBase> {
-  const active = await resolveActiveBaseName(config, cwd)
-  if (active) return { name: active, isServerDefault: false }
-  const serverDefault = await discoverRemoteDefaultBase(config)
-  return { name: serverDefault, isServerDefault: serverDefault !== undefined }
+  void config
+  return resolveActiveBaseInfo(cwd)
 }
 
 export async function runRemoteAdminCli(
@@ -274,6 +256,7 @@ export function dispatchRemoteChatStreamEvent(
   hooks: {
     onSession?: (sessionId: string) => void
     onAnswer?: (text: string) => void
+    onSources?: (sources: GroupedSource[]) => void
   } = {}
 ): void {
   switch (event.type) {
@@ -288,6 +271,7 @@ export function dispatchRemoteChatStreamEvent(
       break
     case 'answer':
       hooks.onAnswer?.(event.text)
+      hooks.onSources?.(event.sources)
       break
     case 'error':
       throw new Error(event.message)
@@ -301,12 +285,13 @@ export async function runRemoteChatTurn(
   sessionId: string | undefined,
   out: CliOutput,
   config: KbConfig
-): Promise<{ sessionId: string; answer: string }> {
+): Promise<{ sessionId: string; answer: string; sources: GroupedSource[] }> {
   const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
 
   let activeSession = sessionId
   let answer = ''
+  let sources: GroupedSource[] = []
 
   for await (const event of client.chatStream({ sessionId, message })) {
     dispatchRemoteChatStreamEvent(event, out, {
@@ -316,17 +301,32 @@ export async function runRemoteChatTurn(
       onAnswer: text => {
         answer = text
       },
+      onSources: grouped => {
+        sources = grouped
+      },
     })
   }
 
-  return { sessionId: activeSession ?? sessionId ?? 'default', answer }
+  return { sessionId: activeSession ?? sessionId ?? 'default', answer, sources }
 }
 
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
   const kbConfig = deps.kbConfig ?? (await readKbConfig())
 
   const display = await resolveDisplayBase(kbConfig)
-  io.write(formatConnectionContext(kbConfig, display.name, { serverDefault: display.isServerDefault }))
+  io.write(formatConnectionContext(kbConfig, display.name, { isFallback: display.isFallback }))
+
+  const chatOut: CliOutput = {
+    log: line => io.write(line),
+    write: line => io.write(line),
+    error: line => io.error(line),
+    progress: line => io.setProgressLine?.(line ?? null),
+  }
+  // Same primitive shape `kb query` already renders (Sources count, then one
+  // citation line per file) — built from the same grouped-source model MCP,
+  // chat, and Slack all render from. Chat's SSE `answer` event carries it too;
+  // this is the first surface that actually prints it instead of dropping it.
+  const printer = createPrinter(chatOut, deps.mode ?? 'tui')
 
   let sessionId: string | undefined
 
@@ -344,21 +344,23 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     }
 
     try {
-      const { sessionId: nextSession, answer } = await runRemoteChatTurn(
+      const { sessionId: nextSession, answer, sources } = await runRemoteChatTurn(
         input,
         sessionId,
-        {
-          log: line => io.write(line),
-          write: line => io.write(line),
-          error: line => io.error(line),
-          progress: line => io.setProgressLine?.(line ?? null),
-        },
+        chatOut,
         kbConfig
       )
       if (nextSession !== sessionId) deps.onSessionStart?.(nextSession)
       sessionId = nextSession
       io.setProgressLine?.(null)
       if (answer.trim()) io.write(answer.trim())
+      if (sources.length > 0) {
+        printer.metadata('Sources', String(sources.length))
+        for (const source of sources.slice(0, 8)) {
+          const { label, href, symbols } = citationParts(source)
+          printer.sourceCitation(label, { href, symbols })
+        }
+      }
     } catch (error) {
       io.setProgressLine?.(null)
       io.error(error instanceof Error ? error.message : String(error))

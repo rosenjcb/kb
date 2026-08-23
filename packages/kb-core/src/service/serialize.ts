@@ -141,8 +141,16 @@ export function toSource(item: ReadDocumentsResultItem): QuerySource {
 
 /** Lean citation: openable path + optional folded symbols. No facts/ids/snippets. */
 export interface McpSource {
-  /** Repo-relative path (`org/repo`-qualified only when the answer spans repos). */
+  /** Qualified `owner/repo/relPath` — says which repo the file came from. */
   path: string
+  /** `owner/repo` (GitHub `nameWithOwner`) when known. */
+  repo?: string
+  /**
+   * Repo-relative path on its own. Split out so an agent can open or grep the
+   * file without parsing `path` — which is guesswork when the owner segment
+   * itself contains slashes (GitLab subgroups).
+   */
+  relPath: string
   /** Distinct fact subjects when known; omitted when empty. */
   symbols?: string[]
   /** Blob deep link when the repo registry resolved one. */
@@ -286,6 +294,8 @@ function formatMcpSources(results: QuerySource[], sourceRepos: ChatSourceRepo[])
     maxSymbolsPerSource: MCP_MAX_SYMBOLS_PER_SOURCE,
   }).map(g => ({
     path: g.path,
+    ...(g.repo ? { repo: g.repo } : {}),
+    relPath: g.relPath,
     ...(g.symbols.length > 0 ? { symbols: g.symbols } : {}),
     ...(g.href ? { href: g.href } : {}),
   }))
