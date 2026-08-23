@@ -62,8 +62,8 @@ To lock query/chat later (still chatbot-only):
 fly secrets set -a kb-demo KB_SERVER_API_KEY=...
 ```
 
-Non-secret defaults live in `fly.toml` `[env]` (`KB_BASE`, `KB_GIT_REPOS`,
-CORS for Pages, reindex interval). Override with more `fly secrets set` or edit
+Non-secret defaults live in `fly.toml` `[env]` (`KB_SERVER_BASE_NAME`,
+`KB_SERVER_BASE_GIT_REPOS`, CORS for Pages, reindex interval). Override with more `fly secrets set` or edit
 `[env]` and redeploy.
 
 ## Deploy
@@ -80,7 +80,7 @@ Prefer CLI `fly deploy` over Fly UI “launch propose” if the UI still ignores
 `fly.toml`. After `fly.toml` is on the branch Fly’s GitHub integration should
 build with the configured Dockerfile path.
 
-First boot clones `KB_GIT_REPOS` and indexes into the volume. `/healthz` stays
+First boot clones `KB_SERVER_BASE_GIT_REPOS` and indexes into the volume. `/healthz` stays
 HTTP **200** with `indexing: true` / `ok: false` until ready; query/chat return
 **503** until the first index settles. Fly `fly.toml` uses TCP checks (not HTTP)
 so a busy event loop during heavy ingest cannot blackhole the sole machine.

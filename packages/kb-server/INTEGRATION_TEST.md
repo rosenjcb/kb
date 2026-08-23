@@ -29,8 +29,8 @@ Distinct from `pnpm run unit:test` (Vitest, no Docker). Complements `tests/serve
 
 | Variable | Default | Notes |
 |---|---|---|
-| `KB_BASE` | `integration` | Base name inside container |
-| `KB_GIT_REPOS` | `sindresorhus/is` | Small public repo for first-boot index |
+| `KB_SERVER_BASE_NAME` | `integration` | Base name inside container |
+| `KB_SERVER_BASE_GIT_REPOS` | `sindresorhus/is` | Small public repo for first-boot index |
 | `KB_SERVER_API_KEY` | `testkey` | Must match httpyac `apiKey` |
 | `KB_REINDEX_INTERVAL` | `0` | Disable scheduler noise in tests |
 | `GEMINI_API_KEY` | `integration-mock-key` | Dummy |

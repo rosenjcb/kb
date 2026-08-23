@@ -104,8 +104,8 @@ re-document them.
   JDK: `java -jar <wiremock-standalone.jar> --port 8080 --root-dir
   packages/kb-server/docker/wiremock --global-response-templating`, then start the
   server with `GEMINI_API_KEY=integration-mock-key`,
-  `GEMINI_API_BASE_URL=http://localhost:8080`, plus `KB_GIT_REPOS=<repo>`,
-  `KB_BASE=demo`, `KB_SERVER_API_KEY=testkey`, `KB_REINDEX_INTERVAL=0`, and
+  `GEMINI_API_BASE_URL=http://localhost:8080`, plus `KB_SERVER_BASE_GIT_REPOS=<repo>`,
+  `KB_SERVER_BASE_NAME=demo`, `KB_SERVER_API_KEY=testkey`, `KB_REINDEX_INTERVAL=0`, and
   `pnpm run server:start`. First boot clones + indexes the repo (embeddings run
   locally via `Xenova/all-MiniLM-L6-v2`, no API needed); only answer synthesis
   hits the mock. Then query: `KB_SERVER_API_KEY=testkey

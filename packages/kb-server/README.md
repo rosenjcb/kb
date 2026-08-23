@@ -48,8 +48,8 @@ pnpm run server:up
 Edit the generated `.env` at the repo root:
 
 ```ini
-KB_BASE=acme                                   # the base name to serve
-KB_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web
+KB_SERVER_BASE_NAME=acme                       # the base name to serve
+KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web
 GITHUB_TOKEN=<optional-github-token>           # optional; only needed for private GitHub repos over HTTPS
 KB_SERVER_API_KEY=<a-strong-random-token>      # required to call /v1 and /mcp
 GEMINI_API_KEY=<your-provider-key>             # or ANTHROPIC_API_KEY / OPENAI_API_KEY
@@ -65,7 +65,7 @@ pnpm run server:up
 
 `server:up` validates the config (provider key present, bearer key not the `testkey`
 default, repos declared for a fresh volume), builds the image, and starts **only** the
-`kb-server` service. First boot clones + indexes `KB_GIT_REPOS`; later boots reuse the
+`kb-server` service. First boot clones + indexes `KB_SERVER_BASE_GIT_REPOS`; later boots reuse the
 persisted index on the `/data` volume — no reindex on restart.
 
 > `server:start` / `dev:server` free `:38117`, then run `kb-server start --with-mcp`
@@ -80,16 +80,18 @@ persisted index on the `/data` volume — no reindex on restart.
 ## Configuration
 
 The server is configured entirely through environment variables (read from `.env`, or the
-shell, or your orchestrator's secret store). `KB_SERVER_*` names are the canonical,
-server-scoped ones; the shorter aliases are kept for back-compat.
+shell, or your orchestrator's secret store). `KB_SERVER_*` names are the only names the
+server reads — `KB_BASE`/`KB_GIT_REPOS` are the **client's** vars (see
+[`CONNECTION.md`](../kb-client/src/api/CONNECTION.md)); setting them on the server does
+nothing but log a boot-time warning.
 
 | Variable | Required | Purpose |
 |---|---|---|
 | `KB_SERVER_API_KEY` | **yes** | Bearer token(s) for `/v1/*` and `/mcp`; comma-separated for rotation. Empty ⇒ unauthenticated (logs a warning). |
 | `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | **one** | LLM provider for synthesis (auto-detected). |
 | `GITHUB_TOKEN` (or `GH_TOKEN`) | private GitHub repos only | Optional GitHub HTTPS auth for clone/fetch. Public repos work without it; SSH remotes also work without it. |
-| `KB_SERVER_BASE_NAME` (alias `KB_BASE`) | recommended | Base name to build + serve. |
-| `KB_SERVER_BASE_GIT_REPOS` (alias `KB_GIT_REPOS`) | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
+| `KB_SERVER_BASE_NAME` | recommended | Base name to build + serve. Defaults to `default`. |
+| `KB_SERVER_BASE_GIT_REPOS` | first boot | Comma/whitespace-separated `url[#branch]` list to index on an empty volume. |
 | `KB_SERVER_IGNORE` | no | Comma/newline-separated gitignore-style patterns to skip while indexing (e.g. `tests/, **/*.spec.ts, vendor`). Applied on the first build and every reindex. |
 | `KB_REINDEX_INTERVAL` | no | Reindex cadence: `1h`, `30m`, `10s`, or `0` to disable (default `1h`). |
 | `KB_SERVER_BOOTSTRAP_POLICY` | no | `auto` (default) builds on an empty volume; `snapshot-only` refuses to build and serves only pre-supplied state (see [handoff](#separate-build-from-serve-snapshot-handoff)). |
@@ -116,11 +118,10 @@ slug's primary branch on disk. Slack **Sources** blob links use that per-clone b
 `origin` URL — not a global `KB_SOURCE_BRANCH`. Adding a new repo to the list clones it
 the same way on the next boot.
 
-Precedence (highest wins): `--git` flags → `KB_SERVER_BASE_GIT_REPOS` / `KB_GIT_REPOS`
-env. Repos added to the env list later are folded in on the next boot without a manual
-reindex.
+Precedence (highest wins): `--git` flags → `KB_SERVER_BASE_GIT_REPOS` env. Repos added to
+the env list later are folded in on the next boot without a manual reindex.
 
-For private GitHub repos, keep `KB_GIT_REPOS` as plain `https://github.com/...` URLs and
+For private GitHub repos, keep `KB_SERVER_BASE_GIT_REPOS` as plain `https://github.com/...` URLs and
 set `GITHUB_TOKEN` (or `GH_TOKEN`) separately. The server forwards the token to `git`
 through an in-memory auth header, so cloned repos do not need tokenized remotes.
 
@@ -233,8 +234,8 @@ docker run -d --name kb-server \
   -v kb-data:/data \
   -e KB_SERVER_API_KEY=<strong-token> \
   -e GEMINI_API_KEY=<provider-key> \
-  -e KB_BASE=acme \
-  -e KB_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web \
+  -e KB_SERVER_BASE_NAME=acme \
+  -e KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth,https://github.com/acme/web \
   -e KB_REINDEX_INTERVAL=1h \
   kb-server
 ```
