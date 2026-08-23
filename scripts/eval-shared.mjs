@@ -78,9 +78,39 @@ export function listSuiteIds() {
     .map(f => path.basename(f).replace(/\.(yaml|yml)$/i, ''))
 }
 
+/** Question shapes. `investigative` = multi-hop/causal/decoy-laden; `conceptual` = "what is X". */
+export const QUESTION_SHAPES = ['conceptual', 'investigative']
+export const DEFAULT_QUESTION_SHAPE = 'conceptual'
+
+/**
+ * Parse an optional positional `shapes:` array against a question list.
+ * Absent ⇒ every question defaults to `conceptual`, so untagged suites keep working.
+ */
+function normalizeShapes(rawShapes, questionCount, sourceFile) {
+  if (rawShapes === undefined || rawShapes === null) {
+    return Array.from({ length: questionCount }, () => DEFAULT_QUESTION_SHAPE)
+  }
+  if (!Array.isArray(rawShapes) || rawShapes.length !== questionCount) {
+    throw new Error(
+      `${sourceFile}: shapes: must be an array the same length as questions: (got ${
+        Array.isArray(rawShapes) ? rawShapes.length : typeof rawShapes
+      }, expected ${questionCount})`
+    )
+  }
+  return rawShapes.map(s => {
+    const v = typeof s === 'string' ? s.trim() : s
+    if (!QUESTION_SHAPES.includes(v)) {
+      throw new Error(
+        `${sourceFile}: shapes: entries must be one of ${QUESTION_SHAPES.join('|')} (got ${JSON.stringify(s)})`
+      )
+    }
+    return v
+  })
+}
+
 /**
  * Normalize a raw YAML suite object for eval-run.mjs.
- * @returns {{ id, questions, answers, rubricPhrase, sourceFile, repoUrl }}
+ * @returns {{ id, questions, answers, shapes, rubricPhrase, sourceFile, repoUrl }}
  */
 export function normalizeSuiteDoc(raw, sourceFile) {
   if (!raw || typeof raw !== 'object') {
@@ -121,6 +151,7 @@ export function normalizeSuiteDoc(raw, sourceFile) {
     displayName,
     questions: qs.map(s => s.trim()),
     answers,
+    shapes: normalizeShapes(raw.shapes, qs.length, sourceFile),
     rubricPhrase: rubric.trim(),
     sourceFile,
     repoUrl,
@@ -155,10 +186,18 @@ export function normalizeMoelSuiteDoc(raw, sourceFile) {
     answers = raw.answers.map(a => (typeof a === 'string' ? a.trim() : String(a)))
   }
 
+  // Relaxed: pad/truncate to the question count rather than throwing, matching this loader's
+  // tolerance for any question count.
+  const shapes = Array.from({ length: qs.length }, (_, i) => {
+    const v = Array.isArray(raw.shapes) ? raw.shapes[i] : null
+    return QUESTION_SHAPES.includes(v) ? v : DEFAULT_QUESTION_SHAPE
+  })
+
   return {
     id,
     questions: qs.map(s => s.trim()),
     answers,
+    shapes,
     rubricPhrase: rubric.trim(),
     sourceFile,
     repoUrl,
@@ -605,6 +644,41 @@ export function summarizeCuration(retrievalDetails) {
     retrieval_precision: denom > 0 ? Number((kept / denom).toFixed(3)) : null,
     mean_drop_fraction: denom > 0 ? Number((dropped / denom).toFixed(3)) : null,
   }
+}
+
+/**
+ * Split per-question scores by question `shape` and summarize each bucket separately.
+ *
+ * A suite's headline score averages every question together, so a gain (or regression) confined
+ * to the handful of investigative questions is diluted by a majority of conceptual ones and reads
+ * as noise. This keeps the two buckets legible side by side. Shapes with no questions are omitted
+ * rather than reported as zeroes.
+ */
+export function summarizeScoresByShape(queryEvaluation) {
+  const rows = (queryEvaluation ?? []).filter(q => q?.scores)
+  const out = {}
+  for (const shape of QUESTION_SHAPES) {
+    const bucket = rows.filter(q => (q.shape ?? DEFAULT_QUESTION_SHAPE) === shape)
+    if (bucket.length === 0) continue
+    const meanOf = axis =>
+      Number((bucket.reduce((a, q) => a + (q.scores[axis] ?? 0), 0) / bucket.length).toFixed(3))
+    out[shape] = {
+      n: bucket.length,
+      mean_correctness: meanOf('correctness'),
+      mean_usefulness: meanOf('usefulness'),
+      mean_relevance: meanOf('relevance'),
+      mean_specificity: meanOf('specificity'),
+      mean_evidence_handling: meanOf('evidence_handling'),
+      pass_rate_quality_axes_at_least_3: Number(
+        (
+          bucket.filter(
+            q => q.scores.correctness >= 3 && q.scores.usefulness >= 3 && q.scores.relevance >= 3
+          ).length / bucket.length
+        ).toFixed(3)
+      ),
+    }
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------

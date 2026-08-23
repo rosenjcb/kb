@@ -80,6 +80,8 @@ import {
   adequacyUtility,
   computeAdequacyQuality,
   summarizeCuration,
+  summarizeScoresByShape,
+  DEFAULT_QUESTION_SHAPE,
   classifyStageTokens,
   parseRetrievalDetailTrace,
   buildQuestionTimeline,
@@ -1090,6 +1092,36 @@ function resolveQuestions(args, suiteConfig) {
   return suiteConfig.questions
 }
 
+/**
+ * Per-question shapes aligned to `questions`. An explicit `--question`/`--questions-file` override
+ * replaces the suite's question list, so the suite's positional shapes no longer line up — fall
+ * back to all-conceptual rather than mislabeling buckets.
+ */
+/** Print the per-shape score split so a gain confined to one bucket is not read as run noise. */
+function printScoresByShape(byShape) {
+  const shapes = Object.keys(byShape ?? {})
+  if (shapes.length < 2) return
+  console.error('\n[eval] scores by question shape')
+  console.error('  shape           n   corr   rel   pass')
+  for (const shape of shapes) {
+    const s = byShape[shape]
+    console.error(
+      `  ${shape.padEnd(14)} ${String(s.n).padStart(2)}  ${s.mean_correctness
+        .toFixed(2)
+        .padStart(5)} ${s.mean_relevance.toFixed(2).padStart(5)}  ${s.pass_rate_quality_axes_at_least_3.toFixed(2).padStart(5)}`
+    )
+  }
+}
+
+function resolveShapes(args, suiteConfig, questionCount) {
+  const overridden = Boolean(args.questionsFile || args.question)
+  const shapes = overridden ? null : suiteConfig.shapes
+  return Array.from(
+    { length: questionCount },
+    (_, i) => shapes?.[i] ?? DEFAULT_QUESTION_SHAPE
+  )
+}
+
 /** Recent telemetry for this eval base (init/scan/query). */
 function logsCmd(base) {
   return `logs list --base ${base} --limit 10`
@@ -1253,6 +1285,7 @@ async function main() {
 
   const workdir = runDir
   const questions = resolveQuestions(args, suiteConfig)
+  const questionShapes = resolveShapes(args, suiteConfig, questions.length)
   const rubricPhrase = suiteConfig.rubricPhrase
 
   // Base: user override → formula eval-{suiteId} → fall back from --skip-init scratch
@@ -1640,6 +1673,7 @@ async function main() {
     query_evaluation.push({
       question_id: n,
       question: questions[n - 1],
+      shape: questionShapes[n - 1],
       result_count,
       retrieval,
       answer_excerpt: answer ? answer.slice(0, 280) : null,
@@ -1705,6 +1739,7 @@ async function main() {
     mean_evidence_handling: Number(mE.toFixed(3)),
     pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
     pass_rate_quality_axes_at_least_3: Number(prq.toFixed(3)),
+    by_shape: summarizeScoresByShape(query_evaluation),
     ...(curationSummary ? { curation_summary: curationSummary } : {}),
   }
   const coverageAuditSummary = {
@@ -1896,6 +1931,7 @@ async function main() {
   console.error(`[eval] wrote ${outPath}`)
 
   printTimelineDiagnosis(artifact.timeline_summary, artifact.query_timeline)
+  printScoresByShape(aggregateQueryScores.by_shape)
   printTrendsSummary(suiteId, KB_REPO, { currentRunId: runName })
 
   try {

@@ -21,6 +21,21 @@ questions:
   - "When a user creates a new flow and imports YAML via the \"Import\" action in the flow editor, what code path handles the import, and why might the flow not actually be persisted/saved to the backend after import?"
   - "Where in the Vue UI is the flow \"Import\" feature implemented (the button/dialog that lets a user paste or upload YAML for a new flow), and what does it do with the parsed YAML — does it call the create/save flow API or just set the editor content?"
   - "In MultiPanelFlowEditorView.vue and the flow store, how does clicking Save behave when flowStore.isCreating is true, and could the YAML import path (FlowCreate.vue handleImportSubmit / setupFlow) leave the flow store in a state where the Save button is missing, disabled, or a no-op?"
+# Positional, aligned to questions:. Q11-Q13 are the multi-hop/decoy Import-YAML probes.
+shapes:
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - investigative
+  - investigative
+  - investigative
 answers:
   - >
     Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure

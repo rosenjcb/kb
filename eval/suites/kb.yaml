@@ -30,6 +30,11 @@ questions:
   # Product probes on query-time scope — still kb-domain questions, not meta-eval riddles.
   - What is the role of the entity registry in query-time scope inference?
   - Walk through how hybrid retrieval, the fact curator, and one-shot synthesis fit together on a kb query — and if an entity resolves, do ontology-typed sub-queries still run with no query-length gate?
+  # Investigative probes (multi-hop, causal, each with an explicit decoy in the gold answer).
+  # Rooted in bugs actually observed in this repo — #233 routing, curator fail-safe, #220 grounding.
+  - "An agent's MCP kb query came back describing a completely different repository, with no error. Which component actually picked the base that served that answer — the client's KB_BASE environment variable, or something on the server side — and what in the response would have revealed the mismatch?"
+  - "If the fact curator's LLM judge call throws partway through returning its verdict, how many retrieved units reach synthesis, and does the evidence label on the response reflect that the pool was never actually pruned?"
+  - "When a synthesized answer names a source file that is not in the retrieved sources, what actually downgrades the evidence label on the response — and is that check running by default on every query?"
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -275,3 +280,68 @@ answers:
     short-question LLM expander is only the unresolved fallback. A correct answer must describe the
     hybrid → curator → synthesis stack and must not claim the deleted ponds/orchestrator loop is
     how kb query works today.
+
+  - >
+    The base is chosen **server-side**, not by the client's `KB_BASE`. A `kb-server` process serves
+    many bases; the MCP `kb_query` tool takes an optional `base` argument, and the server resolves
+    it through its base registry, falling back to the connection's default base (set from the
+    `X-KB-Base` header written at `kb mcp install` time, or the server's boot base). `KB_BASE` /
+    `KB_GIT_REPOS` are **client-scoped** and are never read by the server, so exporting `KB_BASE`
+    in the agent's environment does not redirect a server-side query — that is the decoy. Since
+    PR #235 the query response echoes the resolved `base` back to the caller, and an empty or
+    unindexed base now serializes an explanation plus a recommended action into `notes`; before
+    that, a wrong-base answer was silent. A correct answer must locate resolution on the server
+    (base registry + `X-KB-Base` / `base` argument) and must not attribute it to the client env var.
+
+  - >
+    The judge call is wrapped in a `try`/`catch` in `curateFacts` (`fact-curator.ts`). On a throw the
+    curator **fails open**: it sets `record.fellBack = true` and returns the pool truncated to
+    `maxJudgeCandidates` — it does not prune to the judge's keep set, and it does not return an
+    empty set. So *more* units reach synthesis than on a healthy run, not fewer. The `minKeep`
+    soft floor is the decoy: that is a separate branch for when the judge succeeds but keeps too
+    few, where the curator backfills via `deterministicTopK` and also sets `fellBack`. Crucially,
+    the evidence label does **not** reflect any of this — it is computed by `assessResultCount`,
+    a bare count heuristic (0→none, 1→weak, 2→moderate, ≥3→strong) with no relevance term, so an
+    un-pruned fallback pool reads as *stronger* evidence than a correctly curated one. A correct
+    answer must say the pool is capped rather than pruned, and must not claim the evidence label
+    degrades on fallback.
+
+  - >
+    The always-on check is `findUngroundedFileReferences` (`service/serialize.ts`), called from
+    `computeQueryGrounding` during response serialization: it extracts file-path-looking tokens from
+    the answer, compares them against the cited source paths (path-aware when the citation contains
+    a `/`, per #221), and on a hit appends a caveat note **and downgrades the evidence label**. That
+    runs on every query. The decoy is `verifyAnswerClaims` (`query/claim-verification.ts`, #223) —
+    the second LLM pass that checks whether prose *claims* are supported. It lands on
+    `retrieval.unsupportedClaims[]` and drives the same downgrade, but it is **opt-in and off by
+    default**, gated behind `KB_QUERY_VERIFY_CLAIMS` / `verifyClaims` and a minimum-confidence
+    threshold. A correct answer must name the file-reference check as the default-on mechanism and
+    must not claim the claim-verification pass runs on every query.
+
+# Positional, aligned to questions:. The last three are the investigative probes.
+shapes:
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - investigative
+  - investigative
+  - investigative
