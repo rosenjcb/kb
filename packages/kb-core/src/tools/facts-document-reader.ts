@@ -234,7 +234,8 @@ export class FactsDocumentReader {
       : query
     // Negative-claim guard (#228): for "does X affect Y", oblige retrieval to actually visit Y's
     // own code. Costs one extra shallow hybrid pass on matching questions and no LLM call.
-    const causal = isNegativeClaimGuardEnabled() ? detectCausalTarget(curatorQuery) : null
+    const causalGuardOn = isNegativeClaimGuardEnabled()
+    const causal = causalGuardOn ? detectCausalTarget(curatorQuery) : null
 
     const { results, record } = await curateFacts({
       llm: this.llm,
@@ -248,9 +249,14 @@ export class FactsDocumentReader {
     // Guard activity, stamped on the detail string the eval harness scrapes. Without this there
     // is no way to tell from an artifact whether the guard fired, matched nothing, or was off —
     // and "no measurable change" is indistinguishable from "never ran".
-    const guardBit = causal
-      ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
-      : 'causal:miss'
+    // Absent vs zero has to stay distinguishable: no `causal:` key means the guard was off,
+    // `causal:miss` means it ran and the question was not of that shape. Collapsing the two makes
+    // a null result unreadable — you cannot tell "measured, no gain" from "never ran".
+    const guardBit = !causalGuardOn
+      ? ''
+      : causal
+        ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
+        : 'causal:miss'
 
     // Total fallback: nothing was curated, so no audit detail is worth reporting — but if an
     // LLM error caused it, the record still has to travel or the degradation disappears.
