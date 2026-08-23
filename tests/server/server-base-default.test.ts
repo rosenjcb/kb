@@ -3,7 +3,6 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 import type { BootstrapPlan } from '@kb/server/server-bootstrap.js'
 import { resolveServerBaseDir } from '@kb/server/server-cli.js'
 
@@ -61,10 +60,10 @@ describe('resolveServerBaseDir golden default', () => {
     expect(resolved.baseDir).toBe(path.join(home, 'sessions', 'default'))
   })
 
-  it('[TC-SLF1] self-heals: materializes a real, empty, migrated index even though `kb-server init` never ran', async () => {
+  it('[TC-SLF1] ensures the base directory but defers index materialization — an index-existence check right after resolving must still see a fresh volume', async () => {
     const resolved = await resolveServerBaseDir(emptyPlan)
+    expect(existsSync(resolved.baseDir)).toBe(true)
     const dbPath = path.join(resolved.baseDir, '.kb-index.sqlite')
-    expect(existsSync(dbPath)).toBe(true)
-    expect(isKbIndexEmpty(dbPath)).toBe(true)
+    expect(existsSync(dbPath)).toBe(false)
   })
 })

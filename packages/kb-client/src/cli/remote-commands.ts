@@ -1,12 +1,10 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig } from '@kb/core/config/kb-config.js'
-import { KB_ENV } from '@kb/core/config/kb-env.js'
 import {
   getIntentQuestion,
   isIntentCommand,
   parseIntentCommand,
 } from '@kb/core/query/intent-cli.js'
-import { DEFAULT_BASE_SLUG, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
 import type {
@@ -17,6 +15,7 @@ import type {
 } from '../api/types.js'
 import {
   resolveServerConnectionWithBase,
+  resolveActiveBaseInfo,
   formatConnectionContext,
 } from '../api/server-connection.js'
 import type { CliOutput } from '@kb/core/ui/cli-output.js'
@@ -97,23 +96,16 @@ export interface DisplayBase {
 }
 
 /**
- * Resolve the base to *display* (TUI status bar, CLI banner, chat header) — the same
- * three tiers `resolveActiveBaseName` resolves for the wire, computed **locally, with
- * no network round-trip**. There is nothing to discover from the server: the client
- * always knows its own base before it ever connects (see `resolveActiveBaseName`'s doc
- * comment for why that's the correct "psql model" reading).
+ * Resolve the base to *display* (TUI status bar, CLI banner, chat header) — delegates
+ * to {@link resolveActiveBaseInfo}, the same three-tier resolution used for the wire,
+ * computed **locally, with no network round-trip**. There is nothing to discover from
+ * the server: the client always knows its own base before it ever connects. Kept as a
+ * thin re-export (rather than every display call site importing from `api/`) so the
+ * precedence logic lives in exactly one place.
  */
 export async function resolveDisplayBase(config: KbConfig, cwd?: string): Promise<DisplayBase> {
   void config
-  const explicit = process.env[KB_ENV.BASE]?.trim()
-  if (explicit) return { name: explicit, isFallback: false }
-  try {
-    const { baseName } = await resolveEffectiveBaseDir(cwd)
-    if (baseName?.trim()) return { name: baseName.trim(), isFallback: false }
-  } catch {
-    // No active base selected locally.
-  }
-  return { name: DEFAULT_BASE_SLUG, isFallback: true }
+  return resolveActiveBaseInfo(cwd)
 }
 
 export async function runRemoteAdminCli(

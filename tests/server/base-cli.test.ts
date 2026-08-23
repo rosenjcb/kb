@@ -75,6 +75,14 @@ describe('kb-server base create', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('[TC-DCS1] refuses a differently-cased or path-like spelling of the reserved default base', async () => {
+    const { out, lines } = makeOut()
+    await runServerBaseCommand(['create', '--base', 'Default', '--git', 'https://x/y'], out)
+    expect(lines.join('\n')).toContain('kb-server init')
+    expect(mockRunKbInit).not.toHaveBeenCalled()
+    expect(process.exitCode).toBe(1)
+  })
+
   it('[TC-FI59] builds a new named base from its repos', async () => {
     const { out } = makeOut()
     await runServerBaseCommand(
@@ -152,6 +160,18 @@ describe('kb-server base list / delete', () => {
     const { out, lines } = makeOut()
     await runServerBaseCommand(['delete', '--base', 'acme', '--yes'], out)
     expect(lines.join('\n')).toContain('Deleted base: acme')
+  })
+
+  it('[TC-DDEL] refuses to delete the reserved default base even with --yes', async () => {
+    await ensureBaseExists('default')
+    const { out, lines } = makeOut()
+    await runServerBaseCommand(['delete', '--base', 'default', '--yes'], out)
+    expect(lines.join('\n')).toContain('always exists')
+    expect(process.exitCode).toBe(1)
+    // Still there — not deleted.
+    const { existsSync } = await import('node:fs')
+    const { kbIndexDbPath } = await import('@kb/core/tools/kb-index-path.js')
+    expect(existsSync(kbIndexDbPath(resolveBaseToDir('default')))).toBe(true)
   })
 
   it('[TC-WTZX] help lists the base subcommands', async () => {

@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-20T21:50:00Z
+timestamp: 2026-08-23T05:50:00Z
 ---
 
 ### Intro
@@ -55,11 +55,11 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-22 | [NEW] MCP `/mcp` is stateful Streamable HTTP: initialize returns `mcp-session-id` and subsequent POST/GET/DELETE must send it; when elicitation is on (FR-21 default) POST responses use SSE so `elicitation/create` can ride the tool-call stream, and `KB_MCP_ELICITATION=false` uses JSON-only POST responses |
 | FR-23 | [NEW] `createServerElicitFeedback`, bound to a live MCP `Server`, is the `elicitFeedback` hook consumed by FR-21: it checks the client's declared `elicitation` capability before asking (declining to ask at all when unsupported), dispatches a form-mode `elicitation/create` request (message + the flat helped/notes schema) via `elicitInput` when the client declared explicit `form` support or a raw `server.request()` fallback for the spec-back-compat empty-object case, maps the client's response to accepted/dismissed/unavailable, and never throws — a rejected/erroring request also resolves to `unavailable` |
 | FR-24 | [NEW] Never present a failed LLM call as an answer: when synthesis throws or returns nothing, carry a structured `answerError` (stage/kind/message/provider/status/retryable) on the REST and MCP payloads with that failure leading `notes`, suppress the sampled feedback ask, and record the RunReport as an error; surface best-effort stage failures (scope inference, curation) on `retrieval.degraded`; a chat turn whose model returns no text emits an `error` event rather than a canned "not enough information" answer |
-| FR-25 | [UPDATED] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index — the reserved `default` base always has an index, the same as any other base, so it needs no special case), `list` (marks a base with an empty index as `[empty]`), and `delete --base <name>` (prompts unless `--yes`). `create` refuses the reserved `default` slug (it is created only by `kb-server init`) and any base that already exists; `add-repo` refuses an unknown base; all three error when `--base` is missing. |
+| FR-25 | [UPDATED] Base lifecycle is an operator action on `kb-server`, never the `kb` client. The target base is always the explicit `--base <name>` flag (no positional, no implicit default). `kb-server base` exposes `create --base <name> --git <url>…` (new named base, at least one repo required), `add-repo --base <name> --git <url>…` (attach repos to an existing base and re-index — the reserved `default` base always has an index, the same as any other base, so it needs no special case), `list` (marks a base with an empty index as `[empty]`), and `delete --base <name>` (prompts unless `--yes`). `create` and `delete` both refuse the reserved `default` slug — matched case-insensitively and alias-normalized against the same directory `default` resolves to, not by a raw string compare, so `--base Default` or an equivalent path spelling cannot slip past the guard — because `create` is not how `default` is made (`kb-server init` owns it) and `delete` would remove a base the server can still self-heal on the next request; `create` also refuses any base that already exists; `add-repo` refuses an unknown base; all four error when `--base` is missing. |
 | FR-26 | [NEW] Each `/v1/chat` turn writes its run report with a length-capped transcript (`turns`: the user message plus the assistant answer) so a session is reconstructable from its logs after `/clear`; an errored turn still captures the user line. |
 | FR-27 | [NEW] `kb-server init` is the server's `initdb`: it creates `KB_HOME`'s `run`/`logs`/`state` directories and unconditionally materializes the reserved `default` base — a real directory holding an empty, fully-migrated `.kb-index.sqlite` — so a fresh install is listable, selectable, and servable before any repo is added. It takes no flags and records no configuration; re-running it is idempotent (reports the existing base instead of recreating it) |
-| FR-28 | [NEW] The server's boot-time default base has no persisted or configurable state. `kb-server start` binds `--base` \> `KB_SERVER_BASE_NAME` \> the hardcoded `default` constant, and never reads client-side state (the `kb base use` active-base file) or any state `kb-server init` might have left — because `init` leaves none. A server that starts on a fresh `KB_HOME` that never ran `init` self-heals into the identical base `init` would have produced |
-| FR-29 | [NEW] When `KB_BASE` or `KB_GIT_REPOS` (the client-scoped env vars) is set without its server-scoped counterpart (`KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`), `kb-server start` logs a warning naming both variables, so a same-machine install where the client's env leaks into the server's shell is observable rather than silently booting the wrong base |
+| FR-28 | [UPDATED] The server's boot-time default base has no persisted or configurable state. `kb-server start` binds `--base` \> `KB_SERVER_BASE_NAME` \> the hardcoded `default` constant, and never reads client-side state (the `kb base use` active-base file) or any state `kb-server init` might have left — because `init` leaves none. Resolving which base to boot guarantees only that base's **directory** exists; its index is deliberately **not** materialized at that point, so a genuinely fresh volume still reads as fresh to snapshot adoption (`--from` / `KB_SERVER_SNAPSHOT`) and to `--bootstrap-policy snapshot-only`'s refusal gate, both of which run immediately after. The index is self-healed — an empty, fully-migrated `.kb-index.sqlite` — once bootstrap has confirmed there is genuinely nothing to build (no snapshot adopted, no repos declared, none already cloned) and, under `auto` policy, that self-heal always completes by the time the server starts listening, matching what `kb-server init` would have produced even though it never ran. The server also pre-warms the golden `default` base at boot even when it bound to a different one, so the service registry's per-request self-heal for `default` rarely has to run synchronously inline in a request. |
+| FR-29 | [UPDATED] When `KB_BASE` or `KB_GIT_REPOS` (the client-scoped env vars) is set without its server-scoped counterpart (`KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`), `kb-server start` logs a warning naming both variables, so a same-machine install where the client's env leaks into the server's shell is observable rather than silently booting the wrong base. `start --daemon` surfaces the identical warning from its own parent process — the interactive shell still attached before it detaches — not only from the foreground boot path, since the detached child's stderr goes to `kb-server.err.log`, which an operator watching only the `-d` invocation's own output would not otherwise see. |
 
 ### Known issues
 
@@ -236,6 +236,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-RBLQ | FR-24 | sampling forced on and synthesis failed | no AGENT_INSTRUCTION and no feedback block |
 | TC-SY60 | FR-6 | [NEW] REST `/v1/query` with `verbose: true` returns full evidence dump (`results`, `retrieval.detail`, GroupedSource facts) | pass |
 | TC-BZDP | FR-25 | base create refuses the reserved `default` slug | pass |
+| TC-DCS1 | FR-25 | [NEW] base create refuses a differently-cased or path-like spelling that resolves to the same `default` directory | pass |
 | TC-J398 | FR-25 | base create requires at least one --git for a named base | pass |
 | TC-1E89 | FR-25 | base create refuses a base that already exists | pass |
 | TC-FI59 | FR-25 | base create builds a new named base from its repos | pass |
@@ -247,6 +248,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-EMTY | FR-25 | [NEW] base list marks a genuinely empty (materialized but unindexed) base as [empty] | pass |
 | TC-SU4B | FR-25 | base delete requires a base name | pass |
 | TC-3T44 | FR-25 | base delete removes a base with --yes | pass |
+| TC-DDEL | FR-25 | [NEW] base delete refuses the reserved `default` slug even with --yes | pass |
 | TC-WTZX | FR-25 | base help lists the subcommands | pass |
 | TC-CESD | FR-26 | a /v1/chat turn writes a report whose turns hold the user message and assistant answer | pass |
 | TC-8NCJ | FR-4 | query base argument resolves the named base via the registry instead of the session default | pass |
@@ -264,9 +266,16 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-GLD1 | FR-28 | binds slug "default" when no base is declared and none is selected locally | pass |
 | TC-GLD2 | FR-28 | honors an explicit plan base over the golden default | pass |
 | TC-NOLK | FR-28 | ignores a locally-selected client active base — the server has no state of its own to leak into | pass |
-| TC-SLF1 | FR-28 | self-heals: materializes a real, empty, migrated index even though `kb-server init` never ran | pass |
+| TC-SLF1 | FR-28 | [UPDATED] ensures the base directory but defers index materialization — an index-existence check right after resolving must still see a fresh volume | pass |
+| TC-SNP1 | FR-28 | [NEW] a fresh volume under --bootstrap-policy snapshot-only refuses to start instead of silently serving an empty base | pass |
+| TC-HEL2 | FR-28 | [NEW] an empty default base under the normal (auto) policy still self-heals into a real, migrated index by the time boot completes | pass |
 | TC-ENW1 | FR-29 | warns when the client-scoped KB_BASE is set without KB_SERVER_BASE_NAME | pass |
 | TC-ENW2 | FR-29 | does not warn when KB_BASE is unset | pass |
+| TC-DMW1 | FR-29 | [NEW] `start --daemon`'s parent process also warns, before detaching, when the client-scoped vars are set | pass |
+| TC-DMW2 | FR-29 | [NEW] `start --daemon`'s parent process does not warn when the client-scoped vars are unset | pass |
+| TC-DMW3 | FR-29 | [NEW] the KB_GIT_REPOS / KB_SERVER_BASE_GIT_REPOS pair warns independently of the KB_BASE pair | pass |
+| TC-DMW4 | FR-29 | [NEW] both pairs unset their server-scoped counterpart at once → two warnings | pass |
+| TC-DMW5 | FR-29 | [NEW] every server-scoped counterpart set → no warnings | pass |
 
 ### Related docs
 

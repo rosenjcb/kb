@@ -362,6 +362,13 @@ export class SqliteKbIndexer {
     this.modelId = options.modelId ?? process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text'
     this.vectorDimensions = options.vectorDimensions ?? 64
     this.embedder = options.embedder ?? null
+    // Every migration is idempotent (`CREATE ... IF NOT EXISTS`), so two processes
+    // racing to materialize the same fresh index (e.g. concurrent kb-server boots
+    // sharing a KB_HOME, or the registry's per-request self-heal) are safe against
+    // corruption either way — but without a busy timeout, the loser gets an
+    // immediate SQLITE_BUSY instead of waiting the ~instant it takes the winner to
+    // finish its migration transaction.
+    this.db.exec('PRAGMA busy_timeout = 5000')
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA foreign_keys = ON')
     runMigrations(this.db)

@@ -12,8 +12,9 @@ const HEALTH_TIMEOUT_MS = 6 * 60 * 1000
 
 const env = {
   ...process.env,
-  KB_BASE: process.env.KB_BASE || 'integration',
-  KB_GIT_REPOS: process.env.KB_GIT_REPOS || 'https://github.com/sindresorhus/is',
+  KB_SERVER_BASE_NAME: process.env.KB_SERVER_BASE_NAME || 'integration',
+  KB_SERVER_BASE_GIT_REPOS:
+    process.env.KB_SERVER_BASE_GIT_REPOS || 'https://github.com/sindresorhus/is',
   KB_SERVER_API_KEY: process.env.KB_SERVER_API_KEY || 'testkey',
   KB_REINDEX_INTERVAL: '0',
   PORT: process.env.PORT || '38117',

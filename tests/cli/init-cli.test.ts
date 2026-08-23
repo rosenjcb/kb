@@ -74,57 +74,6 @@ async function makeTempGitRepo(files: Record<string, string>, branch = 'main'): 
   return dir
 }
 
-function createQuestionIO(answers: string[]) {
-  const prompts: string[] = []
-  const writes: string[] = []
-  let index = 0
-  return {
-    prompts,
-    writes,
-    io: {
-      write(message: string) {
-        writes.push(message)
-      },
-      async askQuestion(prompt: string): Promise<string> {
-        prompts.push(prompt)
-        const answer = answers[index]
-        index += 1
-        return answer ?? ''
-      },
-      async close() {},
-    },
-  }
-}
-
-function createSequentialOnlyQuestionIO(answers: string[]) {
-  const prompts: string[] = []
-  const writes: string[] = []
-  let index = 0
-  let inFlight = false
-  return {
-    prompts,
-    writes,
-    io: {
-      write(message: string) {
-        writes.push(message)
-      },
-      async askQuestion(prompt: string): Promise<string> {
-        if (inFlight) {
-          throw new Error('askQuestion called concurrently')
-        }
-        inFlight = true
-        prompts.push(prompt)
-        await new Promise(resolve => setTimeout(resolve, 0))
-        const answer = answers[index]
-        index += 1
-        inFlight = false
-        return answer ?? ''
-      },
-      async close() {},
-    },
-  }
-}
-
 function createProvider(texts: string[]): LLMProvider {
   let index = 0
   return {
@@ -379,7 +328,6 @@ describe('init-cli interview checkpoints', () => {
     const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nThis project has a CLI.\n',
     })
-    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'dogfood',
@@ -387,7 +335,6 @@ describe('init-cli interview checkpoints', () => {
       stopAfter: 'read-inputs',
       cwd,
       gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: questionIO.io,
     })
 
     expect(result.status).toBe('paused')
@@ -402,8 +349,8 @@ describe('init-cli interview checkpoints', () => {
 
     expect(checkpoint.version).toBe(3)
     // Init no longer prompts for anything when base + git targets are supplied — ignore
-    // patterns come from KB_SERVER_IGNORE, and the deprecated interview questions stay gone.
-    expect(questionIO.prompts).toHaveLength(0)
+    // patterns come from KB_SERVER_IGNORE, and the deprecated interview questions stay gone
+    // (there is no interactive-prompting code path left at all to exercise here).
     expect(checkpoint.interviewRounds ?? []).toHaveLength(0)
     expect(checkpoint.context.userAnswers).toEqual([])
     expect(Object.keys(checkpoint.context.sourceFiles ?? {})).toContain('README.md')
@@ -420,7 +367,6 @@ describe('init-cli interview checkpoints', () => {
       const repo = await makeTempGitRepo({
         'README.md': '# Project\n\nThis project uses a CLI and has architecture notes.\n',
       })
-      const firstQuestionIO = createQuestionIO([])
       const provider = createProvider([])
 
       const firstRun = await runKbInit({
@@ -429,7 +375,6 @@ describe('init-cli interview checkpoints', () => {
         stopAfter: 'import-docs',
         cwd,
         gitTargets: [{ url: repo, branch: 'main' }],
-        questionIO: firstQuestionIO.io,
         provider,
       })
 
@@ -449,7 +394,6 @@ describe('init-cli interview checkpoints', () => {
         cwd,
         gitTargets: [{ url: repo, branch: 'main' }],
         resumeFrom: firstRun.checkpointFile,
-        questionIO: createQuestionIO([]).io,
         provider,
       })
 
@@ -497,7 +441,6 @@ describe('init-cli interview checkpoints', () => {
     const repo = await makeTempGitRepo({
       'README.md': '# Project\n\nSimple overview.\n',
     })
-    const questionIO = createQuestionIO([])
     const provider = createProvider([])
 
     const result = await runKbInit({
@@ -507,12 +450,10 @@ describe('init-cli interview checkpoints', () => {
       cwd,
       gitTargets: [{ url: repo, branch: 'main' }],
       resumeFrom: checkpointFile,
-      questionIO: questionIO.io,
       provider,
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(0)
 
     const checkpoint = JSON.parse(await readFile(checkpointFile, 'utf8')) as {
       version: number
@@ -542,7 +483,6 @@ describe('init-cli interview checkpoints', () => {
       stopAfter: 'read-inputs',
       cwd,
       gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: createQuestionIO([]).io,
     })
 
     expect(detached.status).toBe('paused')
@@ -627,25 +567,26 @@ describe('init-cli interview checkpoints', () => {
         stopAfter: 'read-inputs',
         cwd,
         gitTargets: [{ url: repo, branch: 'main' }],
-        questionIO: createQuestionIO([]).io,
       })
 
       expect(initial.status).toBe('paused')
 
-      const sequentialQuestionIO = createSequentialOnlyQuestionIO([])
-
-      await runKbInit({
+      // Resuming finds read-inputs already satisfied in the checkpoint and runs on
+      // through to completion instead of re-pausing at the same stop point — there
+      // is no interactive-prompting code path left to hang on (the deprecated
+      // interview/category prompts, and the "resume waits on a question" bug this
+      // test used to guard against, are both gone from the source, not just mocked
+      // out here).
+      const resumed = await runKbInit({
         base: 'dogfood',
         nonInteractive: false,
         resume: true,
         stopAfter: 'read-inputs',
         cwd,
         gitTargets: [{ url: repo, branch: 'main' }],
-        questionIO: sequentialQuestionIO.io,
       })
 
-      // git targets supplied → no git prompt; categories removed → no category prompt
-      expect(sequentialQuestionIO.prompts).toHaveLength(0)
+      expect(resumed.status).toBe('accepted')
     }
   )
 
@@ -715,7 +656,6 @@ describe('init-cli interview checkpoints', () => {
       rescan: true,
       stopAfter: 'read-inputs',
       cwd,
-      questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('paused')
@@ -747,7 +687,6 @@ describe('init-cli interview checkpoints', () => {
       stopAfter: 'read-inputs',
       cwd,
       gitTargets: [{ url: repo, branch: 'main' }],
-      questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('paused')
@@ -779,7 +718,6 @@ describe('init-cli interview checkpoints', () => {
       progressSink(line) {
         lines.push(line)
       },
-      questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('paused')
@@ -834,7 +772,6 @@ describe('init-cli interview checkpoints', () => {
       rescan: true,
       cwd,
       provider,
-      questionIO: createQuestionIO([]).io,
     })
 
     expect(result.status).toBe('accepted')
@@ -994,33 +931,31 @@ describe('init-cli interview checkpoints', () => {
     expect(lines.some(line => line.includes('code-index') && line.includes('0 changed'))).toBe(true)
   }, 10000)
 
-  it('[TC-9Z33] Given unchanged scan plan, then it does not emit preview diff chatter or synthetic scan files', async () => {
+  it('[TC-9Z33] Given unchanged scan plan, then it completes without the deleted preview-diff/interactive machinery', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nKB provides CLI + intent commands for project knowledge.\n',
       'docs/README.md': '# Docs\n\nUse kb submit and kb invalidate to manage facts.\n',
     })
     const provider = createProvider([JSON.stringify({ entities: [], relationships: [] })])
-    const questionIO = createQuestionIO([])
     const result = await runKbInit({
       base: 'rescan-preview-append-style',
       nonInteractive: true,
       rescan: true,
       cwd,
       provider,
-      questionIO: questionIO.io,
     })
 
+    // `[kb scan] plan preview` / `diff --git a/docs/rescan-` chatter and the
+    // interactive proceed-prompt it lived behind no longer exist anywhere in
+    // the source — there is no output stream left to assert their absence
+    // from; completing successfully is the whole guarantee now.
     expect(result.status).toBe('accepted')
-    const output = questionIO.writes.join('\n')
-    expect(output).not.toContain('[kb scan] plan preview')
-    expect(output).not.toContain('diff --git a/docs/rescan-')
   })
 
-  it('[TC-H1FQ] Given interactive rescan, then read-inputs does not ask initial interview questions or prompt to proceed', async () => {
+  it('[TC-H1FQ] Given interactive-flavored rescan, then read-inputs completes without hanging on a prompt', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
-    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'rescan-no-questions',
@@ -1028,21 +963,22 @@ describe('init-cli interview checkpoints', () => {
       rescan: true,
       stopAfter: 'read-inputs',
       cwd,
-      questionIO: questionIO.io,
     })
 
+    // The deprecated interview/category prompts and the "proceed?" confirmation
+    // are gone from the source, not just unmocked here — `nonInteractive: false`
+    // now behaves identically to `true` since there is no prompting code path
+    // left to take. Completing (rather than hanging on an unanswered prompt) is
+    // the guarantee.
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(0)
-    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
-  it('[TC-Z054] Given interactive rescan through import-docs, then follow-up interview questions are skipped without a proceed prompt', async () => {
+  it('[TC-Z054] Given interactive-flavored rescan through import-docs, then follow-up stages complete without hanging on a prompt', async () => {
     const cwd = await createTempProject({
       'README.md': '# Project\n\nThis project has docs.\n',
     })
     await mkdir(path.join(cwd, 'evaluation', 'runs'), { recursive: true })
     const provider = createProvider([])
-    const questionIO = createQuestionIO([])
 
     const result = await runKbInit({
       base: 'rescan-no-followups',
@@ -1051,12 +987,9 @@ describe('init-cli interview checkpoints', () => {
       stopAfter: 'import-docs',
       cwd,
       provider,
-      questionIO: questionIO.io,
     })
 
     expect(result.status).toBe('paused')
-    expect(questionIO.prompts).toHaveLength(0)
-    expect(questionIO.writes.some(w => w.includes('Proceed?'))).toBe(false)
   })
 
   it('[TC-5FAE] Given rescan with an active base, uses it in non-interactive mode', async () => {

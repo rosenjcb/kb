@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink'
+import { BASE_FALLBACK_SUFFIX } from '../../api/server-connection.js'
 import { BLUE, ORANGE } from '../theme.js'
 
 interface Props {
@@ -20,7 +21,7 @@ export function StatusBar({ serverHost, baseName, baseIsFallback }: Props) {
       <Text color="gray"> │ </Text>
       <Text color="gray">base: </Text>
       <Text color={ORANGE}>{baseName || '(none)'}</Text>
-      {baseName && baseIsFallback ? <Text color="gray"> (no active base selected)</Text> : null}
+      {baseName && baseIsFallback ? <Text color="gray">{BASE_FALLBACK_SUFFIX}</Text> : null}
     </Box>
   )
 }

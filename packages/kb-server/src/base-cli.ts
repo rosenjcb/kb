@@ -12,7 +12,6 @@
  */
 
 import { existsSync } from 'node:fs'
-import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { type GitTarget, parseGitTarget, runKbInit } from '@kb/core/ops/init-cli.js'
 import {
@@ -23,6 +22,7 @@ import {
   listAllBases,
   resolveBaseToDir,
 } from '@kb/core/storage/base-selection.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
 import { isKbIndexEmpty } from '@kb/core/tools/sqlite-kb-index.js'
 
 export interface ServerLogger {
@@ -53,6 +53,8 @@ Notes:
   • --git is repeatable; pin a branch with url#branch.
   • CI/CD can still build a base at boot: \`kb-server start --base <name> --git <url>\`.
   • The "default" base is created by \`kb-server init\` — always exists, may be empty.
+  • "default" cannot be deleted (it always exists, the way Postgres's own maintenance
+    database can't be dropped); \`create\` also refuses it, since \`init\` owns it.
   • To remove all server data instead of one base, use \`kb-server uninstall --purge\`.
 
 Examples:
@@ -86,7 +88,19 @@ function parseGitTargets(args: string[]): GitTarget[] {
 
 /** True when a base already has a built index on disk. */
 function baseIndexExists(name: string): boolean {
-  return existsSync(path.join(resolveBaseToDir(name), '.kb-index.sqlite'))
+  return existsSync(kbIndexDbPath(resolveBaseToDir(name)))
+}
+
+/**
+ * True when `name` resolves to the same on-disk directory as the golden `default`
+ * slug — case-insensitive and alias-normalized, matching `resolveBaseToDir`'s own
+ * normalization, and also catching an absolute-path spelling of the same
+ * directory. A raw `name === DEFAULT_BASE_SLUG` string check would miss
+ * `--base Default` or an equivalent path, letting it slip past the reserved-name
+ * guard and populate the base the golden default resolves to.
+ */
+function resolvesToDefaultBase(name: string): boolean {
+  return resolveBaseToDir(name) === resolveBaseToDir(DEFAULT_BASE_SLUG)
 }
 
 async function runBaseList(out: ServerLogger): Promise<void> {
@@ -99,7 +113,7 @@ async function runBaseList(out: ServerLogger): Promise<void> {
   }
   out.log('KB bases (server)')
   for (const b of bases) {
-    const empty = isKbIndexEmpty(path.join(b.path, '.kb-index.sqlite')) ? '  [empty]' : ''
+    const empty = isKbIndexEmpty(kbIndexDbPath(b.path)) ? '  [empty]' : ''
     out.log(`  ${b.name}${b.isActive ? '  [active]' : ''}${empty}`)
     out.log(`    ${b.path}`)
   }
@@ -114,7 +128,7 @@ async function runBaseCreate(args: string[], out: ServerLogger): Promise<void> {
     process.exitCode = 1
     return
   }
-  if (name === DEFAULT_BASE_SLUG) {
+  if (resolvesToDefaultBase(name)) {
     out.error(
       `The "${DEFAULT_BASE_SLUG}" base is created by \`kb-server init\`, not \`base create\`. Add repos with ` +
         `\`kb-server base add-repo --base ${DEFAULT_BASE_SLUG} --git <url>\`.`
@@ -195,6 +209,14 @@ async function runBaseDelete(args: string[], out: ServerLogger): Promise<void> {
 
   if (!name) {
     out.error('--base <name> is required: kb-server base delete --base <name>')
+    process.exitCode = 1
+    return
+  }
+
+  if (resolvesToDefaultBase(name)) {
+    out.error(
+      `The "${DEFAULT_BASE_SLUG}" base always exists — like Postgres's own maintenance database, it cannot be deleted while the server can still self-heal it on the next request. Stop the server and remove its sessions directory manually if you need to reset it, or run \`kb-server uninstall --purge\` to wipe all server data.`
+    )
     process.exitCode = 1
     return
   }

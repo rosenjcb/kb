@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@kb/core/storage/base-selection.js', () => ({
   DEFAULT_BASE_SLUG: 'default',
@@ -91,7 +91,11 @@ import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { createHttpServer } from '@kb/server/http-server.js'
 import { startReindexScheduler } from '@kb/server/reindex-scheduler.js'
 import { resolveBootstrapPolicy } from '@kb/server/server-bootstrap.js'
-import { runServerCommand, runServerMain } from '@kb/server/server-cli.js'
+import {
+  clientScopedBaseEnvWarnings,
+  runServerCommand,
+  runServerMain,
+} from '@kb/server/server-cli.js'
 
 describe('runServerMain version', () => {
   afterEach(() => {
@@ -254,5 +258,44 @@ describe('runServerCommand bootstrap progress', () => {
     await serverPromise
     if (prevBase === undefined) delete process.env.KB_BASE
     else process.env.KB_BASE = prevBase
+  })
+})
+
+describe('clientScopedBaseEnvWarnings', () => {
+  const ENV_KEYS = ['KB_BASE', 'KB_SERVER_BASE_NAME', 'KB_GIT_REPOS', 'KB_SERVER_BASE_GIT_REPOS'] as const
+  let saved: Record<string, string | undefined>
+
+  beforeEach(() => {
+    saved = Object.fromEntries(ENV_KEYS.map(k => [k, process.env[k]]))
+    for (const k of ENV_KEYS) delete process.env[k]
+  })
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+
+  it('[TC-DMW3] warns about KB_GIT_REPOS without KB_SERVER_BASE_GIT_REPOS, independently of the KB_BASE pair', () => {
+    process.env.KB_GIT_REPOS = 'https://github.com/acme/repo'
+    const warnings = clientScopedBaseEnvWarnings()
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('KB_GIT_REPOS')
+    expect(warnings[0]).toContain('KB_SERVER_BASE_GIT_REPOS')
+  })
+
+  it('[TC-DMW4] returns both warnings when both client-scoped vars are set without their server-scoped counterparts', () => {
+    process.env.KB_BASE = 'raylib'
+    process.env.KB_GIT_REPOS = 'https://github.com/acme/repo'
+    expect(clientScopedBaseEnvWarnings()).toHaveLength(2)
+  })
+
+  it('[TC-DMW5] returns no warnings once the server-scoped counterpart is also set', () => {
+    process.env.KB_BASE = 'raylib'
+    process.env.KB_SERVER_BASE_NAME = 'raylib'
+    process.env.KB_GIT_REPOS = 'https://github.com/acme/repo'
+    process.env.KB_SERVER_BASE_GIT_REPOS = 'https://github.com/acme/repo'
+    expect(clientScopedBaseEnvWarnings()).toHaveLength(0)
   })
 })

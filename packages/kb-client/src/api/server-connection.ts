@@ -1,4 +1,5 @@
 import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { CLI_ERROR_NO_KB_BASE } from '@kb/core/config/cli-prerequisites.js'
 import { KB_ENV, readEnvHost, readEnvPortRaw } from '@kb/core/config/kb-env.js'
 import { DEFAULT_BASE_SLUG, resolveEffectiveBaseDir } from '@kb/core/storage/base-selection.js'
 import { buildServerUrl, type SslMode } from './connection-string.js'
@@ -35,6 +36,13 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
   }
 }
 
+export interface ActiveBaseResolution {
+  /** Base name to use — always set, never the empty/undefined case. */
+  name: string
+  /** True when neither `KB_BASE` nor a local active base was configured, i.e. `name` is the client's own unconfigured-fallback slug. */
+  isFallback: boolean
+}
+
 /**
  * The one answer to "which base is this client acting on" — consumed by BOTH the
  * `X-KB-Base` header (what kb-server actually serves) AND every display (TUI status
@@ -52,21 +60,33 @@ export function resolveServerConnection(config: KbConfig): ServerConnection {
  * has no default-base *state* to discover (see `resolveServerBaseDir` in
  * `@kb/server/server-cli.js`). It happens to always be a valid base to land on because
  * `kb-server` materializes it unconditionally.
+ *
+ * Only `resolveEffectiveBaseDir`'s documented "no active base selected" failure is
+ * swallowed into the `default` fallback — any other error (e.g. a real I/O failure
+ * reading or creating the active-base state) propagates instead of being silently
+ * hidden behind an unrelated base.
  */
+export async function resolveActiveBaseInfo(
+  cwd: string = process.cwd()
+): Promise<ActiveBaseResolution> {
+  const explicit = process.env[KB_ENV.BASE]?.trim()
+  if (explicit) return { name: explicit, isFallback: false }
+  try {
+    const { baseName } = await resolveEffectiveBaseDir(cwd)
+    const trimmed = baseName?.trim()
+    if (trimmed) return { name: trimmed, isFallback: false }
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== CLI_ERROR_NO_KB_BASE) throw error
+  }
+  return { name: DEFAULT_BASE_SLUG, isFallback: true }
+}
+
+/** Thin wrapper over {@link resolveActiveBaseInfo} for wire-path callers that only need the name. */
 export async function resolveActiveBaseName(
   _config: KbConfig,
   cwd: string = process.cwd()
 ): Promise<string> {
-  const explicit = process.env[KB_ENV.BASE]?.trim()
-  if (explicit) return explicit
-  try {
-    const { baseName } = await resolveEffectiveBaseDir(cwd)
-    const trimmed = baseName?.trim()
-    if (trimmed) return trimmed
-  } catch {
-    // No active base selected locally.
-  }
-  return DEFAULT_BASE_SLUG
+  return (await resolveActiveBaseInfo(cwd)).name
 }
 
 /**
@@ -106,6 +126,13 @@ export function formatServerAddress(connection: ServerConnection): string {
 }
 
 /**
+ * The one copy of the fallback-base suffix text — shared by `formatConnectionContext`
+ * (CLI banner, chat header) and the TUI `StatusBar` component directly, so the two
+ * surfaces can't independently drift on the wording.
+ */
+export const BASE_FALLBACK_SUFFIX = ' (no active base selected)'
+
+/**
  * User-facing `host: … │ base: …` label (TUI status bar, CLI banner, chat header).
  * `isFallback` is computed locally (no network round-trip — see `resolveActiveBaseName`)
  * and set when neither `KB_BASE` nor an active base was configured, so the label makes
@@ -117,7 +144,7 @@ export function formatConnectionContext(
   opts: { isFallback?: boolean } = {}
 ): string {
   const name = baseName?.trim()
-  const base = name ? (opts.isFallback ? `${name} (no active base selected)` : name) : '(none)'
+  const base = name ? `${name}${opts.isFallback ? BASE_FALLBACK_SUFFIX : ''}` : '(none)'
   const host = formatServerAddress(resolveServerConnection(config))
   return `host: ${host} │ base: ${base}`
 }

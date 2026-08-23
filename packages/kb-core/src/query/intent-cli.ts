@@ -28,7 +28,11 @@ export interface IntentResultPrinter {
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 import { appendQuerySession, loadQuerySessionMessages } from './query-session.js'
 import { toSource } from '@kb/core/service/serialize.js'
-import { type GroupedSource, groupSources } from '@kb/core/service/source-grouping.js'
+import {
+  DEFAULT_SOURCE_LIMIT,
+  type GroupedSource,
+  groupSources,
+} from '@kb/core/service/source-grouping.js'
 
 export function formatRetrievalMatchesMeta(retrievedCount: number): string {
   if (retrievedCount === 0) return '0'
@@ -336,9 +340,23 @@ export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): 
  * MCP, chat, Slack, and remote-CLI surfaces render. No registry is available
  * here, so paths come back repo-relative and unlinked — the shape is shared even
  * when the blob href is not.
+ *
+ * Grouped uncapped (`maxSources: Number.MAX_SAFE_INTEGER`) so `total` is the true
+ * distinct-file count, then sliced to the same display cap the server-backed
+ * surfaces use. Reporting `shown.length` instead of `total` would silently pass
+ * off a truncated count as the real one whenever a local read cites more files
+ * than the cap — the printed `source>` lines are capped for readability, but the
+ * `sources> <count>` line itself must not be.
  */
-function citedFiles(results: ReadDocumentsResultItem[]): GroupedSource[] {
-  return groupSources(results.map(toSource), { sourceRepos: [] })
+function citedFiles(results: ReadDocumentsResultItem[]): {
+  shown: GroupedSource[]
+  total: number
+} {
+  const all = groupSources(results.map(toSource), {
+    sourceRepos: [],
+    maxSources: Number.MAX_SAFE_INTEGER,
+  })
+  return { shown: all.slice(0, DEFAULT_SOURCE_LIMIT), total: all.length }
 }
 
 /**
@@ -352,9 +370,9 @@ function appendReadDocumentsSourcesToLines(
   lines: string[],
   results: ReadDocumentsResultItem[]
 ): void {
-  const sources = citedFiles(results)
-  lines.push(formatOrchestrationMetaLine('sources', String(sources.length)))
-  for (const source of sources) {
+  const { shown, total } = citedFiles(results)
+  lines.push(formatOrchestrationMetaLine('sources', String(total)))
+  for (const source of shown) {
     const suffix = source.symbols.length > 0 ? ` · ${source.symbols.join(', ')}` : ''
     lines.push(formatOrchestrationMetaLine('source', `${source.path}${suffix}`))
   }
@@ -364,9 +382,9 @@ function printReadDocumentsSourcesBlock(
   printer: IntentResultPrinter,
   results: ReadDocumentsResultItem[]
 ): void {
-  const sources = citedFiles(results)
-  printer.metadata('Sources', String(sources.length))
-  for (const source of sources) {
+  const { shown, total } = citedFiles(results)
+  printer.metadata('Sources', String(total))
+  for (const source of shown) {
     printer.sourceCitation(source.path, {
       ...(source.href ? { href: source.href } : {}),
       symbols: source.symbols,

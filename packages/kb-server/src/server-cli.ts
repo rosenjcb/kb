@@ -13,6 +13,7 @@ import {
   persistInferredLLMProvider,
 } from '@kb/core/config/kb-config.js'
 import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
+import { KB_ENV } from '@kb/core/config/kb-env.js'
 import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
@@ -21,6 +22,7 @@ import { discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import {
   DEFAULT_BASE_SLUG,
   ensureBaseExists,
+  ensureOperationalBaseDir,
   readOptionalCliValue,
 } from '@kb/core/storage/base-selection.js'
 import { REPOS_SUBDIR, repoSlugFromGitUrl } from '@kb/core/storage/repo-slug.js'
@@ -115,12 +117,19 @@ interface ResolvedBase {
  * writes nothing beyond materializing the same hardcoded `default` this function
  * already falls back to.
  *
- * `ensureBaseExists` materializes whichever base wins: even a server that never ran
- * `init` self-heals into the exact same state `init` would have produced.
+ * Only the **directory** is guaranteed here — deliberately not the index. Whether
+ * an index already exists at this base is a load-bearing signal for the caller:
+ * `adoptLocalSnapshotIfProvided` and `--bootstrap-policy snapshot-only` both key
+ * off "does `.kb-index.sqlite` exist" to tell a fresh volume from a warm one, and
+ * eagerly creating an empty index here would make every volume look warm,
+ * silently skipping snapshot adoption and defeating the snapshot-only refusal
+ * gate. The self-heal to a real, empty, migrated index (the guarantee `init`
+ * would have produced) happens later, in `planBootstrapTask`'s empty-base branch,
+ * once those checks have already run.
  */
 export async function resolveServerBaseDir(plan: BootstrapPlan): Promise<ResolvedBase> {
   const baseRef = plan.base || DEFAULT_BASE_SLUG
-  const { baseDir } = await ensureBaseExists(baseRef)
+  const baseDir = await ensureOperationalBaseDir(baseRef)
   return { baseDir, baseRef }
 }
 
@@ -175,6 +184,12 @@ async function planBootstrapTask(
     }
   }
 
+  // Nothing to build from — this is the base's genuinely-empty resting state, not
+  // a fresh-volume-awaiting-a-snapshot state (those were already ruled out by the
+  // `existsSync` check above and the snapshot-only gate before this function ran).
+  // Materialize the real, empty, migrated index now, so the base is a first-class,
+  // listable, queryable object rather than just a directory.
+  await ensureBaseExists(base.baseRef)
   log(
     `Base "${base.baseRef}" is empty — no repos indexed yet. Add one to start archiving:
     kb-server base add-repo --base ${base.baseRef} --git <url>
@@ -341,19 +356,46 @@ function waitForShutdown(cleanup: () => Promise<void> | void): Promise<void> {
  * install it is easy to export the client-scoped name and expect it to steer the
  * daemon too, so warn loudly rather than silently booting the wrong base.
  */
+const CLIENT_SCOPED_BASE_ENV: ReadonlyArray<{
+  client: string
+  server: string
+  flag: string
+  action: string
+}> = [
+  {
+    client: KB_ENV.BASE,
+    server: 'KB_SERVER_BASE_NAME',
+    flag: '--base',
+    action: 'steer which base this server boots',
+  },
+  {
+    client: KB_ENV.GIT_REPOS,
+    server: 'KB_SERVER_BASE_GIT_REPOS',
+    flag: '--git',
+    action: 'declare repos for this server to build',
+  },
+]
+
+/**
+ * Pure — returns the warning lines rather than printing them, so both the
+ * foreground boot path (`runServerCommand`) and `start --daemon`'s parent
+ * process (the interactive shell the operator actually sees before it
+ * detaches) can surface the same check. A background daemon's own stderr
+ * still goes to `kb-server.err.log`, which an operator watching only the
+ * foreground `-d` output would otherwise never see.
+ */
+export function clientScopedBaseEnvWarnings(): string[] {
+  return CLIENT_SCOPED_BASE_ENV.filter(
+    ({ client, server }) => process.env[client]?.trim() && !process.env[server]?.trim()
+  ).map(
+    ({ client, server, flag, action }) =>
+      `⚠  ${client} is set but is the client's variable — kb-server reads ${server} instead. ` +
+      `Set that (or ${flag}) to ${action}.`
+  )
+}
+
 function warnOnClientScopedBaseEnv(out: ServerLogger): void {
-  if (process.env.KB_BASE?.trim() && !process.env.KB_SERVER_BASE_NAME?.trim()) {
-    out.error(
-      '⚠  KB_BASE is set but is the client\'s base variable — kb-server reads ' +
-        'KB_SERVER_BASE_NAME instead. Set that (or --base) to steer which base this server boots.'
-    )
-  }
-  if (process.env.KB_GIT_REPOS?.trim() && !process.env.KB_SERVER_BASE_GIT_REPOS?.trim()) {
-    out.error(
-      '⚠  KB_GIT_REPOS is set but kb-server reads KB_SERVER_BASE_GIT_REPOS instead. ' +
-        'Set that (or --git) to declare repos for this server to build.'
-    )
-  }
+  for (const warning of clientScopedBaseEnvWarnings()) out.error(warning)
 }
 
 export async function runServerCommand(
@@ -381,6 +423,14 @@ export async function runServerCommand(
 
   const plan = await resolveBootstrapPlan(args)
   const base = await resolveServerBaseDir(plan)
+
+  // Pre-warm the golden `default` base even when this process boots on a
+  // different one, so `service-registry.ts`'s per-request self-heal — a
+  // synchronous mkdir + sqlite migration — rarely has to run inline in a
+  // request's hot path. `default` always exists once boot completes.
+  if (base.baseRef !== DEFAULT_BASE_SLUG) {
+    await ensureBaseExists(DEFAULT_BASE_SLUG)
+  }
 
   // Bring in locally-supplied prepared state (mounted volume / unpacked artifact)
   // before planning bootstrap, so `start --from <dir>` serves it without building.
