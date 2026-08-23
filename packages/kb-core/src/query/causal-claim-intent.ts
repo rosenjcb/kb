@@ -12,16 +12,19 @@
  * about Y, Y's own definition has to be in the evidence, or the answer has to admit it isn't.
  */
 
-import { isEnvTrue } from '../config/env-boolean.js'
+import { isEnvFalse } from '../config/env-boolean.js'
 
 export interface CausalTarget {
   /** The thing being asked about — the side whose own code must be inspected. */
   target: string
 }
 
-/** True while the negative-claim guard is opt-in. Temporary: removed once measured. */
+/**
+ * On by default; `KB_QUERY_NEGATIVE_CLAIM_GUARD=false` disables it so an A/B can measure off-vs-on.
+ * Temporary scaffolding — the whole switch is removed once the gain is confirmed.
+ */
 export function isNegativeClaimGuardEnabled(): boolean {
-  return isEnvTrue(process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD)
+  return !isEnvFalse(process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD)
 }
 
 const CAUSAL_VERBS =
