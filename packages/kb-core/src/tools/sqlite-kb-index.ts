@@ -1,5 +1,6 @@
 import type { EvidenceLabel } from '../core/evidence-label'
 import { isOpenableSourcePath } from '../core/fact-uri'
+import { splitMarkdownSections } from '../core/markdown-sections.js'
 import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -1100,9 +1101,21 @@ export class SqliteKbIndexer {
       // regenerates it — `embedTable` only re-embeds missing/other-model rows, never a
       // same-model row whose content changed, so without this the vector would go stale.
       this.db.prepare('DELETE FROM documents_fts WHERE doc_id = ?').run(id)
-      this.db
-        .prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
-        .run(id, `${input.title}\n${input.body}`)
+      // One FTS row per markdown section rather than one per file. `doc_id` is UNINDEXED and the
+      // search joins back to `documents`, so several rows per document resolve to the same cited
+      // file — the retrieval unit shrinks without the citation surface changing at all.
+      const insertFts = this.db.prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
+      const sections = splitMarkdownSections(input.body)
+      if (sections.length === 0) {
+        insertFts.run(id, input.title)
+      } else {
+        for (const section of sections) {
+          // Title and heading trail ride along so a section stays findable by the terms that name
+          // it, which would otherwise live only in an ancestor section.
+          const header = section.heading ? `${input.title}\n${section.heading}` : input.title
+          insertFts.run(id, `${header}\n${section.text}`)
+        }
+      }
       if (existing) this.db.prepare('DELETE FROM doc_embeddings WHERE doc_id = ?').run(id)
     }
 
@@ -1163,11 +1176,15 @@ export class SqliteKbIndexer {
     try {
       return this.db
         .prepare(
-          `SELECT d.id, d.git_repo, d.rel_path, d.title, d.body, d.content_hash, d.indexed_at
+          // GROUP BY collapses a document whose sections matched more than once; MIN(rank) keeps
+          // it ranked by its single best-matching section rather than by an arbitrary one.
+          `SELECT d.id, d.git_repo, d.rel_path, d.title, d.body, d.content_hash, d.indexed_at,
+                  MIN(rank) AS best_rank
            FROM documents_fts fts
            JOIN documents d ON d.id = fts.doc_id
            WHERE documents_fts MATCH ?
-           ORDER BY rank
+           GROUP BY d.id
+           ORDER BY best_rank
            LIMIT ?`
         )
         .all(ftsQuery, limit) as unknown as DocumentIndexRow[]
