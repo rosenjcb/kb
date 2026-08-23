@@ -1,5 +1,15 @@
 # kb-server
 
+## 2.0.8
+
+### Patch Changes
+
+- Retrieval and exploration improvements for coding agents: index markdown by section rather than
+  whole file, flag near-duplicate candidates to synthesis, oblige retrieval to inspect the subject of
+  a causal claim, and enrich feedback capture with the served base and retrieval trace.
+- Updated dependencies
+  - @kb/core@2.0.8
+
 ## 2.0.7
 
 ### Patch Changes
