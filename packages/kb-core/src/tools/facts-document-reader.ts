@@ -245,17 +245,29 @@ export class FactsDocumentReader {
       collector,
     })
 
+    // Guard activity, stamped on the detail string the eval harness scrapes. Without this there
+    // is no way to tell from an artifact whether the guard fired, matched nothing, or was off —
+    // and "no measurable change" is indistinguishable from "never ran".
+    const guardBit = causal
+      ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
+      : 'causal:miss'
+
     // Total fallback: nothing was curated, so no audit detail is worth reporting — but if an
     // LLM error caused it, the record still has to travel or the degradation disappears.
     if (record.fellBack && record.dropped.length === 0 && record.added === 0) {
+      const fallbackDetail = [response.retrieval.detail ?? '', guardBit].filter(Boolean).join(';')
       return record.failure
-        ? { ...response, retrieval: { ...response.retrieval, curation: record } }
-        : response
+        ? {
+            ...response,
+            retrieval: { ...response.retrieval, detail: fallbackDetail, curation: record },
+          }
+        : { ...response, retrieval: { ...response.retrieval, detail: fallbackDetail } }
     }
 
     const detail = [
       response.retrieval.detail ?? '',
       `curated:kept=${results.length},dropped=${record.dropped.length},requeried=${record.requeried.length},rounds=${record.rounds}`,
+      guardBit,
     ]
       .filter(Boolean)
       .join(';')

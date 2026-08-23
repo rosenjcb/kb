@@ -303,14 +303,22 @@ export async function runQueryPipeline(
   if (isDecoyGuardEnabled() && isReadFactsResult(aligned)) {
     const data = (aligned.data ?? {}) as ReadDocumentsResultData
     decoyPairs = detectDecoyPairs(Array.isArray(data.results) ? data.results : [])
-    if (decoyPairs.length > 0) {
-      aligned = {
-        ...aligned,
-        data: {
-          ...data,
-          retrieval: { ...data.retrieval, decoys: decoyPairs },
+    // Stamp the count even when zero: on the detail string, an absent `decoys:` means the guard
+    // was off, `decoys:0` means it ran and found nothing. Collapsing those two makes a null
+    // result unreadable.
+    const decoyDetail = [data.retrieval?.detail, `decoys:${decoyPairs.length}`]
+      .filter(Boolean)
+      .join(';')
+    aligned = {
+      ...aligned,
+      data: {
+        ...data,
+        retrieval: {
+          ...data.retrieval,
+          detail: decoyDetail,
+          ...(decoyPairs.length > 0 ? { decoys: decoyPairs } : {}),
         },
-      }
+      },
     }
   }
 
