@@ -182,26 +182,6 @@ export function resolveChatSourceDisplay(
   }
 }
 
-/** @deprecated Prefer {@link resolveChatSourceDisplay} with `sourceRepos`. */
-export function repoRelativeSourcePath(
-  filePath: string | undefined,
-  stripPrefixes: string[] = [],
-): string | null {
-  const cleaned = cleanPath(filePath)
-  if (!cleaned || cleaned.startsWith('fact://')) return cleaned
-  let p = cleaned
-  for (const raw of stripPrefixes) {
-    const prefix = raw.replace(/\/+$/, '')
-    if (!prefix) continue
-    if (p === prefix) return null
-    if (p.startsWith(`${prefix}/`)) {
-      p = p.slice(prefix.length + 1)
-      break
-    }
-  }
-  return p || null
-}
-
 // Grouped (source-centric) footer + reply rendering lives in `source-grouping.ts`
 // (`formatGroupedSourcesFooter`, `formatGroupedChatReply`). This module keeps only
 // the per-source resolution primitives those renderers build on.
