@@ -429,6 +429,12 @@ export async function enrichReadDocumentsAnswerWithLLM(
   options?: {
     graphRelationContext?: string
     synthesisQuestion?: string
+    /**
+     * Warning that the evidence holds similarly-named things from different places. Rendered as
+     * its own block — folding it into `graphRelationContext` would file it under the graph-path
+     * header and present a disambiguation warning as a derived relationship.
+     */
+    contrastNote?: string
     /** Stream the model's reasoning tokens for a transient "loading" display. */
     onReasoning?: (delta: string) => void
   }
@@ -463,6 +469,8 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const proceduralGuidance = isProceduralQuestion(question) ? PROCEDURAL_SYNTHESIS_GUIDANCE : ''
 
+    const contrastNote = options?.contrastNote?.trim() ?? ''
+
     const userContent = [
       'Answer from the evidence below. Use only the facts that bear on the question and ignore the rest — do not pad the answer with loosely related facts. Always give a useful response: a high-level summary for broad questions, precise detail for specific ones. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
       'Match the answer structure to the question. For a multi-part or comparative question, lead with the direct answer, then break the supporting detail into short headings, bullets, or a compact table so each part is answerable at a glance; bold key terms (settings, file names, flags, conditions). For a simple question, a tight paragraph is enough.',
@@ -470,6 +478,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'Only name files that actually appear in the evidence, copying their paths exactly — never guess, alias, or abbreviate a file name the evidence does not show. If the evidence does not reveal which file holds something, say so instead of inventing a plausible file name.',
       'If the question asks kb to perform a capability it does not have (provision infrastructure, deploy unrelated services, etc.), lead with a brief boundary answer — do not substitute a long guide to a different task just because retrieved facts share words like "deploy" or "kubernetes".',
       ...(proceduralGuidance ? ['', proceduralGuidance] : []),
+      ...(contrastNote ? ['', contrastNote] : []),
       '',
       `Question: ${question}`,
       graphSection,
