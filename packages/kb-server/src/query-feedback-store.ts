@@ -26,9 +26,31 @@ export interface FeedbackScores {
   evidence_handling?: number
 }
 
+/**
+ * What retrieval actually did on the query this feedback is about, captured server-side at query
+ * time rather than reconstructed later.
+ *
+ * Without this the log is unanalysable: MCP RunReports are written with no collector, so they carry
+ * no retrieval trace, and a reader joining on `requestId` recovers nothing but timestamps. Every
+ * judgement about *why* an answer was rated badly then has to come from freeform prose in `notes`.
+ */
+export interface QueryFeedbackTrace {
+  evidence?: string
+  sourceCount: number
+  sourcePaths: string[]
+  noteCount: number
+  /** Prose claims the opt-in verify pass flagged as unsupported (#223), when it ran. */
+  unsupportedClaims?: string[]
+  /** True when the answer cited a file absent from the sources (#220/#221). */
+  hadUngroundedFiles?: boolean
+  answerError?: string
+}
+
 export interface QueryFeedbackRecord {
   /** ISO-8601 write timestamp, set by the store. */
   ts: string
+  /** Record shape. Absent on pre-enrichment records, which a reader must still handle. */
+  schemaVersion?: 2
   /** Where the feedback arrived from. MCP is the only writer today. */
   source: 'mcp'
   /** requestId of the submit_feedback call itself (joins its own RunReport line). */
@@ -37,8 +59,13 @@ export interface QueryFeedbackRecord {
   notes?: string
   /** The query question this feedback is about, as echoed by the agent. */
   query?: string
+  /** The answer that was rated, when the elicitation path captured it. */
+  answer?: string
   /** requestId of the specific query response this feedback answers, if any (joins its RunReport line). */
   requestId?: string
+  /** Base that served the rated answer — the signal a wrong-base report needs (#233). */
+  base?: string
+  trace?: QueryFeedbackTrace
   scores?: FeedbackScores
 }
 
