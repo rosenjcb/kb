@@ -644,7 +644,8 @@ export function createHttpServer(options: HttpServerOptions): Server {
           : {}),
         durationMs: Date.now() - ctx.startMs,
       })
-      sendJson(res, 200, serialized)
+      // Echo the served base so clients can detect silent wrong-base routing (#233).
+      sendJson(res, 200, { ...serialized, base: svc.health().base })
       // Retrieval succeeded and the caller still gets its sources, so this stays a 200 —
       // but recording it as a plain success would hide provider outages from telemetry
       // exactly when the RunReports are what you'd go looking at.

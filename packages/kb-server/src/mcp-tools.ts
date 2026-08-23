@@ -363,6 +363,9 @@ export async function dispatchMcpToolCall(
     // fact dump and retrieval metadata are opt-in via verbose.
     const body: Record<string, unknown> = {
       query: q,
+      // Echo the base that actually answered — agents otherwise cannot tell a
+      // sticky wrong-base session from a correct one (#233).
+      base: svc.health().base,
       ...(verbose
         ? serializeQueryResult(result, { sourceRepos })
         : serializeMcpQueryResult(result, { sourceRepos })),

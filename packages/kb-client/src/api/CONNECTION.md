@@ -78,6 +78,8 @@ The MCP URL follows the same connection profile as the CLI/TUI (`resolveServerCo
 | `kb mcp install --host … [--key …]` | Write Cursor/Claude `kb` → `${server}/mcp` (`--key`/`--api-key` sets the Bearer without exporting env) |
 | `kb mcp install` | Same, using the active connection (localhost default) |
 | `kb skills install` | Same MCP sync as `kb mcp install`, using the active connection |
+
+Each written entry includes **`X-KB-Base`** from `resolveActiveBaseName` (same resolution as the CLI: `KB_BASE` → `kb base use` → `default`). Without that header, MCP sessions bind the server boot base and can silently answer from the wrong index. A Bearer is included when an API key is configured.
 | Normal `kb` / TUI startup | **No** MCP rewrite — opt-in via `kb mcp install` / `kb skills install` only |
 | `kb mcp uninstall` / `kb skills uninstall` | Removes managed `kb` entries only |
 

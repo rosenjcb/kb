@@ -37,7 +37,7 @@ tests:
   - ../../../../tests/cli/uninstall-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
-timestamp: 2026-08-19T20:30:00Z
+timestamp: 2026-08-23T07:15:00Z
 ---
 
 ### Intro
@@ -71,7 +71,7 @@ See companion doc for full vocabulary where applicable.
 | FR-9 | Init collects source files from configured git targets |
 | FR-10 | Facts CLI parses list/read subcommands and retrieval flags |
 | FR-11 | Git sync pulls tracked repos and reports sync status |
-| FR-12 | Graph CLI exposes code-graph query and summary subcommands |
+| FR-12 | [UPDATED] Graph CLI exposes summary, entity lookup, format export, and `--file` index-coverage audit |
 | FR-13 | Init AST files manifest records parsed symbol files per cycle |
 | FR-14 | [UPDATED] Init pipeline runs multi-cycle scan, enrichment, and synthesis. `kb init`/`kb scan` are server-only (`POST /v1/admin/cli`, no TTY): there is no interactive prompting for a base name or a git remote — a missing base (on rescan) or a missing `--git` (on fresh init) is always a hard error, never a prompt |
 | FR-15 | Init source files manifest tracks cloned repo paths and branches |
@@ -421,6 +421,9 @@ See companion doc for full vocabulary where applicable.
 | TC-SKEB | FR-33 | --skip-embed parsing | sets skipEmbeddings true; absent it defaults false |
 | TC-EMSK | FR-33 | init with skipEmbeddings | create-embeddings completes without writing any vectors |
 | TC-9FQW | FR-33 | scanBaseRepos with skipEmbeddings | skips the embedder for both the per-repo reindex and the trailing embed pass |
+| TC-GF34 | FR-12 | [NEW] Given graph --file flag | parser returns file coverage options |
+| TC-CF34 | FR-12 | [NEW] path with file-level code_symbol | coverage report shows searchable symbols |
+| TC-CS34 | FR-12 | [NEW] code_file_state without searchable rows | GraphCommandError exit non-zero |
 
 ### Related docs
 

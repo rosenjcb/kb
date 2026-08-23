@@ -4,6 +4,7 @@
  * Usage:
  *   kb graph                        Summary (documents, symbols, links)
  *   kb graph --entity <name>        Matching documents + symbols
+ *   kb graph --file <relPath>       Index coverage for one source path
  *   kb graph --format json          Export the map as JSON
  *   kb graph --format dot           Export the map as DOT
  */
@@ -15,6 +16,8 @@ import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
 
 export interface GraphCommandOptions {
   entity?: string
+  /** Repo-relative path — report whether the index has searchable rows for it. */
+  file?: string
   pathFrom?: string
   pathTo?: string
   format?: 'dot' | 'json'
@@ -40,14 +43,19 @@ export function printGraphHelp(mode: CmdMode = 'cli'): string {
     'Inspect:',
     `  ${cmd('graph', mode)}`,
     `  ${cmd('graph --entity <name>', mode)}`,
+    `  ${cmd('graph --file <relPath>', mode)}`,
     `  ${cmd('graph --format dot|json', mode)}`,
     '',
     'Notes:',
     '  Surfaces the document ↔ code-symbol map (flat links, no edge traversal).',
+    `  ${cmd('graph --file', mode)} reports index coverage for one source path`,
+    '  (code_file_state / code_symbols / documents) and exits non-zero when the',
+    '  file has state but no searchable rows.',
     '',
     'Examples:',
     `  ${cmd('graph', mode)}`,
     `  ${cmd('graph --entity "SqliteKbIndexer"', mode)}`,
+    `  ${cmd('graph --file share/completions/scp.fish', mode)}`,
     `  ${cmd('graph --format json', mode)}`,
     `  ${cmd('graph --base dogfood --entity KB', mode)}`,
   ].join('\n')
@@ -63,6 +71,11 @@ export function parseGraphCommand(args: string[], mode: CmdMode = 'cli'): GraphC
   const entityIndex = args.indexOf('--entity')
   if (entityIndex !== -1 && args[entityIndex + 1]) {
     opts.entity = args[entityIndex + 1]
+  }
+
+  const fileIndex = args.indexOf('--file')
+  if (fileIndex !== -1 && args[fileIndex + 1]) {
+    opts.file = args[fileIndex + 1]
   }
 
   const pathIndex = args.indexOf('--path')
@@ -92,6 +105,46 @@ function countTable(db: DatabaseSync, sql: string): number {
   return (db.prepare(sql).get() as { n: number }).n
 }
 
+/**
+ * Index-coverage audit for one repo-relative path (#234). Reports whether
+ * `code_file_state`, `code_symbols`, and `documents` have rows for the path.
+ * Exits non-zero when state exists but nothing searchable was written — the
+ * text-only indexer trap that left `.fish` invisible to hybrid retrieval.
+ */
+function reportFileCoverage(db: DatabaseSync, rawPath: string, out: GraphOut): void {
+  const rel = rawPath.replace(/\\/g, '/').replace(/^\.\//, '')
+  const hasState =
+    db.prepare('SELECT 1 AS n FROM code_file_state WHERE file_path = ?').get(rel) !== undefined
+  const symbols = db
+    .prepare('SELECT name, kind FROM code_symbols WHERE rel_path = ? ORDER BY name')
+    .all(rel) as Array<{ name: string; kind: string }>
+  const hasDocument =
+    db.prepare('SELECT 1 AS n FROM documents WHERE rel_path = ?').get(rel) !== undefined
+
+  out.log(`Coverage for ${rel}:`)
+  out.log(`  code_file_state: ${hasState ? 'yes' : 'no'}`)
+  out.log(`  code_symbols:    ${symbols.length}`)
+  for (const row of symbols.slice(0, 20)) {
+    out.log(`    ${row.name} (${row.kind})`)
+  }
+  if (symbols.length > 20) out.log(`    … +${symbols.length - 20} more`)
+  out.log(`  documents:       ${hasDocument ? 'yes' : 'no'}`)
+
+  const searchable = symbols.length > 0 || hasDocument
+  if (!hasState && !searchable) {
+    throw new GraphCommandError(
+      `No index coverage for ${rel} — path unknown to code_file_state, code_symbols, and documents.`,
+      1
+    )
+  }
+  if (hasState && !searchable) {
+    throw new GraphCommandError(
+      `Indexed state exists for ${rel} but no searchable code_symbols/documents — re-index or check the text-only indexer path.`,
+      1
+    )
+  }
+}
+
 export async function runGraphCommand(
   baseDir: string,
   opts: GraphCommandOptions,
@@ -107,6 +160,11 @@ export async function runGraphCommand(
 
   const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
+    if (opts.file) {
+      reportFileCoverage(db, opts.file, out)
+      return
+    }
+
     if (opts.format === 'dot') {
       const rows = db
         .prepare(

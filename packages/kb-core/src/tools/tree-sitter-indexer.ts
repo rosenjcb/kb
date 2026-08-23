@@ -673,6 +673,21 @@ export class TreeSitterIndexer implements LanguageIndexer {
         }
       }
       if (!compiled) {
+        // Text-only allowlist (.fish, .yaml, …): discovery already ran, but hybrid
+        // retrieval only reads `code_symbols` / documents — a bare code_file_state
+        // row is invisible. Emit one file-level symbol so path/content queries hit.
+        const basename = path.basename(rel)
+        const capped =
+          src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+            ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+            : src
+        const sourceText = `${rel}\n${capped}`
+        await this.symbolIndexer.runInTransaction(() => {
+          this.symbolIndexer.deleteCodeSymbolsForFile(this.gitRepo ?? '', rel)
+          upsertCodeSymbol(this.symbolIndexer, rel, basename, 'file', sourceText, this.gitRepo)
+          stats.symbolKeys.add(codeSymbolKey(rel, basename))
+          stats.symbols++
+        })
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
         return
       }

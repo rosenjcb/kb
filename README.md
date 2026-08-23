@@ -49,7 +49,7 @@ kb          # chat with everything the server has read
 
 ## Quick start
 
-Three steps: install → start the server with your repos → ask something.
+Four steps: install → `kb-server init` → add repos and start → ask something.
 
 ### 1) Install
 
@@ -62,55 +62,70 @@ The script installs both `kb` (what you type) and `kb-server` (what does the hea
 
 Building from a git checkout instead? See [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md).
 
-### 2) Start the server
-
-The server needs an LLM API key to synthesize answers:
+### 2) Init the default base (`initdb`)
 
 ```bash
-export GEMINI_API_KEY=<your-key>    # or OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_ENDPOINT
-kb-server start --with-mcp
+kb-server init
 ```
 
-Leave that terminal running (or add `-d` to background it). It comes up on `localhost:38117` with a base named **`default`** — KB's built-in base, the way Postgres ships a `postgres` database. You never name a base just to start one. At this point `default` is **empty**: the server is up but has nothing indexed yet, and it will say so if you ask it something.
+This is the server's `initdb`: it prepares `KB_HOME` and materializes the reserved **`default`** base — a real directory with an empty, fully-migrated index (not a bare mkdir). `default` is a hardcoded constant (like Postgres's `postgres` database), not a name you configure. `kb-server start` self-heals into the same `default` even if you skip `init`, but running `init` first prints clear next steps.
 
-### 2b) Add your favorite repo
+A base with **no repos is useless for querying** until you attach at least one git remote.
 
-Point the `default` base at a repo and it starts archiving (clone → index; the first run takes a minute depending on repo size):
+### 3) Add repos, then start
 
 ```bash
+export GEMINI_API_KEY=<your-key>           # or OPENAI_API_KEY / ANTHROPIC_API_KEY / OLLAMA_ENDPOINT
+export KB_SERVER_API_KEY=<strong-token>    # required for /v1 and /mcp
+
 kb-server base add-repo --base default --git https://github.com/acme/auth-svc
+kb-server start --with-mcp                 # add -d to background
 ```
 
-The target base is always the explicit `--base` flag — no positional, no implicit default. Add more any time (pin a branch per repo with `<url>#branch`):
+Leave that terminal running. It listens on `localhost:38117`. The target base on operator commands is always the explicit `--base` flag. Pin a branch with `<url>#branch`; add more repos any time:
 
 ```bash
 kb-server base add-repo --base default --git https://github.com/acme/web#develop
 ```
 
-**Prefer to skip the empty state?** Pass the repos right at boot — same result:
+**Server vs client env (do not mix them):**
+
+| Role | Env / flag | Purpose |
+|------|------------|---------|
+| Server | `KB_SERVER_BASE_NAME` / `--base` | Which base this daemon boots (else `default`) |
+| Server | `KB_SERVER_BASE_GIT_REPOS` / `--git` | Repos to clone+index at boot |
+| Client | `KB_BASE` / `--base` / `kb base use` | Which base *this request* queries (`X-KB-Base`) |
+
+Never set `KB_BASE` / `KB_GIT_REPOS` expecting the daemon to read them — those are client-scoped.
+
+**Prefer repos at boot (containers/CI)?** Same result without `add-repo` first:
 
 ```bash
-kb-server start --git https://github.com/acme/auth-svc --with-mcp
+export KB_SERVER_BASE_GIT_REPOS=https://github.com/acme/auth-svc
+kb-server start --with-mcp
+# or: kb-server start --git https://github.com/acme/auth-svc --with-mcp
 ```
 
-**Want a separate, named base** (kept apart from `default`)? Create it with at least one repo, then query it with `--base`:
+**Want a separate named base?** Create it with at least one repo, then point the **client** at it:
 
 ```bash
 kb-server base create --base acme --git https://github.com/acme/auth --git https://github.com/acme/web#develop
-kb-server base list          # see every base on this server
+kb-server base list
+kb --base acme query "how does auth work?"
+# or: kb base use acme
 ```
 
-Base lifecycle — `create`, `add-repo`, `list`, `delete` — is an **operator** job on `kb-server`. The `kb` client can only *switch* which base it talks to (`kb base use <name>`), never create or delete one. In containers you can also declare the default base's repos with `KB_SERVER_BASE_GIT_REPOS` instead of flags. Details: [`packages/kb-core/src/core/INIT.md`](packages/kb-core/src/core/INIT.md).
+Base lifecycle (`init`, `create`, `add-repo`, `list`, `delete`) is an **operator** job on `kb-server`. The `kb` client only *switches* which base it talks to. Details: [`packages/kb-server/src/SERVER.md`](packages/kb-server/src/SERVER.md#multi-base-one-process-many-bases).
 
-### 3) Ask something
+### 4) Ask something
 
-No client setup — `kb` talks to `localhost:38117` by default. Sanity-check with one question:
+`kb` talks to `localhost:38117` and always sends `X-KB-Base` (falling back to `default`). Sanity-check:
 
 ```bash
 kb query "how does authentication work?"
 ```
 
-You should get an answer plus a list of source facts. If that works, you're live.
+You should get an answer plus source citations. For agents, `kb mcp install` pins the same host **and** active base into Cursor/Claude MCP config.
 
 **Try chat mode**, the thing most people stick with:
 

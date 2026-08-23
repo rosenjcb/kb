@@ -497,7 +497,7 @@ describe('TreeSitterIndexer — HTML', () => {
 })
 
 describe('TreeSitterIndexer — text fallback', () => {
-  it('[TC-ATAZ] creates a code_file_state entry for non-code files without extracting symbols', async () => {
+  it('[TC-ATAZ] creates code_file_state plus a file-level code_symbol for text-only files', async () => {
     await writeFile(join(repoRoot, 'README.md'), '# Hello\nThis is a readme.')
     await writeFile(join(repoRoot, 'config.yaml'), 'key: value\nother: 123')
 
@@ -507,13 +507,46 @@ describe('TreeSitterIndexer — text fallback', () => {
     factIndexer.close()
 
     expect(stats.files).toBe(2)
-    expect(stats.symbols).toBe(0)
+    expect(stats.symbols).toBe(2)
     expect(stats.errors).toBe(0)
 
     const db = new Database(dbPath)
     runMigrations(db)
     expect(queryCodeFileState(db, 'README.md')).toBe(true)
     expect(queryCodeFileState(db, 'config.yaml')).toBe(true)
+    expect(querySymbol(db, 'README.md', 'README.md')).toBe(true)
+    expect(querySymbolKind(db, 'README.md', 'README.md')).toBe('file')
+    expect(querySymbol(db, 'config.yaml', 'config.yaml')).toBe(true)
+    expect(querySymbolKind(db, 'config.yaml', 'config.yaml')).toBe('file')
+    db.close()
+  })
+
+  it('[TC-F234] indexes share/completions/*.fish as searchable file-level symbols', async () => {
+    await mkdir(join(repoRoot, 'share', 'completions'), { recursive: true })
+    await writeFile(
+      join(repoRoot, 'share', 'completions', 'scp.fish'),
+      'complete -c scp -a "(__fish_complete_path)"\n'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    const stats = await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    expect(stats.files).toBe(1)
+    expect(stats.symbols).toBe(1)
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const rel = 'share/completions/scp.fish'
+    expect(queryCodeFileState(db, rel)).toBe(true)
+    expect(querySymbol(db, 'scp.fish', rel)).toBe(true)
+    expect(querySymbolKind(db, 'scp.fish', rel)).toBe('file')
+    const row = db
+      .prepare('SELECT source_text FROM code_symbols WHERE name = ? AND rel_path = ?')
+      .get('scp.fish', rel) as { source_text: string }
+    expect(row.source_text).toContain('complete -c scp')
+    expect(row.source_text).toContain(rel)
     db.close()
   })
 
@@ -549,7 +582,8 @@ describe('TreeSitterIndexer — text fallback', () => {
     factIndexer.close()
 
     expect(stats.files).toBe(2)
-    expect(stats.symbols).toBe(1) // only Run() from Go
+    // Go export + README.md file-level symbol
+    expect(stats.symbols).toBe(2)
     expect(stats.errors).toBe(0)
   })
 
@@ -597,14 +631,19 @@ describe('TreeSitterIndexer — text fallback', () => {
     factIndexer.close()
 
     expect(stats.files).toBe(3)
-    expect(stats.symbols).toBe(0)
+    // Text-only path now emits one file-level code_symbol per file (#234).
+    expect(stats.symbols).toBe(3)
     expect(stats.errors).toBe(0)
 
     const db = new Database(dbPath)
     runMigrations(db)
     expect(queryCodeFileState(db, 'src/Empty.vue')).toBe(true)
+    expect(querySymbol(db, 'Empty.vue', 'src/Empty.vue')).toBe(true)
+    expect(querySymbolKind(db, 'Empty.vue', 'src/Empty.vue')).toBe('file')
     expect(queryCodeFileState(db, 'src/Page.astro')).toBe(true)
+    expect(querySymbol(db, 'Page.astro', 'src/Page.astro')).toBe(true)
     expect(queryCodeFileState(db, 'src/Legacy.svlete')).toBe(true)
+    expect(querySymbol(db, 'Legacy.svlete', 'src/Legacy.svlete')).toBe(true)
     db.close()
   })
 

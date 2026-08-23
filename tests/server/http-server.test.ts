@@ -108,7 +108,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(401)
   })
 
-                it('[TC-BY16] answers /v1/query with a serialized body when authorized', async () => {
+                it('[TC-H233][TC-BY16] answers /v1/query with a serialized body when authorized', async () => {
     server = createHttpServer({ service: makeStubService(), apiKeys: ['secret'] })
     const base = await listen(server)
     const res = await fetch(`${base}/v1/query`, {
@@ -119,6 +119,7 @@ describe('createHttpServer', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.answer).toBe('answer for: how does auth work')
+    expect(body.base).toBe('base')
     // Default is the lean agent payload — no fact dump or retrieval telemetry.
     expect(body.sources).toEqual([
       { path: 'src/docs/auth.md', relPath: 'src/docs/auth.md', symbols: ['AuthDoc'] },

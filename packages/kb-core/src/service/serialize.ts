@@ -429,6 +429,15 @@ export function serializeQueryResult(
     hasSources: sources.length > 0,
   })
 
+  // Empty-base (and other intent-level) explanations used to stay CLI-only —
+  // REST/MCP saw a hollow "no evidence" payload. Surface them as notes so an
+  // agent can tell "this base has no index" from "retrieval found nothing".
+  if (result.explanation?.trim()) {
+    notes.push(result.explanation.trim())
+    const action = result.recommendedAction?.trim()
+    if (action) notes.push(action)
+  }
+
   return {
     status: result.status,
     answer,

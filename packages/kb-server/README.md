@@ -127,6 +127,10 @@ through an in-memory auth header, so cloned repos do not need tokenized remotes.
 
 ### Managing bases (operator commands)
 
+On a fresh volume, run `kb-server init` first (or let `start` self-heal) so the reserved
+`default` base exists as a real empty migrated index. A base with no repos cannot answer
+queries — add at least one with `add-repo` (or set `KB_SERVER_BASE_GIT_REPOS` / `--git` at boot).
+
 Base lifecycle lives on `kb-server`, never on the `kb` client (the client can only
 *switch* bases with `kb base use <name>`). The server always comes up with a built-in
 **`default`** base — it may start empty, and any interaction with an empty base returns a

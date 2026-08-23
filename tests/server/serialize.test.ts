@@ -357,6 +357,28 @@ describe('findUngroundedFileReferences', () => {
   })
 })
 
+describe('empty-base explanation on the wire', () => {
+  it('[TC-E233] surfaces IntentResult.explanation and recommendedAction as notes for agents', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'uncertain',
+        evidence: 'none',
+        explanation: 'This base ("default") is empty — no repositories have been indexed yet.',
+        recommendedAction:
+          'An operator can add one on the server: `kb-server base add-repo --base default --git <url>`.',
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.answer).toBeNull()
+    expect(body.evidence).toBe('none')
+    expect(body.notes).toEqual([
+      'Retrieval evidence was none — verify the cited sources before relying on this answer.',
+      'This base ("default") is empty — no repositories have been indexed yet.',
+      'An operator can add one on the server: `kb-server base add-repo --base default --git <url>`.',
+    ])
+  })
+})
+
 describe('synthesis failure surfacing', () => {
   const failure = {
     stage: 'synthesis',

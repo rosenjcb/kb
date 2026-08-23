@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.7
+
+### Patch Changes
+
+- Fix silent wrong-base routing (#233), text-only indexer coverage for `.fish` (#234), and surface empty-base notes on the wire. MCP install now pins `X-KB-Base`; query responses echo the served base; text-only files emit searchable file-level symbols; `kb graph --file` audits coverage.
+
 ## 2.0.6
 
 ### Patch Changes
