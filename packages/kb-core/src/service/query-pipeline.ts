@@ -37,11 +37,6 @@ import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
 import { inferQueryScope, type ScopeVerdict } from '@kb/core/query/scope-inference.js'
 import { buildInquiryLanes } from '@kb/core/query/inquiry-lanes.js'
 import { shouldVerifyClaims, verifyAnswerClaims } from '@kb/core/query/claim-verification.js'
-import {
-  detectDecoyPairs,
-  formatDecoyGuidance,
-  isDecoyGuardEnabled,
-} from '@kb/core/tools/decoy-detection.js'
 import { isEvidenceLabel } from '@kb/core/core/evidence-label.js'
 
 export interface QueryPipelineDeps {
@@ -296,32 +291,6 @@ export async function runQueryPipeline(
     }
   }
 
-  // Near-duplicate guard (#227): two similarly-named things from different modules can both
-  // survive curation, and synthesis has no way to know they are distinct. Purely additive — this
-  // reads the kept set and adds an instruction; retrieval and ranking are untouched.
-  let decoyPairs: ReturnType<typeof detectDecoyPairs> = []
-  if (isDecoyGuardEnabled() && isReadFactsResult(aligned)) {
-    const data = (aligned.data ?? {}) as ReadDocumentsResultData
-    decoyPairs = detectDecoyPairs(Array.isArray(data.results) ? data.results : [])
-    // Stamp the count even when zero: on the detail string, an absent `decoys:` means the guard
-    // was off, `decoys:0` means it ran and found nothing. Collapsing those two makes a null
-    // result unreadable.
-    const decoyDetail = [data.retrieval?.detail, `decoys:${decoyPairs.length}`]
-      .filter(Boolean)
-      .join(';')
-    aligned = {
-      ...aligned,
-      data: {
-        ...data,
-        retrieval: {
-          ...data.retrieval,
-          detail: decoyDetail,
-          ...(decoyPairs.length > 0 ? { decoys: decoyPairs } : {}),
-        },
-      },
-    }
-  }
-
   const shouldSynthesize = params.synthesize !== false
   if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
     const enrichStarted = Date.now()
@@ -329,7 +298,6 @@ export async function runQueryPipeline(
     const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider, undefined, undefined, {
       graphRelationContext,
       synthesisQuestion,
-      ...(decoyPairs.length > 0 ? { contrastNote: formatDecoyGuidance(decoyPairs) } : {}),
     })
     recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
 

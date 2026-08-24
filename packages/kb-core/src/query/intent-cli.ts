@@ -447,12 +447,6 @@ export async function enrichReadDocumentsAnswerWithLLM(
   options?: {
     graphRelationContext?: string
     synthesisQuestion?: string
-    /**
-     * Warning that the evidence holds similarly-named things from different places. Rendered as
-     * its own block — folding it into `graphRelationContext` would file it under the graph-path
-     * header and present a disambiguation warning as a derived relationship.
-     */
-    contrastNote?: string
     /** Stream the model's reasoning tokens for a transient "loading" display. */
     onReasoning?: (delta: string) => void
   }
@@ -487,8 +481,6 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const proceduralGuidance = isProceduralQuestion(question) ? PROCEDURAL_SYNTHESIS_GUIDANCE : ''
 
-    const contrastNote = options?.contrastNote?.trim() ?? ''
-
     const negativeClaimGuidance =
       isNegativeClaimGuardEnabled() && detectCausalTarget(question)
         ? NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE
@@ -502,7 +494,6 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'If the question asks kb to perform a capability it does not have (provision infrastructure, deploy unrelated services, etc.), lead with a brief boundary answer — do not substitute a long guide to a different task just because retrieved facts share words like "deploy" or "kubernetes".',
       ...(proceduralGuidance ? ['', proceduralGuidance] : []),
       ...(negativeClaimGuidance ? ['', negativeClaimGuidance] : []),
-      ...(contrastNote ? ['', contrastNote] : []),
       '',
       `Question: ${question}`,
       graphSection,
