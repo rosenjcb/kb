@@ -1,5 +1,6 @@
 import type { EvidenceLabel } from '../core/evidence-label'
 import { isOpenableSourcePath } from '../core/fact-uri'
+import { isEnvFalse } from '../config/env-boolean.js'
 import { splitMarkdownSections } from '../core/markdown-sections.js'
 import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
@@ -1105,7 +1106,12 @@ export class SqliteKbIndexer {
       // search joins back to `documents`, so several rows per document resolve to the same cited
       // file — the retrieval unit shrinks without the citation surface changing at all.
       const insertFts = this.db.prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
-      const sections = splitMarkdownSections(input.body)
+      // Temporary A/B scaffolding (#217 pt2): `KB_INDEX_MARKDOWN_SECTIONS=false` restores the
+      // pre-chunking one-row-per-file behavior so a rebuilt index can be measured against the
+      // chunked one. Delete this branch once chunking is confirmed or reverted.
+      const sections = isEnvFalse(process.env.KB_INDEX_MARKDOWN_SECTIONS)
+        ? [{ heading: '', text: input.body }]
+        : splitMarkdownSections(input.body)
       if (sections.length === 0) {
         insertFts.run(id, input.title)
       } else {
