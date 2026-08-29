@@ -101,3 +101,34 @@ describe('hybrid-retriever', () => {
     expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
   })
 })
+
+describe('named-symbol lane (#238)', () => {
+  afterEach(() => {
+    process.env.KB_QUERY_SYMBOL_LANE = undefined
+  })
+
+  it('[TC-SYL1] Given the lane is off, then detail omits named= entirely so "off" stays distinguishable from "ran, matched nothing"', () => {
+    process.env.KB_QUERY_SYMBOL_LANE = undefined
+    const { detail } = retrieveHybrid(indexer, { query: 'AuthService login' })
+    expect(detail).not.toContain('named=')
+  })
+
+  it('[TC-SYL2] Given the lane is on and the query names a declaration, then the declaring file is retrieved and counted', () => {
+    process.env.KB_QUERY_SYMBOL_LANE = 'true'
+    const { units, detail } = retrieveHybrid(indexer, { query: 'what does AuthService do?' })
+    expect(detail).toMatch(/named=[1-9]/)
+    expect(units.some(u => u.metadata.sourcePath === 'demo/src/auth.ts')).toBe(true)
+  })
+
+  it('[TC-SYL3] Given the lane is on and the query names nothing declared, then it reports zero rather than going absent', () => {
+    process.env.KB_QUERY_SYMBOL_LANE = 'true'
+    const { detail } = retrieveHybrid(indexer, { query: 'wombat marsupial burrows' })
+    expect(detail).toContain('named=0')
+  })
+
+  it('[TC-SYL4] Given a lowercase prose mention of a CamelCase declaration, then it still resolves', () => {
+    process.env.KB_QUERY_SYMBOL_LANE = 'true'
+    const { units } = retrieveHybrid(indexer, { query: 'how does the authservice issue tokens?' })
+    expect(units.some(u => u.metadata.sourcePath === 'demo/src/auth.ts')).toBe(true)
+  })
+})

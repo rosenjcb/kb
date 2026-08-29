@@ -12,7 +12,9 @@
  * densely the index happens to be connected.
  */
 
+import { isEnvTrue } from '../config/env-boolean'
 import { formatFactUri, sourceRefToPath } from '../core/fact-uri'
+import { extractSymbolMentions } from '../query/symbol-mentions'
 import {
   type CodeSymbolRow,
   DOCUMENT_CONTENT_MAX_CHARS,
@@ -23,6 +25,14 @@ import {
 
 /** Default number of retrieved units handed to synthesis. */
 export const DEFAULT_FACT_LIMIT = 40
+
+/**
+ * Temporary A/B flag for the named-symbol lane (#238). Remove once the measured
+ * delta decides it — see CLAUDE.md's flag-first-then-remove rule.
+ */
+function symbolLaneEnabled(): boolean {
+  return isEnvTrue(process.env.KB_QUERY_SYMBOL_LANE)
+}
 
 /** Standard RRF damping constant — high enough that rank 1 does not dominate the fusion. */
 const RRF_K = 60
@@ -205,6 +215,20 @@ export function retrieveHybrid(
   fuseLane(fused, 'symbol', lexicalSymbols.map(r => r.id))
   fuseLane(fused, 'fact', lexicalFacts.map(r => r.id))
 
+  // Named-symbol lane: when the question names a declaration, look it up by name
+  // rather than hoping BM25 ranks it. This is a fused lane, not a filter — a
+  // wrong name costs rank positions, never evidence.
+  let namedSymbolCount: number | null = null
+  if (symbolLaneEnabled()) {
+    const mentions = extractSymbolMentions(query)
+    const named = mentions.length
+      ? indexer.findCodeSymbolsByName(mentions.map(m => m.name))
+      : []
+    for (const row of named) symbols.set(row.id, row)
+    fuseLane(fused, 'symbol', named.map(r => r.id))
+    namedSymbolCount = named.length
+  }
+
   // Neural lanes re-rank the lexical pool rather than scanning every embedding: cosine over
   // the whole index would be a full table scan per query, and a unit no lane surfaced at all
   // is not one RRF would have promoted anyway.
@@ -277,7 +301,11 @@ export function retrieveHybrid(
 
   return {
     units,
-    detail: `hybrid:docs=${counts.document},symbols=${counts.symbol},facts=${counts.fact},hops=${hops}`,
+    // `named=` is omitted entirely when the lane is off, so "ran and matched
+    // nothing" stays distinguishable from "never ran" (#238).
+    detail: `hybrid:docs=${counts.document},symbols=${counts.symbol},facts=${counts.fact},hops=${hops}${
+      namedSymbolCount === null ? '' : `,named=${namedSymbolCount}`
+    }`,
     counts,
   }
 }

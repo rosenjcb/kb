@@ -1292,6 +1292,34 @@ export class SqliteKbIndexer {
     return true
   }
 
+  /**
+   * Look up declarations by exact name, case-insensitively.
+   *
+   * FTS ranks a name against prose; this answers "is there a declaration
+   * actually called this?", which is a different question and the one a query
+   * naming `ExecutionController` is really asking. Backed by
+   * `idx_code_symbols_name`.
+   *
+   * Rows come back grouped by input name so a caller can keep per-name caps and
+   * stop one popular identifier from filling the lane.
+   */
+  findCodeSymbolsByName(names: string[], perName = 4): CodeSymbolRow[] {
+    const wanted = [...new Set(names.map(n => n.trim()).filter(Boolean))]
+    if (wanted.length === 0) return []
+    const out: CodeSymbolRow[] = []
+    const stmt = this.db.prepare(
+      `SELECT ${CODE_SYMBOL_ROW_SELECT_S}
+       FROM code_symbols s
+       WHERE s.name = ? COLLATE NOCASE
+       ORDER BY length(s.rel_path)
+       LIMIT ?`
+    )
+    for (const name of wanted) {
+      out.push(...(stmt.all(name, perName) as unknown as CodeSymbolRow[]))
+    }
+    return out
+  }
+
   searchCodeSymbolsFts(query: string, limit = 20): CodeSymbolRow[] {
     const ftsQuery = buildFtsQuery(query)
     if (!ftsQuery) return []

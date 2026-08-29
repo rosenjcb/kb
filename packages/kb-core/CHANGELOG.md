@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.9
+
+### Patch Changes
+
+- Add a temporary named-symbol retrieval lane behind `KB_QUERY_SYMBOL_LANE` (default off) for the #238 A/B: when a question names a declaration, look it up in `code_symbols` by name and fuse it as an extra ranked lane rather than relying on BM25 over prose.
+
 ## 2.0.8
 
 ### Patch Changes
