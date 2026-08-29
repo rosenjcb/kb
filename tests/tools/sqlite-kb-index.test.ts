@@ -543,3 +543,54 @@ describe('SQLite KB index integration', () => {
     indexer.close()
   })
 })
+
+describe('findCodeSymbolsByName (#238)', () => {
+  it('[TC-SYN1] Given several mentions, then rows interleave round-robin so every name gets a top slot', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-named-'))
+    const idx = new SqliteKbIndexer({ dbPath: path.join(dir, '.kb-index.sqlite') })
+    try {
+      // `Popular` has many declarations; `Rare` has one. Concatenating would
+      // bury `Rare` behind all four `Popular` rows — the kestra Q6 failure.
+      for (const p of ['a/one.ts', 'b/two.ts', 'c/three.ts', 'd/four.ts']) {
+        idx.upsertCodeSymbol({ gitRepo: 'demo', relPath: p, name: 'Popular', kind: 'class' })
+      }
+      idx.upsertCodeSymbol({ gitRepo: 'demo', relPath: 'z/rare.ts', name: 'Rare', kind: 'class' })
+
+      const rows = idx.findCodeSymbolsByName(['Popular', 'Rare'])
+      expect(rows[1]?.name).toBe('Rare')
+      expect(rows.filter(r => r.name === 'Popular')).toHaveLength(4)
+    } finally {
+      idx.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('[TC-SYN2] Given a lowercase mention of a CamelCase declaration, then it resolves case-insensitively', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-named-'))
+    const idx = new SqliteKbIndexer({ dbPath: path.join(dir, '.kb-index.sqlite') })
+    try {
+      idx.upsertCodeSymbol({
+        gitRepo: 'demo',
+        relPath: 'core/Scheduler.java',
+        name: 'Scheduler',
+        kind: 'class',
+      })
+      expect(idx.findCodeSymbolsByName(['scheduler'])[0]?.rel_path).toBe('core/Scheduler.java')
+    } finally {
+      idx.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('[TC-SYN3] Given no names, then the lookup is skipped entirely', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'kb-named-'))
+    const idx = new SqliteKbIndexer({ dbPath: path.join(dir, '.kb-index.sqlite') })
+    try {
+      expect(idx.findCodeSymbolsByName([])).toEqual([])
+      expect(idx.findCodeSymbolsByName(['  '])).toEqual([])
+    } finally {
+      idx.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

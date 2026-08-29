@@ -1300,13 +1300,18 @@ export class SqliteKbIndexer {
    * naming `ExecutionController` is really asking. Backed by
    * `idx_code_symbols_name`.
    *
-   * Rows come back grouped by input name so a caller can keep per-name caps and
-   * stop one popular identifier from filling the lane.
+   * Rows are interleaved round-robin across the input names, so every distinct
+   * mention contributes a top-ranked row before any name contributes a second.
+   * Concatenating instead would let one popular identifier's four matches push
+   * a more specific mention out of rank range: measured on `kestra` Q6, the
+   * gold `Scheduler.java` landed at citation rank 13 under concatenation.
+   *
+   * `names` is expected most-confident-first; ties resolve toward the shallower
+   * path, which favours a declaration over a test or generated mirror of it.
    */
   findCodeSymbolsByName(names: string[], perName = 4): CodeSymbolRow[] {
     const wanted = [...new Set(names.map(n => n.trim()).filter(Boolean))]
     if (wanted.length === 0) return []
-    const out: CodeSymbolRow[] = []
     const stmt = this.db.prepare(
       `SELECT ${CODE_SYMBOL_ROW_SELECT_S}
        FROM code_symbols s
@@ -1314,8 +1319,15 @@ export class SqliteKbIndexer {
        ORDER BY length(s.rel_path)
        LIMIT ?`
     )
-    for (const name of wanted) {
-      out.push(...(stmt.all(name, perName) as unknown as CodeSymbolRow[]))
+    const perNameRows = wanted.map(
+      name => stmt.all(name, perName) as unknown as CodeSymbolRow[]
+    )
+    const out: CodeSymbolRow[] = []
+    for (let depth = 0; depth < perName; depth++) {
+      for (const rows of perNameRows) {
+        const row = rows[depth]
+        if (row) out.push(row)
+      }
     }
     return out
   }
