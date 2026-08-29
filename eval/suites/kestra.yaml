@@ -39,35 +39,70 @@ shapes:
 
 # Graded retrieval gold citation sets (#237). Hand-annotated from answer keys / issue #216 session.
 gold_files:
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - - path: ui/src/components/flows/FlowCreate.vue
+  - - path: README.md
       role: must_open
-      symbol: handleImportSubmit
-    - path: ui/src/components/flows/create/ImportYaml.vue
+    - path: core/src/main/java/io/kestra/core/models/flows/Flow.java
+      role: must_open
+  - - path: settings.gradle
+      role: must_open
+    - path: README.md
       role: supporting
-  - - path: ui/src/components/flows/FlowCreate.vue
+  - - path: ui/src/components/inputs/LowCodeEditor.vue
       role: must_open
-      symbol: handleImportSubmit
-    - path: ui/src/components/flows/create/ImportYaml.vue
-      role: must_open
-  - - path: ui/src/components/flows/FlowCreate.vue
-      role: must_open
-      symbol: handleImportSubmit
     - path: ui/src/components/flows/MultiPanelFlowEditorView.vue
       role: supporting
+  - - path: webserver/src/main/java/io/kestra/webserver/controllers/api/ExecutionController.java
+      role: must_open
+    - path: executor/src/main/java/io/kestra/executor/DefaultExecutor.java
+      role: must_open
+    - path: core/src/main/java/io/kestra/core/runners/Worker.java
+      role: supporting
+  - - path: core/src/main/java/io/kestra/core/plugins/PluginRegistry.java
+      role: must_open
+    - path: webserver/src/main/java/io/kestra/webserver/controllers/api/PluginController.java
+      role: supporting
+  - - path: core/src/main/java/io/kestra/core/runners/Scheduler.java
+      role: must_open
+    - path: ui/src/components/flows/FlowTriggers.vue
+      role: supporting
+  - - path: ui/src/components/executions/Gantt.vue
+      role: must_open
+    - path: ui/src/components/executions/Logs.vue
+      role: supporting
+  - - path: cli/src/main/java/io/kestra/cli/commands/servers/LocalCommand.java
+      role: must_open
+    - path: cli/src/main/java/io/kestra/cli/commands/servers/StandAloneCommand.java
+      role: supporting
+  - - path: webserver/src/main/java/io/kestra/webserver/controllers/api/ExecutionController.java
+      role: must_open
+  - - path: webserver/src/main/java/io/kestra/webserver/controllers/api/ConcurrencyLimitController.java
+      role: must_open
+    - path: executor/src/main/java/io/kestra/executor/ConcurrencyLimitStateStore.java
+      role: supporting
+  # Q11-Q13: Import-YAML probes. Repaired against the indexed revision e77ad77 —
+  # ui/src/components/flows/create/ImportYaml.vue and FlowCreate.vue's
+  # handleImportSubmit no longer exist upstream, so the old labels were
+  # unreachable and capped recall by construction rather than measuring kb.
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+    - path: ui/src/stores/flow.ts
+      role: supporting
+  # Q12 asks where the Vue UI implements Import. At e77ad77 that is the file
+  # input in Flows.vue and importFlows() in useFlowsBulkActions.ts. The decoy is
+  # still the server-side bulk-import API, which stays out of the gold set.
+  - - path: ui/src/components/flows/Flows.vue
+      role: must_open
+    - path: ui/src/components/flows/useFlowsBulkActions.ts
+      role: must_open
+    - path: ui/src/components/flows/FlowCreate.vue
+      role: supporting
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+    - path: ui/src/components/flows/MultiPanelFlowEditorView.vue
+      role: must_open
     - path: ui/src/stores/flow.ts
       role: supporting
 
-# Q13 is the causal / negative-claim shape ("could the YAML import path leave Save disabled").
 gold_scope:
   - null
   - null
