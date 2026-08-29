@@ -57,6 +57,37 @@ Optional companions (same positional length):
 Every artifact also records `index_fingerprint` (doc/symbol counts + db mtime) and
 warns on `binary_source_skew` when `packages/*/dist` is older than `packages/*/src`.
 
+### Annotation discipline
+
+**Never source gold labels from a kb answer.** kb's pipeline — retrieve, LLM-judge
+relevance, answer under budget — is structurally the same as the pipeline that would
+mint the labels, so labels taken from its curator encode its blind spots as the answer
+key and make the very defects the axis exists to catch invisible by construction.
+Annotate from the repository, the originating bug, or a PR patch. Leave a question
+`null` rather than guess: a wrong answer key is worse than a missing one, and both
+"no single owning file" and "the correct answer is a refusal" are legitimate reasons to
+skip a question permanently.
+
+**Validate paths against the checkout, not against today's `main`.** A gold path that
+is not in the indexed tree can never be recovered, so it silently caps recall and
+reports annotation drift as a kb failure:
+
+```bash
+node scripts/eval-retrieval-replay.mjs --suite kestra --latest --validate-gold
+```
+
+This is not hypothetical. `kestra.yaml` carried
+`ui/src/components/flows/create/ImportYaml.vue` after upstream had deleted it; Q12
+reported `R@10=0.50` when kb had in fact recovered every file that existed. Vendored
+suites track a moving upstream, so re-run the check whenever the clone is refreshed.
+
+**Report `questions_with_gold` beside every retrieval number.** The axis is
+deterministic, which makes it read as authoritative — and that is exactly why a narrow
+gold set is dangerous. With 3 annotated questions the `kb` suite reported `R@10=0.000`
+across six runs with zero variance; at 23 questions the same artifacts report `0.3696`.
+Zero variance is not zero uncertainty. This is the retrieval-axis counterpart to
+reporting `result_count` beside every cost number.
+
 ### Why a deterministic axis (noise floor)
 
 Identical config, same index, same binary can still move LLM-judge correctness by
