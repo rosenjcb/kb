@@ -446,6 +446,17 @@ export function buildControlComparison(kbAggregate, control) {
     k.pass_rate_quality_axes_at_least_3 != null || c.pass_rate_quality_axes_at_least_3 != null
       ? 'pass_rate_quality_axes_at_least_3'
       : 'pass_rate_correctness_and_usefulness_at_least_3'
+
+  const kRet = k.graded_retrieval ?? null
+  const cRet = c.graded_retrieval ?? null
+  const kCost = k.retrieval_cost ?? null
+  const cCost = c.retrieval_cost ?? null
+  const retAxis = (objK, objC, key) => ({
+    kb: objK?.[key] ?? null,
+    control: objC?.[key] ?? null,
+    delta_kb_minus_control: delta(objK?.[key], objC?.[key]),
+  })
+
   return {
     success_score: axis('success_score'),
     token_efficiency: axis('token_efficiency'),
@@ -458,5 +469,16 @@ export function buildControlComparison(kbAggregate, control) {
     mean_specificity: axis('mean_specificity'),
     mean_evidence_handling: axis('mean_evidence_handling'),
     control_efficiency: control?.control_telemetry ?? null,
+    // Graded retrieval (gold citations) — reported beside ΔS; not folded into S.
+    graded_retrieval: {
+      mean_recall_at_k: retAxis(kRet, cRet, 'mean_recall_at_k'),
+      mean_precision_at_k: retAxis(kRet, cRet, 'mean_precision_at_k'),
+      mean_mrr: retAxis(kRet, cRet, 'mean_mrr'),
+      mean_ndcg_at_k: retAxis(kRet, cRet, 'mean_ndcg_at_k'),
+    },
+    retrieval_cost: {
+      tokens_per_must_open_file: retAxis(kCost, cCost, 'tokens_per_must_open_file'),
+      wasted_budget_share: retAxis(kCost, cCost, 'wasted_budget_share'),
+    },
   }
 }

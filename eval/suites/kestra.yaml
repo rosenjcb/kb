@@ -36,6 +36,68 @@ shapes:
   - investigative
   - investigative
   - investigative
+
+# Graded retrieval gold citation sets (#237). Hand-annotated from answer keys / issue #216 session.
+gold_files:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/create/ImportYaml.vue
+      role: supporting
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/create/ImportYaml.vue
+      role: must_open
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/MultiPanelFlowEditorView.vue
+      role: supporting
+    - path: ui/src/stores/flow.ts
+      role: supporting
+
+# Q13 is the causal / negative-claim shape ("could the YAML import path leave Save disabled").
+gold_scope:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+
+probes:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - decoy_guard
+  - - decoy_guard
+  - - causal_guard
+    - decoy_guard
 answers:
   - >
     Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure

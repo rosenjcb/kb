@@ -357,3 +357,102 @@ shapes:
   - investigative
   - investigative
   - investigative
+
+# Graded retrieval gold citation sets (#237). Positional like shapes:; null = skip axis.
+# Hand-annotated from answer keys (not from kb's own curator). Investigative probes first.
+gold_files:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+  - - path: packages/kb-server/src/mcp-tools.ts
+      role: must_open
+      symbol: registry.resolve
+    - path: packages/kb-core/src/service/serialize.ts
+      role: supporting
+  - - path: packages/kb-core/src/tools/hybrid-retriever.ts
+      role: must_open
+      symbol: fuseLane
+    - path: packages/kb-core/src/tools/sqlite-kb-index.ts
+      role: must_open
+      symbol: searchCodeSymbolsFts
+
+# Expected scope landings (#237 follow-up). Q24's answer lives in kb-server — if scope
+# lands on @kb/client, recall@k is capped before ranking runs.
+gold_scope:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - "@kb/core"
+  - - "@kb/server"
+  - - "@kb/core"
+
+# Which mechanisms each question is designed to exercise. Lets the harness report
+# "feature X fired on 0 of N target questions" instead of averaging a non-experiment.
+probes:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - text_only_index
+  - - wrong_base
+    - scope_inference
+  - - unit_size_bias
+    - decoy_guard

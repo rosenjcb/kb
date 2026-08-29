@@ -34,6 +34,33 @@ describes.  This captures the doc/code correspondence that flat chunk RAG misses
 while keeping retrieval a single bounded pass rather than an unbounded graph
 traversal.
 
+\subsection{Code Localization and Retrieval Benchmarks}
+
+A separate tradition grades the \emph{ranked list} itself rather than the
+synthesized answer.  LocAgent~/~LocBench~\cite{chen2025locagent} and
+MULocBench~\cite{jiang2025mulocbench} score Acc@$k$, recall, precision, MAP, and
+NDCG against the files (and often classes/functions) touched by the resolving PR;
+MULocBench additionally breaks out non-code targets (config, docs, tests).
+CoIR~\cite{li2025coir} and CodeRAG-Bench~\cite{wang2024coderag} report NDCG and
+Recall@$k$ over text$\leftrightarrow$code retrieval; SweRank~\cite{reddy2025swerank}
+shows retrieve-then-rerank beating agentic localization at a fraction of the cost.
+Closer to KB's exploration framing, SWE-Explore~\cite{chen2026sweexplore}
+isolates exploration from task resolution under a fixed line budget, CORE-Bench~\cite{suresh2026corebench}
+adds L2 issue$\rightarrow$edit localization and L3 ``broader context'' (files an
+agent must \emph{read} but never edit), and LARGER~\cite{liu2026larger} jointly
+scores recall@$k$, token cost, and latency against grep~/~BM25~/~embedding
+baselines.  Practitioner reports converge on the same cost-normalized headline:
+tokens per correct answer, not F1 alone.
+
+MOEL's harvest evaluation historically graded only the synthesized answer
+(LLM-as-judge) plus efficiency; the graded-retrieval axis
+(\S\ref{subsec:graded-retrieval}) adopts this localization tradition so KB can
+claim better \emph{context retrieval} with measurable recall@$k$ and NDCG@$k$,
+not only fluent prose.  KB needs both families because it ships both a citation
+list and a synthesized answer.
+
+\input{tables/localization-alignment}
+
 \subsection{LLM Evaluation Frameworks}
 
 Evaluating LLM outputs with another LLM (LLM-as-judge) is established in

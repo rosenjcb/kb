@@ -70,6 +70,133 @@ export function evaluationsRoot() {
   return path.join(os.homedir(), '.kb', 'evaluations')
 }
 
+/**
+ * Fingerprint the index a run queried so A/B comparisons refuse (or warn) when
+ * two artifacts measured different builds (#237 follow-up §4).
+ */
+export function collectIndexFingerprint(base, options = {}) {
+  const kbHome = options.kbHome || process.env.KB_HOME || path.join(os.homedir(), '.kb')
+  const sessionDir = path.join(kbHome, 'sessions', base)
+  const dbPath = path.join(sessionDir, '.kb-index.sqlite')
+  const out = {
+    base,
+    db_path: dbPath,
+    exists: fs.existsSync(dbPath),
+    db_mtime_ms: null,
+    db_size_bytes: null,
+    documents: null,
+    symbols: null,
+    entities: null,
+  }
+  if (!out.exists) return out
+  try {
+    const st = fs.statSync(dbPath)
+    out.db_mtime_ms = st.mtimeMs
+    out.db_size_bytes = st.size
+  } catch {
+    /* */
+  }
+  try {
+    const uri = `file:${dbPath}?mode=ro`
+    const sql =
+      "SELECT 'documents', COUNT(*) FROM documents UNION ALL SELECT 'symbols', COUNT(*) FROM code_symbols UNION ALL SELECT 'entities', COUNT(*) FROM entities;"
+    const raw = spawnSync('sqlite3', [uri, sql], { encoding: 'utf8' })
+    if (raw.status === 0) {
+      for (const line of raw.stdout.split('\n')) {
+        const [k, v] = line.trim().split(/[| \t]/)
+        if (k === 'documents') out.documents = Number(v)
+        if (k === 'symbols') out.symbols = Number(v)
+        if (k === 'entities') out.entities = Number(v)
+      }
+    }
+  } catch {
+    /* */
+  }
+  return out
+}
+
+/**
+ * Warn when package dist/ trees are older than their src/ trees — eval would measure
+ * stale binaries (#237 follow-up section 5).
+ */
+export function checkBinarySourceSkew(repoRoot = KB_REPO) {
+  const packages = ['kb-core', 'kb-client', 'kb-server']
+  let newestSrc = 0
+  let newestSrcFile = null
+  let newestDist = 0
+  let newestDistFile = null
+  for (const pkg of packages) {
+    const srcRoot = path.join(repoRoot, 'packages', pkg, 'src')
+    const distRoot = path.join(repoRoot, 'packages', pkg, 'dist')
+    const walk = (dir, onFile) => {
+      if (!fs.existsSync(dir)) return
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full, onFile)
+        else if (entry.isFile()) onFile(full)
+      }
+    }
+    walk(srcRoot, f => {
+      try {
+        const m = fs.statSync(f).mtimeMs
+        if (m > newestSrc) {
+          newestSrc = m
+          newestSrcFile = f
+        }
+      } catch {
+        /* */
+      }
+    })
+    walk(distRoot, f => {
+      try {
+        const m = fs.statSync(f).mtimeMs
+        if (m > newestDist) {
+          newestDist = m
+          newestDistFile = f
+        }
+      } catch {
+        /* */
+      }
+    })
+  }
+  const skewed = newestSrc > 0 && newestDist > 0 && newestSrc > newestDist + 1000
+  return {
+    skewed,
+    newest_src_mtime_ms: newestSrc || null,
+    newest_dist_mtime_ms: newestDist || null,
+    newest_src_file: newestSrcFile
+      ? path.relative(repoRoot, newestSrcFile).split(path.sep).join('/')
+      : null,
+    newest_dist_file: newestDistFile
+      ? path.relative(repoRoot, newestDistFile).split(path.sep).join('/')
+      : null,
+    warning: skewed
+      ? `dist/ is older than packages/*/src — run \`pnpm run build\` before trusting this eval (src=${newestSrcFile ? path.basename(newestSrcFile) : '?'}, dist lag ${Math.round((newestSrc - newestDist) / 1000)}s)`
+      : null,
+  }
+}
+
+/**
+ * Read package versions stamped into the artifact for attribution.
+ */
+export function collectPackageVersions(repoRoot = KB_REPO) {
+  const readVer = pkg => {
+    try {
+      const j = JSON.parse(
+        fs.readFileSync(path.join(repoRoot, 'packages', pkg, 'package.json'), 'utf8')
+      )
+      return j.version ?? null
+    } catch {
+      return null
+    }
+  }
+  return {
+    '@kb/core': readVer('kb-core'),
+    '@kb/client': readVer('kb-client'),
+    '@kb/server': readVer('kb-server'),
+  }
+}
+
 export function listSuiteIds() {
   if (!fs.existsSync(SUITES_DIR)) return []
   return fs
@@ -108,9 +235,147 @@ function normalizeShapes(rawShapes, questionCount, sourceFile) {
   })
 }
 
+/** Graded qrels roles for optional per-question `gold_files` (issue #237). */
+export const GOLD_FILE_ROLES = ['must_open', 'supporting']
+/** IR relevance grades: must_open outranks supporting; unlisted paths grade 0. */
+export const GOLD_RELEVANCE_GRADE = { must_open: 2, supporting: 1 }
+/** Default cutoffs for recall@k / precision@k (LocBench-style Acc@{1,3,5} + @10). */
+export const RETRIEVAL_METRIC_KS = [1, 3, 5, 10]
+export const RETRIEVAL_METRIC_K = 10
+
+/**
+ * Known mechanism ids a question can declare via `probes:` (#237 follow-up).
+ * Lets the harness report "feature X fired on 0 of N target questions" instead of
+ * silently averaging a non-experiment into the mean.
+ */
+export const QUESTION_PROBES = [
+  'decoy_guard',
+  'causal_guard',
+  'scope_inference',
+  'unit_size_bias',
+  'wrong_base',
+  'text_only_index',
+]
+
+/**
+ * Parse an optional positional `gold_files:` array against a question list.
+ * Absent ⇒ every question is `null` (retrieval axis skips it). Each entry is
+ * `null` / `[]` / a list of `{ path, role, symbol? }`.
+ */
+export function normalizeGoldFiles(rawGold, questionCount, sourceFile) {
+  if (rawGold === undefined || rawGold === null) {
+    return Array.from({ length: questionCount }, () => null)
+  }
+  if (!Array.isArray(rawGold) || rawGold.length !== questionCount) {
+    throw new Error(
+      `${sourceFile}: gold_files: must be an array the same length as questions: (got ${
+        Array.isArray(rawGold) ? rawGold.length : typeof rawGold
+      }, expected ${questionCount})`
+    )
+  }
+  return rawGold.map((entry, i) => {
+    if (entry === null || entry === undefined) return null
+    if (!Array.isArray(entry)) {
+      throw new Error(
+        `${sourceFile}: gold_files[${i}] must be null or an array of {path, role} objects`
+      )
+    }
+    if (entry.length === 0) return null
+    return entry.map((item, j) => {
+      if (!item || typeof item !== 'object') {
+        throw new Error(`${sourceFile}: gold_files[${i}][${j}] must be an object`)
+      }
+      const pathStr = typeof item.path === 'string' ? item.path.trim().replace(/^\.\//, '') : ''
+      if (!pathStr) {
+        throw new Error(`${sourceFile}: gold_files[${i}][${j}].path must be a non-empty string`)
+      }
+      const role = typeof item.role === 'string' ? item.role.trim() : ''
+      if (!GOLD_FILE_ROLES.includes(role)) {
+        throw new Error(
+          `${sourceFile}: gold_files[${i}][${j}].role must be one of ${GOLD_FILE_ROLES.join('|')} (got ${JSON.stringify(item.role)})`
+        )
+      }
+      const symbol =
+        typeof item.symbol === 'string' && item.symbol.trim() ? item.symbol.trim() : null
+      return { path: pathStr.replace(/\\/g, '/'), role, ...(symbol ? { symbol } : {}) }
+    })
+  })
+}
+
+/**
+ * Optional positional `gold_scope:` — expected scope landing(s) for a question.
+ * Each entry is null, a string, or a string array. Compared against `scope:` in
+ * retrieval.detail so "searched the wrong subtree" is separable from rank error.
+ */
+export function normalizeGoldScope(raw, questionCount, sourceFile) {
+  if (raw === undefined || raw === null) {
+    return Array.from({ length: questionCount }, () => null)
+  }
+  if (!Array.isArray(raw) || raw.length !== questionCount) {
+    throw new Error(
+      `${sourceFile}: gold_scope: must be an array the same length as questions: (got ${
+        Array.isArray(raw) ? raw.length : typeof raw
+      }, expected ${questionCount})`
+    )
+  }
+  return raw.map((entry, i) => {
+    if (entry === null || entry === undefined || entry === '') return null
+    if (typeof entry === 'string' && entry.trim()) return [entry.trim()]
+    if (Array.isArray(entry)) {
+      const list = entry
+        .filter(s => typeof s === 'string' && s.trim())
+        .map(s => s.trim())
+      return list.length ? list : null
+    }
+    throw new Error(
+      `${sourceFile}: gold_scope[${i}] must be null, a string, or an array of strings`
+    )
+  })
+}
+
+/**
+ * Optional positional `probes:` — which mechanisms a question is designed to exercise.
+ * Each entry is null, a string, or a string array of known probe ids.
+ */
+export function normalizeProbes(raw, questionCount, sourceFile) {
+  if (raw === undefined || raw === null) {
+    return Array.from({ length: questionCount }, () => null)
+  }
+  if (!Array.isArray(raw) || raw.length !== questionCount) {
+    throw new Error(
+      `${sourceFile}: probes: must be an array the same length as questions: (got ${
+        Array.isArray(raw) ? raw.length : typeof raw
+      }, expected ${questionCount})`
+    )
+  }
+  return raw.map((entry, i) => {
+    if (entry === null || entry === undefined || entry === '') return null
+    const list = typeof entry === 'string' ? [entry] : entry
+    if (!Array.isArray(list)) {
+      throw new Error(
+        `${sourceFile}: probes[${i}] must be null, a string, or an array of strings`
+      )
+    }
+    const out = []
+    for (const p of list) {
+      if (typeof p !== 'string' || !p.trim()) {
+        throw new Error(`${sourceFile}: probes[${i}] entries must be non-empty strings`)
+      }
+      const id = p.trim()
+      if (!QUESTION_PROBES.includes(id)) {
+        throw new Error(
+          `${sourceFile}: probes[${i}] unknown probe ${JSON.stringify(id)} (known: ${QUESTION_PROBES.join('|')})`
+        )
+      }
+      out.push(id)
+    }
+    return out.length ? out : null
+  })
+}
+
 /**
  * Normalize a raw YAML suite object for eval-run.mjs.
- * @returns {{ id, questions, answers, shapes, rubricPhrase, sourceFile, repoUrl }}
+ * @returns {{ id, questions, answers, shapes, goldFiles, goldScope, probes, rubricPhrase, sourceFile, repoUrl }}
  */
 export function normalizeSuiteDoc(raw, sourceFile) {
   if (!raw || typeof raw !== 'object') {
@@ -152,6 +417,9 @@ export function normalizeSuiteDoc(raw, sourceFile) {
     questions: qs.map(s => s.trim()),
     answers,
     shapes: normalizeShapes(raw.shapes, qs.length, sourceFile),
+    goldFiles: normalizeGoldFiles(raw.gold_files, qs.length, sourceFile),
+    goldScope: normalizeGoldScope(raw.gold_scope, qs.length, sourceFile),
+    probes: normalizeProbes(raw.probes, qs.length, sourceFile),
     rubricPhrase: rubric.trim(),
     sourceFile,
     repoUrl,
@@ -193,11 +461,52 @@ export function normalizeMoelSuiteDoc(raw, sourceFile) {
     return QUESTION_SHAPES.includes(v) ? v : DEFAULT_QUESTION_SHAPE
   })
 
+  // Relaxed gold_files: pad/truncate like shapes; invalid entries become null.
+  const goldFiles = Array.from({ length: qs.length }, (_, i) => {
+    try {
+      const one = normalizeGoldFiles(
+        Array.isArray(raw.gold_files) ? [raw.gold_files[i] ?? null] : null,
+        1,
+        sourceFile
+      )
+      return one[0]
+    } catch {
+      return null
+    }
+  })
+  const goldScope = Array.from({ length: qs.length }, (_, i) => {
+    try {
+      const one = normalizeGoldScope(
+        Array.isArray(raw.gold_scope) ? [raw.gold_scope[i] ?? null] : null,
+        1,
+        sourceFile
+      )
+      return one[0]
+    } catch {
+      return null
+    }
+  })
+  const probes = Array.from({ length: qs.length }, (_, i) => {
+    try {
+      const one = normalizeProbes(
+        Array.isArray(raw.probes) ? [raw.probes[i] ?? null] : null,
+        1,
+        sourceFile
+      )
+      return one[0]
+    } catch {
+      return null
+    }
+  })
+
   return {
     id,
     questions: qs.map(s => s.trim()),
     answers,
     shapes,
+    goldFiles,
+    goldScope,
+    probes,
     rubricPhrase: rubric.trim(),
     sourceFile,
     repoUrl,
@@ -629,6 +938,9 @@ export function parseCurationDetail(detail) {
  * Aggregate curator audits across a run's per-question retrieval details into a single
  * retrieval-relevancy summary. `precision` = kept / (kept + dropped) — higher means less
  * off-topic material survived into synthesis.
+ *
+ * Note: this is *self-graded* curator keep-rate, not gold-referenced precision. Prefer
+ * `summarizeGradedRetrieval` / `scoreGradedRetrieval` for milestone precision/recall.
  */
 export function summarizeCuration(retrievalDetails) {
   const stats = (retrievalDetails ?? []).map(parseCurationDetail).filter(Boolean)
@@ -643,6 +955,440 @@ export function summarizeCuration(retrievalDetails) {
     total_requeried: stats.reduce((a, s) => a + s.requeried, 0),
     retrieval_precision: denom > 0 ? Number((kept / denom).toFixed(3)) : null,
     mean_drop_fraction: denom > 0 ? Number((dropped / denom).toFixed(3)) : null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Graded retrieval (gold citation sets) — judge-free, issue #237
+// ---------------------------------------------------------------------------
+
+/** Strip symbol folds / fact-ids; keep clone-prefix for suffix matching. Case-sensitive. */
+export function normalizeCitedPath(raw) {
+  if (raw == null) return ''
+  let p = String(raw).trim()
+  p = p.split(' · ')[0].trim()
+  p = p.replace(/\\/g, '/').replace(/^\.\//, '')
+  return p
+}
+
+/** Path-shaped provenance only — drop `fact-<hex>` ids collected from answer bodies. */
+export function filterPathProvenance(provenance) {
+  return (provenance ?? []).filter(raw => {
+    const p = normalizeCitedPath(raw)
+    if (!p) return false
+    if (/^fact-[a-f0-9]{16}$/i.test(p)) return false
+    return true
+  })
+}
+
+/** True when a cited path is the gold path or ends with it (clone/workdir prefix). Case-sensitive. */
+export function pathMatchesGold(cited, gold) {
+  const c = normalizeCitedPath(cited)
+  const g = normalizeCitedPath(gold)
+  if (!c || !g) return false
+  if (c === g) return true
+  if (c.endsWith(`/${g}`)) return true
+  if (g.endsWith(`/${c}`)) return true
+  return false
+}
+
+function _uniqueRankedPaths(provenance) {
+  const out = []
+  const seen = new Set()
+  for (const raw of filterPathProvenance(provenance)) {
+    const p = normalizeCitedPath(raw)
+    if (seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+  }
+  return out
+}
+
+function _gradeAtRank(rankedPath, goldFiles) {
+  let best = 0
+  for (const g of goldFiles) {
+    if (!pathMatchesGold(rankedPath, g.path)) continue
+    const grade = GOLD_RELEVANCE_GRADE[g.role] ?? 0
+    if (grade > best) best = grade
+  }
+  return best
+}
+
+function _dcgAtK(grades, k) {
+  let dcg = 0
+  const n = Math.min(k, grades.length)
+  for (let i = 0; i < n; i++) {
+    const rel = grades[i]
+    if (!rel) continue
+    dcg += (2 ** rel - 1) / Math.log2(i + 2)
+  }
+  return dcg
+}
+
+/**
+ * Lift instrumentation counters from a `retrieval>` detail string.
+ * Absent vs zero must stay distinguishable:
+ *   - `decoys: null`  → guard was off (no key)
+ *   - `decoys: 0`     → guard ran, found nothing
+ *   - `causal: null`  → guard was off
+ *   - `causal: 'miss'|'hit'` → guard ran
+ *   - `scope: null`   → no scope stamp
+ *   - `scope: 'none'|string` → landed (or explicitly none)
+ */
+export function parseRetrievalInstrumentation(detail) {
+  if (typeof detail !== 'string' || !detail) {
+    return { scope: null, scope_landings: null, decoys: null, causal: null }
+  }
+  const scopeM = /(?:^|[;\s])scope:([^;]+)/.exec(detail)
+  const decoysM = /(?:^|[;\s])decoys:(\d+)/.exec(detail)
+  const causalM = /(?:^|[;\s])causal:(hit|miss)(?:,[^;]*)?/.exec(detail)
+  const scopeRaw = scopeM ? scopeM[1].trim() : null
+  const landings =
+    scopeRaw && scopeRaw !== 'none'
+      ? scopeRaw.split('+').map(s => s.trim()).filter(Boolean)
+      : scopeRaw === 'none'
+        ? []
+        : null
+  return {
+    scope: scopeRaw,
+    scope_landings: landings,
+    decoys: decoysM ? Number(decoysM[1]) : null,
+    causal: causalM ? causalM[1] : null,
+  }
+}
+
+/**
+ * Score landed scope against optional gold_scope. Returns null when unannotated.
+ * `matched` is true when any gold token appears in any landing (substring or exact).
+ */
+export function scoreGoldScope(landings, goldScope) {
+  if (!Array.isArray(goldScope) || goldScope.length === 0) return null
+  const landed = Array.isArray(landings) ? landings : []
+  const hits = goldScope.filter(g =>
+    landed.some(l => l === g || l.includes(g) || g.includes(l))
+  )
+  return {
+    expected: goldScope,
+    landed,
+    matched: hits.length > 0,
+    hit_scopes: hits,
+    miss_scopes: goldScope.filter(g => !hits.includes(g)),
+  }
+}
+
+/**
+ * Did a probe's mechanism fire on this question's instrumentation?
+ * Firing ≠ helping — report both.
+ */
+export function probeFired(probeId, instrumentation, scopeScore) {
+  if (!instrumentation) return null
+  switch (probeId) {
+    case 'decoy_guard':
+      if (instrumentation.decoys == null) return null // off
+      return instrumentation.decoys > 0
+    case 'causal_guard':
+      if (instrumentation.causal == null) return null // off
+      return instrumentation.causal === 'hit'
+    case 'scope_inference':
+    case 'wrong_base':
+      if (scopeScore == null) return null
+      return scopeScore.matched === true
+    default:
+      return null
+  }
+}
+
+/**
+ * Score a ranked citation list against a gold file set (qrels).
+ * Returns null when there is no gold annotation for the question.
+ *
+ * @param {string[]} provenance ranked cited paths (artifact.query_evaluation[].provenance)
+ * @param {{ path: string, role: string, symbol?: string }[]|null} goldFiles
+ * @param {{ ks?: number[] }} [options]
+ */
+export function scoreGradedRetrieval(provenance, goldFiles, options = {}) {
+  if (!Array.isArray(goldFiles) || goldFiles.length === 0) return null
+  const ks = options.ks ?? RETRIEVAL_METRIC_KS
+  const ranked = _uniqueRankedPaths(provenance)
+  const mustOpen = goldFiles.filter(g => g.role === 'must_open')
+  const supporting = goldFiles.filter(g => g.role === 'supporting')
+  const anyGold = goldFiles
+
+  const mustHits = mustOpen.filter(g => ranked.some(p => pathMatchesGold(p, g.path)))
+  const recall_at = {}
+  const precision_at = {}
+  for (const k of ks) {
+    const topK = ranked.slice(0, k)
+    const mustHitsAtK = mustOpen.filter(g => topK.some(p => pathMatchesGold(p, g.path)))
+    const goldHitsAtK = anyGold.filter(g => topK.some(p => pathMatchesGold(p, g.path)))
+    recall_at[k] =
+      mustOpen.length > 0 ? Number((mustHitsAtK.length / mustOpen.length).toFixed(4)) : null
+    precision_at[k] = Number((goldHitsAtK.length / k).toFixed(4))
+  }
+
+  let firstMustRank = null
+  for (let i = 0; i < ranked.length; i++) {
+    if (mustOpen.some(g => pathMatchesGold(ranked[i], g.path))) {
+      firstMustRank = i + 1
+      break
+    }
+  }
+
+  // first_gold_rank / mrr are over must_open only (null when none recovered).
+  const mrr = firstMustRank != null ? Number((1 / firstMustRank).toFixed(4)) : 0
+
+  const kNdcg = 10
+  const grades = ranked.map(p => _gradeAtRank(p, goldFiles))
+  const idealGrades = [...goldFiles]
+    .map(g => GOLD_RELEVANCE_GRADE[g.role] ?? 0)
+    .sort((a, b) => b - a)
+  const dcg = _dcgAtK(grades, kNdcg)
+  const idcg = _dcgAtK(idealGrades, kNdcg)
+  const ndcg_at_10 = idcg > 0 ? Number((dcg / idcg).toFixed(4)) : 0
+
+  const kPrimary = RETRIEVAL_METRIC_K
+  return {
+    k: kPrimary,
+    ks,
+    n_must_open: mustOpen.length,
+    n_supporting: supporting.length,
+    n_cited: ranked.length,
+    must_open_total: mustOpen.length,
+    must_open_found: mustHits.length,
+    cited_total: ranked.length,
+    cited_relevant: anyGold.filter(g => ranked.some(p => pathMatchesGold(p, g.path))).length,
+    recall_at,
+    precision_at,
+    // Back-compat scalar aliases used by summary printers / TeX macros.
+    recall_at_k: recall_at[kPrimary] ?? null,
+    precision_at_k: precision_at[kPrimary] ?? null,
+    mrr,
+    ndcg_at_k: ndcg_at_10,
+    ndcg_at_10,
+    first_gold_rank: firstMustRank,
+    first_must_open_rank: firstMustRank,
+    must_open_recovered: mustHits.length,
+    must_open_recovered_at_k: mustOpen.filter(g =>
+      ranked.slice(0, kPrimary).some(p => pathMatchesGold(p, g.path))
+    ).length,
+    hit_paths: mustHits.map(g => g.path),
+    miss_paths: mustOpen.filter(g => !mustHits.some(h => h.path === g.path)).map(g => g.path),
+  }
+}
+
+/**
+ * Aggregate graded-retrieval rows; split by question shape so investigative gains stay visible.
+ * @param {Array<{ shape?: string, retrieval_scores?: object|null }>} queryEvaluation
+ */
+export function summarizeGradedRetrieval(queryEvaluation) {
+  const rows = (queryEvaluation ?? []).filter(q => q?.retrieval_scores)
+  if (rows.length === 0) return null
+
+  const meanOf = (arr, key) => {
+    const nums = arr.map(q => q.retrieval_scores[key]).filter(v => typeof v === 'number')
+    if (!nums.length) return null
+    return Number((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(4))
+  }
+  const meanAt = (arr, mapKey, k) => {
+    const nums = arr
+      .map(q => q.retrieval_scores[mapKey]?.[k])
+      .filter(v => typeof v === 'number')
+    if (!nums.length) return null
+    return Number((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(4))
+  }
+
+  const bucketSummary = bucket => {
+    const recall_at = {}
+    const precision_at = {}
+    for (const k of RETRIEVAL_METRIC_KS) {
+      recall_at[k] = meanAt(bucket, 'recall_at', k)
+      precision_at[k] = meanAt(bucket, 'precision_at', k)
+    }
+    return {
+      n: bucket.length,
+      mean_recall_at_k: meanOf(bucket, 'recall_at_k'),
+      mean_precision_at_k: meanOf(bucket, 'precision_at_k'),
+      mean_mrr: meanOf(bucket, 'mrr'),
+      mean_ndcg_at_k: meanOf(bucket, 'ndcg_at_k'),
+      mean_ndcg_at_10: meanOf(bucket, 'ndcg_at_10'),
+      mean_first_gold_rank: meanOf(bucket, 'first_gold_rank'),
+      recall_at,
+      precision_at,
+      total_must_open: bucket.reduce(
+        (a, q) => a + (q.retrieval_scores.must_open_total ?? q.retrieval_scores.n_must_open ?? 0),
+        0
+      ),
+      total_must_open_recovered: bucket.reduce(
+        (a, q) =>
+          a + (q.retrieval_scores.must_open_found ?? q.retrieval_scores.must_open_recovered ?? 0),
+        0
+      ),
+    }
+  }
+
+  const by_shape = {}
+  for (const shape of QUESTION_SHAPES) {
+    const bucket = rows.filter(q => (q.shape ?? DEFAULT_QUESTION_SHAPE) === shape)
+    if (bucket.length === 0) continue
+    by_shape[shape] = bucketSummary(bucket)
+  }
+
+  return {
+    k: rows[0]?.retrieval_scores?.k ?? RETRIEVAL_METRIC_K,
+    ks: RETRIEVAL_METRIC_KS,
+    questions_with_gold: rows.length,
+    ...bucketSummary(rows),
+    by_shape,
+  }
+}
+
+/**
+ * Cost-normalized retrieval: tokens per recovered must_open file + wasted-budget share.
+ * Prefer per-question tokens from `query_timeline`; else split `totalTokens` evenly.
+ *
+ * @param {Array<{ question_id?: number, retrieval_scores?: object|null }>} queryEvaluation
+ * @param {{ totalTokens?: number|null, timeline?: Array<{ question_index?: number, total_input_tokens?: number, total_output_tokens?: number }>|null }} [opts]
+ */
+export function computeRetrievalCostMetrics(queryEvaluation, opts = {}) {
+  const rows = (queryEvaluation ?? []).filter(q => q?.retrieval_scores)
+  if (rows.length === 0) return null
+
+  const timeline = opts.timeline ?? []
+  const tokenFor = q => {
+    const idx = q.question_id
+    const t = timeline.find(r => r?.question_index === idx)
+    if (t) {
+      return (Number(t.total_input_tokens) || 0) + (Number(t.total_output_tokens) || 0)
+    }
+    return null
+  }
+
+  const perQ = rows.map(q => ({
+    q,
+    tokens: tokenFor(q),
+    recovered:
+      q.retrieval_scores.must_open_found ?? q.retrieval_scores.must_open_recovered ?? 0,
+  }))
+
+  const known = perQ.filter(r => typeof r.tokens === 'number')
+  let totalTokens =
+    typeof opts.totalTokens === 'number' && Number.isFinite(opts.totalTokens)
+      ? opts.totalTokens
+      : null
+  if (totalTokens == null && known.length === rows.length) {
+    totalTokens = known.reduce((a, r) => a + r.tokens, 0)
+  }
+
+  if (known.length < rows.length && totalTokens != null && rows.length > 0) {
+    const share = totalTokens / rows.length
+    for (const r of perQ) {
+      if (r.tokens == null) r.tokens = share
+    }
+  }
+
+  const recoveredTotal = perQ.reduce((a, r) => a + r.recovered, 0)
+  const tokensOnZero = perQ
+    .filter(r => r.recovered === 0 && typeof r.tokens === 'number')
+    .reduce((a, r) => a + r.tokens, 0)
+  const tokensAccounted = perQ
+    .filter(r => typeof r.tokens === 'number')
+    .reduce((a, r) => a + r.tokens, 0)
+
+  const tokensPerMustOpen =
+    recoveredTotal > 0 && totalTokens != null
+      ? Number((totalTokens / recoveredTotal).toFixed(1))
+      : recoveredTotal > 0 && tokensAccounted > 0
+        ? Number((tokensAccounted / recoveredTotal).toFixed(1))
+        : null
+
+  const wastedShare =
+    tokensAccounted > 0 ? Number((tokensOnZero / tokensAccounted).toFixed(4)) : null
+
+  return {
+    questions_with_gold: rows.length,
+    must_open_recovered: recoveredTotal,
+    total_tokens: totalTokens,
+    tokens_per_must_open_file: tokensPerMustOpen,
+    wasted_budget_share: wastedShare,
+    questions_with_zero_must_open: perQ.filter(r => r.recovered === 0).length,
+  }
+}
+
+/**
+ * Summarize probe coverage: "feature X fired on A of B target questions".
+ * Distinguishes off / fired / ran-but-missed so a non-experiment is not a null result.
+ */
+export function summarizeProbeCoverage(queryEvaluation) {
+  const rows = (queryEvaluation ?? []).filter(q => Array.isArray(q?.probes) && q.probes.length)
+  if (rows.length === 0) return null
+  const byProbe = {}
+  for (const probe of QUESTION_PROBES) {
+    const targets = rows.filter(q => q.probes.includes(probe))
+    if (targets.length === 0) continue
+    let fired = 0
+    let ranMiss = 0
+    let off = 0
+    let unknown = 0
+    for (const q of targets) {
+      const v = probeFired(probe, q.retrieval_instrumentation, q.scope_score)
+      if (v === true) fired++
+      else if (v === false) ranMiss++
+      else if (
+        probe === 'decoy_guard' &&
+        q.retrieval_instrumentation?.decoys == null
+      ) {
+        off++
+      } else if (
+        probe === 'causal_guard' &&
+        q.retrieval_instrumentation?.causal == null
+      ) {
+        off++
+      } else {
+        unknown++
+      }
+    }
+    byProbe[probe] = {
+      target_questions: targets.length,
+      fired,
+      ran_but_missed: ranMiss,
+      off,
+      unknown,
+      question_ids: targets.map(q => q.question_id),
+    }
+  }
+  return { by_probe: byProbe }
+}
+
+/**
+ * Attach graded-retrieval scores, instrumentation, and scope checks to each row.
+ * Mutates rows in place; returns `{ graded, probe_coverage }`.
+ */
+export function attachGradedRetrievalScores(
+  queryEvaluation,
+  goldFilesList,
+  options = {}
+) {
+  const ks = options.ks ?? RETRIEVAL_METRIC_KS
+  const golds = goldFilesList ?? []
+  const goldScopes = options.goldScopeList ?? []
+  const probesList = options.probesList ?? []
+
+  for (let i = 0; i < (queryEvaluation ?? []).length; i++) {
+    const q = queryEvaluation[i]
+    const gold = golds[i] ?? q.gold_files ?? null
+    const goldScope = goldScopes[i] ?? q.gold_scope ?? null
+    const probes = probesList[i] ?? q.probes ?? null
+    q.gold_files = gold
+    q.gold_scope = goldScope
+    q.probes = probes
+    const detail = q.retrieval?.detail ?? null
+    q.retrieval_instrumentation = parseRetrievalInstrumentation(detail)
+    q.scope_score = scoreGoldScope(q.retrieval_instrumentation.scope_landings, goldScope)
+    q.retrieval_scores = scoreGradedRetrieval(q.provenance, gold, { ks })
+  }
+  return {
+    graded: summarizeGradedRetrieval(queryEvaluation),
+    probe_coverage: summarizeProbeCoverage(queryEvaluation),
   }
 }
 
@@ -1549,6 +2295,53 @@ function _emitSuiteResults(lines, suiteId, artifact, prior) {
 
   _pushSideMacros(lines, prior, prefix, 'K', k)
   _pushSideMacros(lines, prior, prefix, 'N', n)
+
+  // Graded retrieval macros (issue #237) — K-side only until control emits citations.
+  const gr = artifact?.aggregate_scores?.query?.graded_retrieval
+  const rc = artifact?.aggregate_scores?.query?.retrieval_cost
+  const inv = gr?.by_shape?.investigative
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}RecallAt10`,
+    gr?.mean_recall_at_k != null ? _texNum(gr.mean_recall_at_k, 3) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}PrecisionAt10`,
+    gr?.mean_precision_at_k != null ? _texNum(gr.mean_precision_at_k, 3) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}Mrr`,
+    gr?.mean_mrr != null ? _texNum(gr.mean_mrr, 3) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}NdcgAt10`,
+    gr?.mean_ndcg_at_k != null ? _texNum(gr.mean_ndcg_at_k, 3) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}InvestigativeRecallAt10`,
+    inv?.mean_recall_at_k != null ? _texNum(inv.mean_recall_at_k, 3) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}TokensPerMustOpen`,
+    rc?.tokens_per_must_open_file != null ? _texInt(rc.tokens_per_must_open_file) : null
+  )
+  _pushMacro(
+    lines,
+    prior,
+    `${prefix}WastedBudget`,
+    rc?.wasted_budget_share != null ? _texNum(rc.wasted_budget_share, 3) : null
+  )
   lines.push('')
 }
 
@@ -1764,6 +2557,33 @@ export function printTrendsSummary(suiteId, repoRoot, options = {}) {
         console.log(
           ` CURATOR (K): retrieval precision ${kbCur.retrieval_precision} (kept ${kbCur.total_kept}, dropped ${kbCur.total_dropped} across ${kbCur.questions_with_curation} q)`
         )
+      }
+    }
+    {
+      const gr = currentArtifact?.aggregate_scores?.query?.graded_retrieval
+      const rc = currentArtifact?.aggregate_scores?.query?.retrieval_cost
+      if (gr) {
+        console.log('')
+        console.log(
+          ` GRADED RETRIEVAL (K, gold files): R@${gr.k}=${_padScore(gr.mean_recall_at_k).trim()}  P@${gr.k}=${_padScore(gr.mean_precision_at_k).trim()}  MRR=${_padScore(gr.mean_mrr).trim()}  NDCG@${gr.k}=${_padScore(gr.mean_ndcg_at_k).trim()}  (${gr.questions_with_gold} q annotated)`
+        )
+        const inv = gr.by_shape?.investigative
+        if (inv) {
+          console.log(
+            `   investigative: R@${gr.k}=${_padScore(inv.mean_recall_at_k).trim()}  NDCG=${_padScore(inv.mean_ndcg_at_k).trim()}  must_open ${inv.total_must_open_recovered}/${inv.total_must_open}`
+          )
+        }
+        if (rc) {
+          const tpm =
+            rc.tokens_per_must_open_file != null
+              ? formatCompactTokens(rc.tokens_per_must_open_file)
+              : 'n/a'
+          const waste =
+            rc.wasted_budget_share != null
+              ? `${(rc.wasted_budget_share * 100).toFixed(1)}%`
+              : 'n/a'
+          console.log(`   cost: tokens/must_open=${tpm}  wasted_budget=${waste}`)
+        }
       }
     }
     if (sameRunControl && currentArtifact?.query_evaluation?.length) {

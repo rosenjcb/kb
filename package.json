@@ -28,6 +28,7 @@
     "research:clean": "cd research && latexmk -C",
     "research:results": "node scripts/update-research-results.mjs",
     "eval": "node scripts/eval-run.mjs",
+    "eval:retrieval-replay": "node scripts/eval-retrieval-replay.mjs",
     "feedback:report": "node scripts/feedback-report.mjs",
     "eval:entities": "node scripts/eval-entities.mjs",
     "eval:task": "node scripts/eval-task.mjs",

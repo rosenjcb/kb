@@ -1,0 +1,20 @@
+%% ─── Localization / code-IR benchmark alignment ──────────────────────────────
+\begin{table*}[t]
+\centering
+\caption{How KB's graded-retrieval axis maps to code-localization and code-IR benchmarks.
+MOEL still grades the synthesized answer; the citation list is scored separately
+(\S\ref{subsec:graded-retrieval}).}
+\label{tab:localization-alignment}
+\small
+\begin{tabular}{p{2.4cm}p{2.6cm}p{2.6cm}p{2.6cm}p{2.8cm}}
+\toprule
+\textbf{Aspect} & \textbf{LocBench / MULoc} & \textbf{CoIR / CodeRAG} & \textbf{SWE-Explore / CORE} & \textbf{KB harvest (ours)} \\
+\midrule
+Ground truth & PR-touched files/fns & Annotated fragments & Agent trajectories / L2--L3 & Hand \texttt{gold\_files} \\
+Primary metrics & Acc@$k$, P/R, NDCG & NDCG@$10$, Recall@$k$ & Coverage $\times$ rank $\times$ cost & R@$k$, P@$k$, MRR, NDCG@$10$ \\
+Non-code targets & Config/docs/tests & Rare & L3 broader context & \texttt{supporting} role \\
+Cost axis & Secondary & Secondary & Tokens / line budget & $C_{\text{gold}}$, $W$ \\
+Answer prose & Not scored & Optional exec score & Isolated from solve & LLM judge (separate) \\
+\bottomrule
+\end{tabular}
+\end{table*}
