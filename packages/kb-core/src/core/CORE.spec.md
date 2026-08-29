@@ -31,6 +31,7 @@ tests:
   - ../../../../tests/core/telemetry.test.ts
   - ../../../../tests/core/yield.test.ts
   - ../../../../tests/core/scan-document-ingest.test.ts
+  - ../../../../tests/core/markdown-sections.test.ts
 description: Behavioral specification for KB Core
 tags: [spec, kb]
 timestamp: 2026-08-08T22:40:00Z
@@ -77,6 +78,7 @@ See companion doc for full vocabulary where applicable.
 | FR-27 | Behaviors in code-fact-writer.test.ts |
 | FR-28 | [NEW] Classify LLM transport failures into a structured error (provider, HTTP status, kind, retryability) so callers can distinguish a spent credit balance, a rate limit, bad credentials, and a timeout from one another — and from a model that simply returned nothing |
 | FR-29 | [NEW] Cap Gemini thinking: every Gemini 2.5/3 generateContent call sends an explicit `thinkingConfig.thinkingBudget` (never omit it). Resolve budget as per-call `thinkingBudget` → `GEMINI_THINKING_BUDGET` env → mode default (1024 when reasoning/`includeThoughts`, else 0). Parse `usageMetadata` so `outputTokens` = `candidatesTokenCount` + `thoughtsTokenCount` (thinking billed as output) |
+| FR-30 | [NEW] Split a markdown body into indexable sections on heading boundaries, carrying the heading trail, merging runs too small to stand alone and splitting oversized ones on paragraph boundaries — so the retrieval unit is a section rather than a whole file |
 
 ### QA Test Cases
 
@@ -232,6 +234,14 @@ See companion doc for full vocabulary where applicable.
 | TC-5WW6 | FR-29 | Gemini stream usageMetadata with thoughtsTokenCount (and totalTokenCount fallback) | stream usage.outputTokens includes thinking; total−prompt used when thoughts field absent |
 | TC-BYOL | FR-22 | indexes whole markdown files, links them to symbols, and retrieves via hybrid FTS | pass |
 | TC-ELHG | FR-22 | re-scan skips unchanged documents by content hash and re-indexes changed ones | pass |
+| TC-MDS1 | FR-30 | Empty or whitespace-only body | No sections returned |
+| TC-MDS2 | FR-30 | Document with no headings | Indexes as one section rather than disappearing |
+| TC-MDS3 | FR-30 | Sibling headings | Each becomes its own section with its own heading |
+| TC-MDS4 | FR-30 | Nested heading | Heading trail carries ancestors ("Parent > Child") |
+| TC-MDS5 | FR-30 | `#` line inside a fenced code block | Not treated as a heading |
+| TC-MDS6 | FR-30 | Section below the minimum size | Merged forward instead of fragmenting |
+| TC-MDS7 | FR-30 | Section far over the size ceiling | Split on paragraph boundaries, parent heading retained |
+| TC-MDS8 | FR-30 | Content before the first heading | Preamble kept with an empty heading |
 
 ### Related docs
 

@@ -279,6 +279,14 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-DMW5 | FR-29 | [NEW] every server-scoped counterpart set → no warnings | pass |
 | TC-B233 | FR-30 | [NEW] MCP query against a stub whose health base is `base` | response JSON includes `"base": "base"` |
 | TC-H233 | FR-30 | [NEW] authorized `/v1/query` against a stub whose health base is `base` | response JSON includes `"base": "base"` |
+| TC-QTS1 | FR-31 | Recorded requestId | Snapshot returns with its trace and base |
+| TC-QTS2 | FR-31 | Unknown requestId | Returns undefined, does not throw |
+| TC-QTS3 | FR-31 | No base supplied | `base` omitted rather than stored undefined |
+| TC-QTS4 | FR-31 | Same requestId recorded twice | Later snapshot wins |
+| TC-QTS5 | FR-31 | More entries than the cap | Oldest evicted, recent retained |
+| TC-QTS6 | FR-31 | Entry older than the TTL | Pruned on next access |
+| TC-QTS7 | FR-31 | Optional grounding fields on the trace | Round-trip onto the snapshot |
+| FR-31 | [NEW] Retain a per-query retrieval trace keyed by `requestId` (in-memory, 6h TTL, 200-entry cap) so a later `submit_feedback` can be enriched server-side. Written on every query, never surfaced to agents, and an unknown or expired id returns undefined rather than throwing |
 
 ### Related docs
 

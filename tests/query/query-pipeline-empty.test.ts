@@ -19,7 +19,7 @@ describe('runQueryPipeline empty base', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('[TC-122] returns an empty-base message without touching the tool executor', async () => {
+  it('[TC-QPE1] returns an empty-base message without touching the tool executor', async () => {
     const result = await runQueryPipeline(
       // toolExecutor/config are only used after the empty-base guard, so stubs are safe here.
       { toolExecutor: {} as never, baseDir: dir, config: {} as never },

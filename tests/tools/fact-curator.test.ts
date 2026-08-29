@@ -321,3 +321,93 @@ describe('curator degradation reporting', () => {
     expect(record.failure?.stage).toBe('curation')
   })
 })
+
+describe('curator required gaps', () => {
+  it('[TC-RQG1] Given a required gap, then it re-queries even when the judge calls the pool sufficient', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    // `sufficient: true` short-circuits the judge loop — the whole point is that a caller
+    // obligation still fires, because the judge only ever saw the pool it was handed.
+    const llm = verdictLlm({ keep: ['f-0'], gaps: [], sufficient: true })
+    const requery: CuratorRequery = vi.fn(async () => [
+      makeResult('target-1', 'the Save button state handling'),
+    ])
+
+    const { results: out, record } = await curateFacts({
+      llm,
+      query: 'does the import path disable the Save button',
+      results,
+      requery,
+      requiredGaps: ['Save button definition implementation state handling'],
+    })
+
+    expect(requery).toHaveBeenCalled()
+    expect(record.requeried).toContain('Save button definition implementation state handling')
+    expect(record.requiredGapsUnmet).toEqual([])
+    expect(out.map(r => r.metadata.id)).toContain('target-1')
+  })
+
+  it('[TC-RQG2] Given a required gap that returns nothing, then it is recorded as unmet', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    const llm = verdictLlm({ keep: ['f-0'], gaps: [], sufficient: true })
+    const requery: CuratorRequery = vi.fn(async () => [])
+
+    const { record } = await curateFacts({
+      llm,
+      query: 'does X affect Y',
+      results,
+      requery,
+      requiredGaps: ['Y definition implementation state handling'],
+    })
+
+    expect(record.requiredGapsUnmet).toEqual(['Y definition implementation state handling'])
+    expect(record.added).toBe(0)
+  })
+
+  it('[TC-RQG3] Given a required gap returning only already-known ids, then nothing is double-admitted', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    const llm = verdictLlm({ keep: ['f-0'], gaps: [], sufficient: true })
+    // Returns a fact already in the incoming pool.
+    const requery: CuratorRequery = vi.fn(async () => [makeResult('f-3', 'fact 3')])
+
+    const { record } = await curateFacts({
+      llm,
+      query: 'does X affect Y',
+      results,
+      requery,
+      requiredGaps: ['Y definition'],
+    })
+
+    expect(record.added).toBe(0)
+    expect(record.requiredGapsUnmet).toEqual(['Y definition'])
+  })
+
+  it('[TC-RQG4] Given no requiredGaps, then the record is unchanged from ordinary curation', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    const llm = verdictLlm({ keep: ['f-0'], gaps: [], sufficient: true })
+    const requery: CuratorRequery = vi.fn(async () => [makeResult('n-1', 'new')])
+
+    const { record } = await curateFacts({
+      llm,
+      query: 'where is X',
+      results,
+      requery,
+    })
+
+    expect(requery).not.toHaveBeenCalled()
+    expect(record.requiredGapsUnmet).toEqual([])
+  })
+
+  it('[TC-RQG5] Given requiredGaps but no requery closure, then it is a no-op rather than a crash', async () => {
+    const results = Array.from({ length: 20 }, (_, i) => makeResult(`f-${i}`, `fact ${i}`))
+    const llm = verdictLlm({ keep: ['f-0'], gaps: [], sufficient: true })
+
+    const { record } = await curateFacts({
+      llm,
+      query: 'does X affect Y',
+      results,
+      requiredGaps: ['Y definition'],
+    })
+
+    expect(record.requiredGapsUnmet).toEqual([])
+  })
+})

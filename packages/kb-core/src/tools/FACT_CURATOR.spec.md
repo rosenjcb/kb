@@ -43,6 +43,7 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | FR-9 | Rank auto-keep: preserve orchestrator top-N before the LLM judge |
 | FR-10 | [NEW] Record why the curator fell back when the cause was an LLM error, so an outage is attributable rather than indistinguishable from a quiet no-op |
 | FR-11 | [NEW] Record each judge round as a telemetry stage when a collector is supplied |
+| FR-12 | [NEW] Resolve caller-declared `requiredGaps` through the requery closure **before** the judge loop and regardless of `verdict.sufficient` — the judge only sees the pool it was handed, so it reports sufficiency for a question whose subject was never retrieved. Gaps that admit nothing are recorded in `requiredGapsUnmet` |
 
 ### QA Test Cases
 
@@ -63,6 +64,11 @@ After retrieval grows a broad fact pool, the curator is the relevance gate befor
 | TC-VZ2O | FR-11 | Collector supplied and the judge runs | Each judge round recorded as a telemetry stage |
 | TC-F3JM | FR-9 | Rank auto-keep enabled, judge keeps nothing | Top-N incoming facts still in keep set |
 | TC-NIJ2 | FR-10 | LLM throws during judging | record carries the failure kind and stage alongside fellBack |
+| TC-RQG1 | FR-12 | Required gap, judge says `sufficient: true` | Requery still fires; new fact admitted; `requiredGapsUnmet` empty |
+| TC-RQG2 | FR-12 | Required gap returns nothing | Gap recorded in `requiredGapsUnmet`; nothing added |
+| TC-RQG3 | FR-12 | Required gap returns only already-known ids | Nothing double-admitted; gap recorded unmet |
+| TC-RQG4 | FR-12 | No `requiredGaps` supplied | Requery never called; record unchanged |
+| TC-RQG5 | FR-12 | `requiredGaps` with no requery closure | No-op rather than a crash |
 
 ### Related docs
 
