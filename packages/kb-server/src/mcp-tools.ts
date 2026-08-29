@@ -51,11 +51,13 @@ import {
   parseElicitedHelped,
 } from './mcp-feedback-elicitation.js'
 import { PendingFeedbackStore } from './pending-feedback-store.js'
+import { QueryTraceSnapshotStore } from './query-trace-snapshot-store.js'
 import {
   type FeedbackHelped,
   type FeedbackScores,
   type QueryFeedbackRecord,
   QueryFeedbackStore,
+  type QueryFeedbackTrace,
   defaultFeedbackDir,
 } from './query-feedback-store.js'
 
@@ -134,6 +136,13 @@ const SUBMIT_FEEDBACK_TOOL = {
           'requestId of the specific query response this feedback answers — from ' +
           'get_feedback_requests or echoed by that response. Omit for general feedback.',
       },
+      base: {
+        type: 'string',
+        description:
+          'Base that served the answer, as echoed by that query response. Usually inferred ' +
+          'server-side; pass it only if the response is old enough that the server may have ' +
+          'dropped its trace.',
+      },
       scores: {
         type: 'object',
         properties: {
@@ -144,7 +153,9 @@ const SUBMIT_FEEDBACK_TOOL = {
           evidence_handling: { type: 'integer', minimum: 0, maximum: 4 },
         },
         additionalProperties: false,
-        description: 'Optional 0-4 ratings on the evaluation axes; include only strong signals.',
+        description:
+          'Ratings 0-4 on each evaluation axis. Send these alongside notes whenever you can ' +
+          'judge the answer — freeform notes alone cannot be aggregated across sessions.',
       },
     },
     required: ['helped'],
@@ -195,6 +206,8 @@ export interface McpDispatchOptions {
   feedbackStore?: QueryFeedbackStore
   /** Overrides the default in-memory pending-feedback store (tests). */
   pendingFeedbackStore?: PendingFeedbackStore
+  /** Overrides the default in-memory query-trace snapshot store (tests). */
+  traceSnapshotStore?: QueryTraceSnapshotStore
   /**
    * Prefer form elicitation for a sampled feedback ask. Return `unavailable` to
    * fall back to AGENT_INSTRUCTION + pending queue. Injected in production from
@@ -242,9 +255,66 @@ function resolvePendingFeedbackStore(opts: McpDispatchOptions): PendingFeedbackS
   return sharedPendingFeedbackStore
 }
 
+let sharedTraceSnapshotStore: QueryTraceSnapshotStore | undefined
+
+function resolveTraceSnapshotStore(opts: McpDispatchOptions): QueryTraceSnapshotStore {
+  if (opts.traceSnapshotStore) return opts.traceSnapshotStore
+  sharedTraceSnapshotStore ??= new QueryTraceSnapshotStore()
+  return sharedTraceSnapshotStore
+}
+
+/**
+ * Lift the retrieval outcome off an already-serialized query payload.
+ *
+ * Reads `body` rather than the raw result so the snapshot records what the agent was actually
+ * shown — the same citations and caveats it judged when it rated the answer.
+ */
+function snapshotFromQueryBody(body: Record<string, unknown>): QueryFeedbackTrace {
+  const sources = Array.isArray(body.sources) ? body.sources : []
+  const notes = Array.isArray(body.notes) ? body.notes : []
+  const retrieval =
+    body.retrieval && typeof body.retrieval === 'object'
+      ? (body.retrieval as Record<string, unknown>)
+      : undefined
+  const unsupportedClaims = Array.isArray(retrieval?.unsupportedClaims)
+    ? (retrieval.unsupportedClaims as string[])
+    : undefined
+  return {
+    ...(typeof body.evidence === 'string' ? { evidence: body.evidence } : {}),
+    sourceCount: sources.length,
+    sourcePaths: sources
+      .map(s => (s && typeof s === 'object' ? (s as { path?: unknown }).path : undefined))
+      .filter((p): p is string => typeof p === 'string'),
+    noteCount: notes.length,
+    ...(unsupportedClaims?.length ? { unsupportedClaims } : {}),
+    // The grounding check writes its caveat into notes; record that it fired so a reader can
+    // separate "agent disliked a grounded answer" from "we already knew this one was ungrounded".
+    hadUngroundedFiles: notes.some(
+      n => typeof n === 'string' && n.includes('not in the cited sources')
+    ),
+    ...(typeof body.answerError === 'string' ? { answerError: body.answerError } : {}),
+  }
+}
+
+/** Merge the server-side snapshot for a rated query into a feedback record. */
+function withTraceSnapshot(
+  record: QueryFeedbackRecord,
+  opts: McpDispatchOptions
+): QueryFeedbackRecord {
+  if (!record.requestId) return record
+  const snap = resolveTraceSnapshotStore(opts).get(record.requestId)
+  if (!snap) return record
+  return {
+    ...record,
+    // Anything the agent supplied wins — it saw the response, we only saw our own side of it.
+    base: record.base ?? snap.base,
+    trace: record.trace ?? snap.trace,
+  }
+}
+
 function feedbackNudge(requestId: string | undefined): string {
   const id = requestId ? ` requestId: "${requestId}",` : ''
-  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback (helped: "yes"|"partial"|"no",${id} notes) to report whether it held up, including your own observations. This is a required follow-up call, not optional context.`
+  return `ACTION REQUIRED — do not skip: once you have acted on this answer (or finished the task it informed), call submit_feedback to report whether it held up: helped ("yes"|"partial"|"no"),${id} notes describing specifically what it got right or missed, and scores — integers 0-4 on each of correctness, usefulness, relevance, specificity, evidence_handling. Send scores as well as notes, not instead of them. This is a required follow-up call, not optional context.`
 }
 
 /** Validate submit_feedback args into a record body, or return an error string. */
@@ -253,7 +323,9 @@ function parseFeedbackArgs(args: Record<string, unknown>):
       helped: FeedbackHelped
       notes?: string
       query?: string
+      answer?: string
       requestId?: string
+      base?: string
       scores?: FeedbackScores
     }
   | string {
@@ -269,6 +341,12 @@ function parseFeedbackArgs(args: Record<string, unknown>):
   }
   if (args.requestId !== undefined && typeof args.requestId !== 'string') {
     return 'submit_feedback "requestId" must be a string'
+  }
+  if (args.answer !== undefined && typeof args.answer !== 'string') {
+    return 'submit_feedback "answer" must be a string'
+  }
+  if (args.base !== undefined && typeof args.base !== 'string') {
+    return 'submit_feedback "base" must be a string'
   }
   let scores: FeedbackScores | undefined
   if (args.scores !== undefined) {
@@ -290,9 +368,11 @@ function parseFeedbackArgs(args: Record<string, unknown>):
     helped: helped as FeedbackHelped,
     ...(typeof args.notes === 'string' && args.notes.trim() ? { notes: args.notes } : {}),
     ...(typeof args.query === 'string' && args.query.trim() ? { query: args.query } : {}),
+    ...(typeof args.answer === 'string' && args.answer.trim() ? { answer: args.answer } : {}),
     ...(typeof args.requestId === 'string' && args.requestId.trim()
       ? { requestId: args.requestId }
       : {}),
+    ...(typeof args.base === 'string' && args.base.trim() ? { base: args.base } : {}),
     ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),
   }
 }
@@ -320,12 +400,16 @@ export async function dispatchMcpToolCall(
     if (name === SUBMIT_FEEDBACK_TOOL.name) {
       const parsed = parseFeedbackArgs(args)
       if (typeof parsed === 'string') return errorResult(parsed)
-      const record: QueryFeedbackRecord = {
-        ts: new Date().toISOString(),
-        source: 'mcp',
-        ...(opts.requestId ? { feedbackRequestId: opts.requestId } : {}),
-        ...parsed,
-      }
+      const record = withTraceSnapshot(
+        {
+          ts: new Date().toISOString(),
+          schemaVersion: 2,
+          source: 'mcp',
+          ...(opts.requestId ? { feedbackRequestId: opts.requestId } : {}),
+          ...parsed,
+        },
+        opts
+      )
       await resolveFeedbackStore(opts).append(record)
       if (parsed.requestId) resolvePendingFeedbackStore(opts).resolve(parsed.requestId)
       // Echo the recorded feedback back verbatim so the caller can confirm what was
@@ -372,6 +456,16 @@ export async function dispatchMcpToolCall(
         : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })),
     }
     if (opts.requestId) body.requestId = opts.requestId
+    // Snapshot what retrieval actually returned, for every query rather than only sampled ones —
+    // feedback arrives minutes later, and the MCP RunReport carries no retrieval trace to join
+    // against afterwards, so this is the only point the information still exists.
+    if (opts.requestId) {
+      resolveTraceSnapshotStore(opts).record(
+        opts.requestId,
+        servedBase,
+        snapshotFromQueryBody(body)
+      )
+    }
     // Sampled feedback ask — trimmed payload only; verbose callers are debugging.
     // Prefer MCP form elicitation (user-facing yes/partial/no) when the client
     // supports it; otherwise keep the AGENT_INSTRUCTION + pending-queue path so
@@ -408,15 +502,19 @@ async function applySampledFeedbackAsk(
       requestId: opts.requestId,
     })
     if (outcome.kind === 'accepted') {
-      const record: QueryFeedbackRecord = {
-        ts: new Date().toISOString(),
-        source: 'mcp',
-        helped: outcome.helped,
-        query,
-        ...(answer.trim() ? { answer } : {}),
-        ...(outcome.notes ? { notes: outcome.notes } : {}),
-        ...(opts.requestId ? { requestId: opts.requestId } : {}),
-      }
+      const record = withTraceSnapshot(
+        {
+          ts: new Date().toISOString(),
+          schemaVersion: 2,
+          source: 'mcp',
+          helped: outcome.helped,
+          query,
+          ...(answer.trim() ? { answer } : {}),
+          ...(outcome.notes ? { notes: outcome.notes } : {}),
+          ...(opts.requestId ? { requestId: opts.requestId } : {}),
+        },
+        opts
+      )
       await resolveFeedbackStore(opts).append(record)
       body.feedback = {
         status: 'recorded',

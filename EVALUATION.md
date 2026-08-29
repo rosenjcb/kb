@@ -510,7 +510,7 @@ Future agents should treat the JSON shape below as the canonical artifact format
 
 ### Field expectations
 
-- `schema_version`: integer schema version (currently `2`; v2 adds `success_score` + telemetry)
+- `schema_version`: integer schema version (currently `3`; v2 adds `success_score` + telemetry; v3 adds graded-retrieval metrics from `gold_files`)
 - `evaluation_plan`: string path, usually `EVALUATION.md`
 - `run_label`: short label like `raylib-baseline` or `raylib-compare-agent-b`
 - `status`: `complete` or `partial`
@@ -568,6 +568,38 @@ Each item in `query_evaluation` and `chat_evaluation` should contain:
 - `scores`
 - `notes`
 
+When the suite annotates `gold_files` for that question (schema v3), also:
+
+- `gold_files` — the qrels list (`must_open` / `supporting` paths)
+- `gold_scope` — optional expected scope landing(s)
+- `probes` — optional mechanism tags the question is designed to exercise
+- `retrieval_instrumentation` — `{ scope, decoys, causal }` lifted from `retrieval.detail`
+  (**absent vs zero**: `decoys: null` = guard off; `decoys: 0` = ran, found nothing)
+- `scope_score` — gold_scope match against landed scope
+- `retrieval_scores` — judge-free `{ recall_at: {1,3,5,10}, precision_at, mrr, ndcg_at_10, first_gold_rank, must_open_found, miss_paths, … }`
+
+Top-level / aggregate:
+
+- `retrieval_evaluation` — `{ graded_retrieval, retrieval_cost, probe_coverage }`
+- `aggregate_scores.query.graded_retrieval` — means + `by_shape` split
+- `aggregate_scores.query.retrieval_cost` — `tokens_per_must_open_file`, `wasted_budget_share`
+- `aggregate_scores.query.probe_coverage` — per-probe fired / ran_miss / off counts
+- `index_fingerprint` — base db mtime + document/symbol/entity counts (refuse silent A/B across different indexes)
+- `binary_source_skew` — warn when `dist/` lags `packages/*/src`
+- `package_versions` — `@kb/{core,client,server}` versions at run time
+
+`comparison` (when control ran) mirrors graded retrieval / cost under
+`graded_retrieval` / `retrieval_cost` beside ΔS.
+**Do not fold graded retrieval into $S$** — historical runs stay comparable; report alongside.
+
+**Noise floor.** Same-index, same-binary, same-flag re-runs have moved conceptual
+`mean_correctness` by ~0.4 and ΔS by ~0.03 — larger than typical retrieval-guard
+deltas. Prefer the deterministic axis for rank-order claims; use `--score-runs 3`
+only when you must average the prose rubric.
+
+Replay without re-querying: `pnpm run eval:retrieval-replay -- --suite kb --latest [--write]`
+(or `--all`).
+
 The `scores` object must contain:
 
 - `correctness`
@@ -588,7 +620,7 @@ These may be omitted only if the artifact is marked `partial`.
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "evaluation_plan": "EVALUATION.md",
   "run_label": "raylib-baseline",
   "status": "complete",

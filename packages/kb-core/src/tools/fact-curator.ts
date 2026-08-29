@@ -107,6 +107,12 @@ export interface CurationRecord {
   /** True when the curator bailed to a safe fallback (LLM error or empty result guard). */
   fellBack: boolean
   /**
+   * Seeded gaps that came back empty. These are obligations the caller declared must be covered
+   * (see `requiredGaps`), so an unmet one is a statement about what the answer may not claim —
+   * not merely a retrieval miss.
+   */
+  requiredGapsUnmet: string[]
+  /**
    * Why the curator bailed, when the cause was an LLM/transport error. Absent for the
    * non-error fallbacks (empty-result guard). Surfaced as a degradation so a provider
    * outage is not mistaken for a curation-quality problem.
@@ -127,6 +133,13 @@ export interface CurateInput {
   query: string
   results: QueryResult[]
   requery?: CuratorRequery
+  /**
+   * Retrieval probes the caller declares must be covered before synthesis, regardless of what the
+   * judge thinks. Unlike the judge's own `gaps`, these run even when the verdict is `sufficient` —
+   * the judge assesses the pool it was given, so it cannot notice that something was never
+   * retrieved in the first place. Unmet ones land in `record.requiredGapsUnmet`.
+   */
+  requiredGaps?: string[]
   options?: CuratorOptions
   /** Telemetry collector — when set, each judge round is recorded as a stage. */
   collector?: RunCollector
@@ -168,6 +181,7 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
     rounds: 0,
     sufficient: false,
     fellBack: false,
+    requiredGapsUnmet: [],
   }
 
   const queryTokens = tokenize(query)
@@ -207,6 +221,26 @@ export async function curateFacts(input: CurateInput): Promise<CurateOutput> {
   const keptIds = new Set(autoKept.map(r => r.metadata.id))
   const knownIds = new Set(incomingIds)
   const discovered: QueryResult[] = []
+
+  // Caller-declared obligations, resolved before the judge loop. These are deliberately outside
+  // the `verdict.sufficient` short-circuit below: the judge only ever sees the pool it was handed,
+  // so it reports "sufficient" for a question whose subject was never retrieved at all.
+  if (input.requiredGaps?.length && input.requery) {
+    for (const gap of input.requiredGaps) {
+      record.requeried.push(gap)
+      const found = await input.requery(gap, knownIds, opts.requeryBudget)
+      let admitted = 0
+      for (const f of found) {
+        if (knownIds.has(f.metadata.id)) continue
+        knownIds.add(f.metadata.id)
+        keptIds.add(f.metadata.id)
+        discovered.push(f)
+        admitted++
+      }
+      record.added += admitted
+      if (admitted === 0) record.requiredGapsUnmet.push(gap)
+    }
+  }
 
   try {
     while (record.rounds < opts.maxRounds) {

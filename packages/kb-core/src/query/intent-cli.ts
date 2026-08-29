@@ -16,6 +16,11 @@ import type {
 } from '@kb/core/intents/types.js'
 import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
+import {
+  NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE,
+  detectCausalTarget,
+  isNegativeClaimGuardEnabled,
+} from './causal-claim-intent.js'
 
 /** Minimal printer surface for intent result rendering (implemented by client Printer). */
 export interface IntentResultPrinter {
@@ -295,6 +300,8 @@ export interface CuratorAudit {
   sufficient?: boolean
   /** True when the curator bailed to its safe fallback — no judging actually happened. */
   fellBack?: boolean
+  /** Caller-declared probes that returned nothing — subjects the answer must not speak to. */
+  requiredGapsUnmet?: string[]
 }
 
 /**
@@ -327,6 +334,17 @@ export function formatCuratorResearchNotes(curation: CuratorAudit | undefined): 
     lines.push(`- Gaps retrieval could not fully close: ${gaps.join('; ')}.`)
   } else if (curation.sufficient === true) {
     lines.push('- The retrieved evidence was judged sufficient to answer.')
+  }
+  // A required probe that came back empty is stronger than a judged gap: the caller declared this
+  // had to be covered for the answer to be sound, and it is not. Say so in terms synthesis can act
+  // on, since "sufficient" above would otherwise read as permission to answer.
+  const unmet = Array.isArray(curation.requiredGapsUnmet)
+    ? curation.requiredGapsUnmet.filter(g => typeof g === 'string' && g.trim().length > 0)
+    : []
+  if (unmet.length > 0) {
+    lines.push(
+      `- NOT INSPECTED — retrieval found no code of its own for: ${unmet.join('; ')}. Do not make claims about its behavior; say it was not inspected instead of inferring from the absence of references elsewhere.`
+    )
   }
   if (lines.length === 0) return ''
   return [
@@ -463,6 +481,11 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const proceduralGuidance = isProceduralQuestion(question) ? PROCEDURAL_SYNTHESIS_GUIDANCE : ''
 
+    const negativeClaimGuidance =
+      isNegativeClaimGuardEnabled() && detectCausalTarget(question)
+        ? NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE
+        : ''
+
     const userContent = [
       'Answer from the evidence below. Use only the facts that bear on the question and ignore the rest — do not pad the answer with loosely related facts. Always give a useful response: a high-level summary for broad questions, precise detail for specific ones. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',
       'Match the answer structure to the question. For a multi-part or comparative question, lead with the direct answer, then break the supporting detail into short headings, bullets, or a compact table so each part is answerable at a glance; bold key terms (settings, file names, flags, conditions). For a simple question, a tight paragraph is enough.',
@@ -470,6 +493,7 @@ export async function enrichReadDocumentsAnswerWithLLM(
       'Only name files that actually appear in the evidence, copying their paths exactly — never guess, alias, or abbreviate a file name the evidence does not show. If the evidence does not reveal which file holds something, say so instead of inventing a plausible file name.',
       'If the question asks kb to perform a capability it does not have (provision infrastructure, deploy unrelated services, etc.), lead with a brief boundary answer — do not substitute a long guide to a different task just because retrieved facts share words like "deploy" or "kubernetes".',
       ...(proceduralGuidance ? ['', proceduralGuidance] : []),
+      ...(negativeClaimGuidance ? ['', negativeClaimGuidance] : []),
       '',
       `Question: ${question}`,
       graphSection,

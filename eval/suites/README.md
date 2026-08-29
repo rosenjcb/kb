@@ -14,10 +14,63 @@ timestamp: 2026-08-15T00:00:00Z
 Each file needs: `id`, `rubric_focus`, a non-empty `questions` array, and optionally:
 - `repo_url` (default clone URL used when `--repo` is omitted)
 - `answers` (same length as `questions`; golden answers for the LLM judge)
+- `shapes` (positional; `conceptual` \| `investigative`; absent ⇒ all conceptual)
+- `gold_files` (positional; graded-retrieval qrels — see below)
 - `display_name`
 
 Disposable KB base names are **not** configured here — `eval-run.mjs` defaults `--base` to
 `eval-{suiteId}` (reuse across runs). Override with `--base` if needed.
+
+## Graded retrieval (`gold_files`)
+
+The prose rubric grades the synthesized answer. The **citation list** is graded separately
+against optional per-question gold file sets (issue #237):
+
+```yaml
+gold_files:
+  - null   # skip retrieval axis for this question
+  - - path: packages/kb-core/src/tools/hybrid-retriever.ts
+      role: must_open
+      symbol: fuseLane   # optional; documentation only today
+    - path: README.md
+      role: supporting
+```
+
+- `must_open` — failing to return it is a **recall miss**.
+- `supporting` — counts toward precision / NDCG, not required for recall.
+
+Judge-free metrics from `artifact.query_evaluation[].provenance`: `recall@k` /
+`precision@k` at k∈{1,3,5,10}, `mrr`, `ndcg@10`, `first_gold_rank`, plus cost-normalized
+`tokens_per_must_open_file` and `wasted_budget_share`. Reported overall and
+**split by `shape`**. Suites without `gold_files` load unchanged.
+
+Optional companions (same positional length):
+
+- `gold_scope` — expected scope landing(s); compared to `scope:` in `retrieval.detail`
+  so "searched the wrong subtree" is separable from rank error.
+- `probes` — which mechanisms the question is designed to exercise
+  (`decoy_guard`, `causal_guard`, `scope_inference`, `unit_size_bias`, `wrong_base`,
+  `text_only_index`). The harness reports "feature X fired on A of B target questions"
+  and distinguishes **off** / **ran-but-missed** / **fired** (absent vs zero on
+  `decoys:` / `causal:` counters).
+
+Every artifact also records `index_fingerprint` (doc/symbol counts + db mtime) and
+warns on `binary_source_skew` when `packages/*/dist` is older than `packages/*/src`.
+
+### Why a deterministic axis (noise floor)
+
+Identical config, same index, same binary can still move LLM-judge correctness by
+~0.4 and ΔS by ~0.03 between runs — larger than the effect sizes of the retrieval
+guards this milestone measures. Rank-order changes that leave fluent prose alone
+register as zero on the rubric. Graded retrieval has no judge variance.
+
+Replay an existing artifact (no re-query):
+
+```bash
+pnpm run eval:retrieval-replay -- --suite kb --latest
+pnpm run eval:retrieval-replay -- --suite kb --latest --write
+pnpm run eval:retrieval-replay -- --all --suite kb
+```
 
 ## Suites
 

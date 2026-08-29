@@ -78,6 +78,10 @@ Evidence Handling & Constrained to evidence; acknowledges uncertainty \\
 \multicolumn{2}{@{}l@{}}{\textit{Measured efficiency (numeric telemetry)}} \\
 Token usage       & Weighted $T$ (in$+$out; N adds $0.1\times$cache\_read) \\
 Latency           & Wall-clock duration $\tau_w$ \\
+\addlinespace
+\multicolumn{2}{@{}l@{}}{\textit{Graded retrieval (deterministic, gold-referenced; \S\ref{subsec:graded-retrieval})}} \\
+Recall@$k$ / NDCG@$k$ & Citation list vs.\ \texttt{gold\_files} qrels \\
+$C_{\text{gold}}$, $W$ & Tokens per recovered \texttt{must\_open}; wasted-budget share \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -108,6 +112,84 @@ label maps deterministically to its ordinal level $s \in \{0,1,2,3,4\}$, so the
 adequacy utility (Eq.~\ref{eq:adequacy}) and every downstream metric operate on the
 same $0$--$4$ scale as before and historical runs remain comparable.
 Token usage and latency are measured from run telemetry and are never labeled.
+
+\subsection{Graded retrieval: gold citation sets}
+\label{subsec:graded-retrieval}
+
+The synthesized answer is a working hypothesis; the citations are the product.
+Rank-order changes in the hybrid retriever (RRF weights, section-level indexing,
+curator keep-sets) often leave fluent prose unchanged, so an LLM judge on answer
+text cannot see the delta the milestone asks us to ship.  We therefore score the
+\emph{ranked citation list} against optional per-question gold file sets
+(\texttt{gold\_files} in each suite YAML), independent of the prose rubric.
+
+\medskip
+\noindent\textbf{Qrels.}  Each annotated question carries a graded relevance list:
+\texttt{must\_open} files (relevance grade~$2$) that a correct localization must
+return, and \texttt{supporting} files (grade~$1$) that count toward precision but
+are not required for recall---CORE-Bench's L2/L3 split and MULocBench's non-code
+file classes.  Questions without annotation are skipped, so suites can be labeled
+incrementally.  Labels are hand-annotated from answer keys and observed failures;
+they are \emph{not} minted by KB's own curator (self-grading would encode the
+system's blind spots as the answer key).
+
+\medskip
+\noindent\textbf{Judge-free metrics.}  From the already-captured
+\texttt{provenance} paths we compute standard IR measures at $k{=}10$:
+recall@$k$ over \texttt{must\_open}, precision@$k$ over any gold path,
+MRR, NDCG@$k$ with the grades above, and \texttt{first\_gold\_rank}.
+No LLM judge, no API key, no score variance.  Metrics are reported overall and
+\textbf{split by question shape} (conceptual vs.\ investigative), so a gain
+concentrated in the queries agents actually ask is visible rather than averaged
+away.
+
+\medskip
+\noindent\textbf{Cost-normalized quantities.}  Let $T$ be the weighted token total
+for the annotated questions and $R$ the count of recovered \texttt{must\_open}
+files.  We report
+\[
+C_{\text{gold}} = T / R
+\qquad\text{(tokens per recovered \texttt{must\_open} file)}
+\]
+and the wasted-budget share $W$---the fraction of tokens spent on answers that
+recovered \emph{zero} \texttt{must\_open} files.  Both are computed for condition~K
+and (when the control emits citations) condition~N, and land in
+\texttt{artifact.comparison} beside $\Delta S$.
+
+\medskip
+\noindent\textbf{Relation to $S$.}  Graded retrieval is a \emph{third family}
+alongside LLM-judged quality and measured efficiency.  It is \textbf{not} folded
+into $S$ in this pass: changing $S$ would silently invalidate every prior
+artifact and every number in Table~\ref{tab:harvest-results}.  Report $R@k$,
+NDCG@$k$, $C_{\text{gold}}$, and $W$ alongside $\Delta S$; folding them into the
+headline scalar is future work once a baseline exists.
+
+\medskip
+\noindent\textbf{Noise floor.}  Paired re-runs with identical code, index, and
+flags have moved conceptual mean correctness by $\approx 0.4$ and $\Delta S$ by
+$\approx 0.03$---larger than the effect sizes of the retrieval guards under
+test.  Half of the per-question movers in one A/B had the decoy guard
+provably \emph{not} fire (\texttt{decoys:0}), yet still swung a full correctness
+point.  The deterministic axis has no such variance; the harness also records
+per-question \texttt{decoys:}/\texttt{causal:}/\texttt{scope:} counters
+(absent$\neq$zero) and optional \texttt{probes:} tags so a feature that never
+matched its target questions is reported as a non-experiment rather than
+``measured, no gain.''
+
+\begin{center}\small
+\begin{tabular}{@{}lp{4.0cm}@{}}
+\toprule
+\textbf{Axis} & \textbf{Criterion / measurement} \\
+\midrule
+\multicolumn{2}{@{}l@{}}{\textit{Graded retrieval (deterministic, gold-referenced)}} \\
+Recall@$k$        & Fraction of \texttt{must\_open} files in top-$k$ citations \\
+Precision@$k$     & Fraction of top-$k$ citations that are gold \\
+MRR / NDCG@$k$    & Rank quality over graded qrels \\
+$C_{\text{gold}}$ & Tokens per recovered \texttt{must\_open} file \\
+$W$               & Wasted-budget share (tokens on zero-hit answers) \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \subsection{Success Score and Headline Verdict ($\Delta S$)}
 \label{subsec:success}

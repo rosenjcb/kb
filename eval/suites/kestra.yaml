@@ -21,6 +21,83 @@ questions:
   - "When a user creates a new flow and imports YAML via the \"Import\" action in the flow editor, what code path handles the import, and why might the flow not actually be persisted/saved to the backend after import?"
   - "Where in the Vue UI is the flow \"Import\" feature implemented (the button/dialog that lets a user paste or upload YAML for a new flow), and what does it do with the parsed YAML — does it call the create/save flow API or just set the editor content?"
   - "In MultiPanelFlowEditorView.vue and the flow store, how does clicking Save behave when flowStore.isCreating is true, and could the YAML import path (FlowCreate.vue handleImportSubmit / setupFlow) leave the flow store in a state where the Save button is missing, disabled, or a no-op?"
+# Positional, aligned to questions:. Q11-Q13 are the multi-hop/decoy Import-YAML probes.
+shapes:
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - investigative
+  - investigative
+  - investigative
+
+# Graded retrieval gold citation sets (#237). Hand-annotated from answer keys / issue #216 session.
+gold_files:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/create/ImportYaml.vue
+      role: supporting
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/create/ImportYaml.vue
+      role: must_open
+  - - path: ui/src/components/flows/FlowCreate.vue
+      role: must_open
+      symbol: handleImportSubmit
+    - path: ui/src/components/flows/MultiPanelFlowEditorView.vue
+      role: supporting
+    - path: ui/src/stores/flow.ts
+      role: supporting
+
+# Q13 is the causal / negative-claim shape ("could the YAML import path leave Save disabled").
+gold_scope:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+
+probes:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - decoy_guard
+  - - decoy_guard
+  - - causal_guard
+    - decoy_guard
 answers:
   - >
     Kestra is an open-source, event-driven orchestration platform for data, AI, and infrastructure

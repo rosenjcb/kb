@@ -80,6 +80,13 @@ import {
   adequacyUtility,
   computeAdequacyQuality,
   summarizeCuration,
+  summarizeScoresByShape,
+  attachGradedRetrievalScores,
+  computeRetrievalCostMetrics,
+  collectIndexFingerprint,
+  checkBinarySourceSkew,
+  collectPackageVersions,
+  DEFAULT_QUESTION_SHAPE,
   classifyStageTokens,
   parseRetrievalDetailTrace,
   buildQuestionTimeline,
@@ -1090,6 +1097,108 @@ function resolveQuestions(args, suiteConfig) {
   return suiteConfig.questions
 }
 
+/**
+ * Per-question shapes aligned to `questions`. An explicit `--question`/`--questions-file` override
+ * replaces the suite's question list, so the suite's positional shapes no longer line up — fall
+ * back to all-conceptual rather than mislabeling buckets.
+ */
+/** Print the per-shape score split so a gain confined to one bucket is not read as run noise. */
+function printScoresByShape(byShape) {
+  const shapes = Object.keys(byShape ?? {})
+  if (shapes.length < 2) return
+  console.error('\n[eval] scores by question shape')
+  console.error('  shape           n   corr   rel   pass')
+  for (const shape of shapes) {
+    const s = byShape[shape]
+    console.error(
+      `  ${shape.padEnd(14)} ${String(s.n).padStart(2)}  ${s.mean_correctness
+        .toFixed(2)
+        .padStart(5)} ${s.mean_relevance.toFixed(2).padStart(5)}  ${s.pass_rate_quality_axes_at_least_3.toFixed(2).padStart(5)}`
+    )
+  }
+}
+
+/** Print graded-retrieval summary (gold citation sets) — judge-free retrieval insights. */
+function printGradedRetrieval(summary, cost, probeCoverage) {
+  if (!summary && !probeCoverage) return
+  if (summary) {
+    console.error('\n[eval] graded retrieval (gold citation sets)')
+    console.error(
+      `  overall  n=${summary.questions_with_gold}  R@${summary.k}=${fmt4(summary.mean_recall_at_k)}  P@${summary.k}=${fmt4(summary.mean_precision_at_k)}  MRR=${fmt4(summary.mean_mrr)}  NDCG@${summary.k}=${fmt4(summary.mean_ndcg_at_k)}  must_open ${summary.total_must_open_recovered}/${summary.total_must_open}`
+    )
+    if (summary.recall_at) {
+      const bits = [1, 3, 5, 10]
+        .map(k => `R@${k}=${fmt4(summary.recall_at[k])}`)
+        .join('  ')
+      console.error(`  recall   ${bits}`)
+    }
+    const shapes = Object.keys(summary.by_shape ?? {})
+    if (shapes.length) {
+      console.error(`  shape           n   R@${summary.k}   P@${summary.k}   MRR  NDCG`)
+      for (const shape of shapes) {
+        const s = summary.by_shape[shape]
+        console.error(
+          `  ${shape.padEnd(14)} ${String(s.n).padStart(2)}  ${fmt4(s.mean_recall_at_k).padStart(5)} ${fmt4(s.mean_precision_at_k).padStart(5)} ${fmt4(s.mean_mrr).padStart(5)} ${fmt4(s.mean_ndcg_at_k).padStart(5)}`
+        )
+      }
+    }
+    if (cost) {
+      const tpm =
+        cost.tokens_per_must_open_file != null
+          ? formatCompactTokens(cost.tokens_per_must_open_file)
+          : 'n/a'
+      const waste =
+        cost.wasted_budget_share != null
+          ? `${(cost.wasted_budget_share * 100).toFixed(1)}%`
+          : 'n/a'
+      console.error(
+        `  cost     tokens/must_open=${tpm}  wasted_budget=${waste}  (zero-hit qs=${cost.questions_with_zero_must_open})`
+      )
+    }
+  }
+  if (probeCoverage?.by_probe) {
+    console.error('\n[eval] probe coverage (mechanism vs target questions)')
+    for (const [probe, s] of Object.entries(probeCoverage.by_probe)) {
+      console.error(
+        `  ${probe.padEnd(18)} targets=${s.target_questions}  fired=${s.fired}  ran_miss=${s.ran_but_missed}  off=${s.off}  unknown=${s.unknown}  qs=[${s.question_ids.join(',')}]`
+      )
+    }
+  }
+}
+
+function fmt4(v) {
+  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(3) : '  n/a'
+}
+
+function resolveShapes(args, suiteConfig, questionCount) {
+  const overridden = Boolean(args.questionsFile || args.question)
+  const shapes = overridden ? null : suiteConfig.shapes
+  return Array.from(
+    { length: questionCount },
+    (_, i) => shapes?.[i] ?? DEFAULT_QUESTION_SHAPE
+  )
+}
+
+/** Gold citation sets aligned to questions; null when overridden or unannotated. */
+function resolveGoldFiles(args, suiteConfig, questionCount) {
+  const overridden = Boolean(args.questionsFile || args.question)
+  if (overridden) return Array.from({ length: questionCount }, () => null)
+  const golds = suiteConfig.goldFiles
+  return Array.from({ length: questionCount }, (_, i) => golds?.[i] ?? null)
+}
+
+function resolveGoldScope(args, suiteConfig, questionCount) {
+  const overridden = Boolean(args.questionsFile || args.question)
+  if (overridden) return Array.from({ length: questionCount }, () => null)
+  return Array.from({ length: questionCount }, (_, i) => suiteConfig.goldScope?.[i] ?? null)
+}
+
+function resolveProbes(args, suiteConfig, questionCount) {
+  const overridden = Boolean(args.questionsFile || args.question)
+  if (overridden) return Array.from({ length: questionCount }, () => null)
+  return Array.from({ length: questionCount }, (_, i) => suiteConfig.probes?.[i] ?? null)
+}
+
 /** Recent telemetry for this eval base (init/scan/query). */
 function logsCmd(base) {
   return `logs list --base ${base} --limit 10`
@@ -1253,6 +1362,10 @@ async function main() {
 
   const workdir = runDir
   const questions = resolveQuestions(args, suiteConfig)
+  const questionShapes = resolveShapes(args, suiteConfig, questions.length)
+  const questionGoldFiles = resolveGoldFiles(args, suiteConfig, questions.length)
+  const questionGoldScope = resolveGoldScope(args, suiteConfig, questions.length)
+  const questionProbes = resolveProbes(args, suiteConfig, questions.length)
   const rubricPhrase = suiteConfig.rubricPhrase
 
   // Base: user override → formula eval-{suiteId} → fall back from --skip-init scratch
@@ -1640,6 +1753,7 @@ async function main() {
     query_evaluation.push({
       question_id: n,
       question: questions[n - 1],
+      shape: questionShapes[n - 1],
       result_count,
       retrieval,
       answer_excerpt: answer ? answer.slice(0, 280) : null,
@@ -1668,6 +1782,21 @@ async function main() {
   // Retrieval-side relevancy diagnostic: harvest the curator's kept/dropped audit.
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))
 
+  // Graded retrieval (issue #237): score citation lists against suite gold_files — judge-free.
+  // Also lifts scope/decoys/causal instrumentation and probe-coverage (follow-up comments).
+  const { graded: gradedRetrievalSummary, probe_coverage: probeCoverage } =
+    attachGradedRetrievalScores(query_evaluation, questionGoldFiles, {
+      goldScopeList: questionGoldScope,
+      probesList: questionProbes,
+    })
+
+  const binarySkew = checkBinarySourceSkew(KB_REPO)
+  if (binarySkew.warning) {
+    console.error(`[eval] WARNING: ${binarySkew.warning}`)
+  }
+  const indexFingerprint = collectIndexFingerprint(base)
+  const packageVersions = collectPackageVersions(KB_REPO)
+
   // KB-side query telemetry (tokens + latency) for the composite success score.
   const kbQueryTelemetryRaw = readKbQueryTelemetry(base, questions.length, args.queryTrials ?? 1)
   // Per-question run timeline: join each question's RunReport (stage token/time split) with its
@@ -1684,13 +1813,18 @@ async function main() {
     buildQuestionTimeline(report, i + 1, questions[i], query_evaluation[i]?.retrieval?.detail)
   )
   const timelineSummary = buildTimelineSummary(queryTimeline)
+  const kbTotalTokens = kbQueryTelemetry
+    ? kbQueryTelemetry.total_input_tokens + kbQueryTelemetry.total_output_tokens
+    : null
+  const retrievalCost = computeRetrievalCostMetrics(query_evaluation, {
+    totalTokens: kbTotalTokens,
+    timeline: queryTimeline,
+  })
   const kbSuccess = computeSuccessScore({
     meanCorrectness: mC,
     meanUsefulness: mU,
     meanRelevance: mR,
-    totalTokens: kbQueryTelemetry
-      ? kbQueryTelemetry.total_input_tokens + kbQueryTelemetry.total_output_tokens
-      : null,
+    totalTokens: kbTotalTokens,
     totalDurationMs: kbQueryTelemetry ? kbQueryTelemetry.total_duration_ms : null,
   })
   const aggregateQueryScores = {
@@ -1705,7 +1839,11 @@ async function main() {
     mean_evidence_handling: Number(mE.toFixed(3)),
     pass_rate_correctness_and_usefulness_at_least_3: Number(pr.toFixed(3)),
     pass_rate_quality_axes_at_least_3: Number(prq.toFixed(3)),
+    by_shape: summarizeScoresByShape(query_evaluation),
     ...(curationSummary ? { curation_summary: curationSummary } : {}),
+    ...(gradedRetrievalSummary ? { graded_retrieval: gradedRetrievalSummary } : {}),
+    ...(retrievalCost ? { retrieval_cost: retrievalCost } : {}),
+    ...(probeCoverage ? { probe_coverage: probeCoverage } : {}),
   }
   const coverageAuditSummary = {
     mean_coverage_ratio: Number(
@@ -1746,7 +1884,7 @@ async function main() {
           : 'partial'
 
   const artifact = {
-    schema_version: 2,
+    schema_version: 3,
     evaluation_plan: 'EVALUATION.md',
     run_label: label,
     status,
@@ -1830,6 +1968,14 @@ async function main() {
     query_timeline: queryTimeline,
     timeline_summary: timelineSummary,
     success_score_inputs: kbSuccess.inputs,
+    index_fingerprint: indexFingerprint,
+    package_versions: packageVersions,
+    binary_source_skew: binarySkew,
+    retrieval_evaluation: {
+      graded_retrieval: gradedRetrievalSummary,
+      retrieval_cost: retrievalCost,
+      probe_coverage: probeCoverage,
+    },
     aggregate_scores: {
       query: aggregateQueryScores,
       chat: {
@@ -1882,6 +2028,38 @@ async function main() {
         scoresFile: null,
       })
       artifact.control = control
+      // Score control citations against the same gold_files (empty provenance ⇒ zero recall).
+      if (gradedRetrievalSummary && control?.query_evaluation) {
+        const ctrlAttached = attachGradedRetrievalScores(
+          control.query_evaluation,
+          questionGoldFiles,
+          { goldScopeList: questionGoldScope, probesList: questionProbes }
+        )
+        const ctrlTel = control.control_telemetry
+        const ctrlTokens = ctrlTel
+          ? (ctrlTel.total_input_tokens ?? 0) +
+            (ctrlTel.total_output_tokens ?? 0) +
+            0.1 * (ctrlTel.total_cache_read_tokens ?? ctrlTel.cache_read_tokens ?? 0)
+          : null
+        const ctrlCost = computeRetrievalCostMetrics(control.query_evaluation, {
+          totalTokens: ctrlTokens,
+        })
+        if (control.aggregate_scores?.query) {
+          if (ctrlAttached.graded) {
+            control.aggregate_scores.query.graded_retrieval = ctrlAttached.graded
+          }
+          if (ctrlCost) control.aggregate_scores.query.retrieval_cost = ctrlCost
+          if (ctrlAttached.probe_coverage) {
+            control.aggregate_scores.query.probe_coverage = ctrlAttached.probe_coverage
+          }
+          if (control.aggregate_scores.combined) {
+            control.aggregate_scores.combined.graded_retrieval =
+              control.aggregate_scores.query.graded_retrieval
+            control.aggregate_scores.combined.retrieval_cost =
+              control.aggregate_scores.query.retrieval_cost
+          }
+        }
+      }
       artifact.comparison = buildControlComparison(artifact.aggregate_scores, control)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -1896,6 +2074,12 @@ async function main() {
   console.error(`[eval] wrote ${outPath}`)
 
   printTimelineDiagnosis(artifact.timeline_summary, artifact.query_timeline)
+  printScoresByShape(aggregateQueryScores.by_shape)
+  printGradedRetrieval(
+    aggregateQueryScores.graded_retrieval,
+    aggregateQueryScores.retrieval_cost,
+    aggregateQueryScores.probe_coverage
+  )
   printTrendsSummary(suiteId, KB_REPO, { currentRunId: runName })
 
   try {

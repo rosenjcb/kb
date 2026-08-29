@@ -30,6 +30,13 @@ questions:
   # Product probes on query-time scope — still kb-domain questions, not meta-eval riddles.
   - What is the role of the entity registry in query-time scope inference?
   - Walk through how hybrid retrieval, the fact curator, and one-shot synthesis fit together on a kb query — and if an entity resolves, do ontology-typed sub-queries still run with no query-length gate?
+  # Investigative probes: task-embedded "where is the code and what do I change" questions —
+  # the shape agents actually ask kb mid-task, not "explain the architecture". Each is rooted in a
+  # real observed failure (#234 missing file types, #233 wrong base, #216/#217 unit-size bias) and
+  # carries an explicit decoy in the gold answer. Judge these on whether the right FILES come back.
+  - "A file type in my repo never comes back from kb query, even when I name the exact path in the question. Where does indexing decide a file is text-only rather than AST-parsed, what does a file need in the database before hybrid retrieval can return it at all, and how do I check a specific path is covered?"
+  - "My agent session's kb queries are answering out of a different repository's index and nothing errors. Which side actually chooses the base — the client environment or the server — where is that resolution done, and what in the query response tells me which base served the answer?"
+  - "For a question about one small source file, kb keeps returning README.md and AGENTS.md instead. Where in retrieval does that ranking get decided, and what already exists in the code to counteract long documents crowding out narrow ones?"
 answers:
   - >
     kb is a client/server knowledge system for turning git repositories into a queryable
@@ -275,3 +282,177 @@ answers:
     short-question LLM expander is only the unresolved fallback. A correct answer must describe the
     hybrid → curator → synthesis stack and must not claim the deleted ponds/orchestrator loop is
     how kb query works today.
+
+  - >
+    Indexing decides text-vs-AST in the tree-sitter indexer
+    (`packages/kb-core/src/tools/tree-sitter-indexer.ts`): files whose extension has a registered
+    grammar go down the AST path and produce per-symbol `code_symbols`; everything else on the text
+    allowlist (`.md`, `.fish`, `.vue`, `.svelte`, `.astro`, …) goes down a text-only path. The
+    critical part is that **file-state rows are not enough** — a file can be discovered and get a
+    `code_file_state` row and still be invisible to retrieval, because hybrid search reads
+    `documents_fts` / `code_symbols_fts`, not the state table. That was the actual #234 bug for
+    `share/completions/*.fish`. The text-only path now emits a file-level `code_symbol`
+    (`kind: file`, basename as name, capped `source_text`) so those files are reachable. To check a
+    specific path, use the coverage audit `kb graph --file <path>`, which exits non-zero when file
+    state exists but no searchable row does. The decoy is adding a tree-sitter grammar: that is the
+    wrong fix for a non-code file — the extension belongs on the text allowlist instead. A correct
+    answer must name the indexer's allowlist and the need for a searchable row, and must not claim
+    that being scanned or having file state is sufficient for retrieval.
+
+  - >
+    The base is chosen **server-side**. One `kb-server` process serves many bases; the MCP `kb_query`
+    tool takes an optional `base` argument, which the server resolves through its base registry
+    (`registry.resolve(...)` in `packages/kb-server/src/mcp-tools.ts`), falling back to the
+    connection's default — set from the `X-KB-Base` header that `kb mcp install` writes from the
+    active base. The client's `KB_BASE` / `KB_GIT_REPOS` are **client-scoped and never read by the
+    server**, so exporting `KB_BASE` in the agent's environment does not redirect a server-side
+    query; that is the decoy. Since #233/#235 the query response echoes the resolved `base` back to
+    the caller, and an empty or unindexed base serializes an explanation plus a recommended action
+    into `notes` — before that, a wrong-base answer was completely silent. A correct answer must put
+    resolution on the server (registry + `X-KB-Base` / `base` argument) and point at the echoed
+    `base` field as the confirmation, not at the client env var.
+
+  - >
+    Ranking happens in hybrid retrieval (`packages/kb-core/src/tools/hybrid-retriever.ts`), which
+    fuses six lanes (lexical FTS5 + neural, across documents/symbols/facts) by reciprocal rank
+    fusion in `fuseLane`. Two counter-measures already exist. First, `KIND_WEIGHT` applies a per-kind
+    multiplier to each lane's RRF contribution so a single code symbol is not weighed identically to
+    a whole document (#216, now unconditional). Second, `searchCodeSymbolsFts`
+    (`packages/kb-core/src/tools/sqlite-kb-index.ts`) orders by an explicit
+    `bm25(code_symbols_fts, 1.0, 3.0, 1.0)`, weighting a symbol's `name` column 3× its `source_text`
+    so a name match outranks a keyword buried in a long body (#217). The underlying cause is
+    retrieval-unit granularity: a long, topically-broad document has a structurally higher chance of
+    containing an isolated hit on *every* distinct query term across unrelated sections, which is
+    why whole-document chunking is the remaining structural fix. The decoy is embeddings — they only
+    re-score candidates that keyword search already found and never retrieve anything, so "add
+    better embeddings" cannot rescue a file FTS missed. A correct answer must land on
+    `hybrid-retriever.ts` / `sqlite-kb-index.ts` and must not attribute the fix to embeddings or to
+    a score floor.
+
+
+# Positional, aligned to questions:. The last three are the investigative probes.
+shapes:
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - conceptual
+  - investigative
+  - investigative
+  - investigative
+
+# Graded retrieval gold citation sets (#237). Positional like shapes:; null = skip axis.
+# Hand-annotated from answer keys (not from kb's own curator). Investigative probes first.
+gold_files:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+  - - path: packages/kb-server/src/mcp-tools.ts
+      role: must_open
+      symbol: registry.resolve
+    - path: packages/kb-core/src/service/serialize.ts
+      role: supporting
+  - - path: packages/kb-core/src/tools/hybrid-retriever.ts
+      role: must_open
+      symbol: fuseLane
+    - path: packages/kb-core/src/tools/sqlite-kb-index.ts
+      role: must_open
+      symbol: searchCodeSymbolsFts
+
+# Expected scope landings (#237 follow-up). Q24's answer lives in kb-server — if scope
+# lands on @kb/client, recall@k is capped before ranking runs.
+gold_scope:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - "@kb/core"
+  - - "@kb/server"
+  - - "@kb/core"
+
+# Which mechanisms each question is designed to exercise. Lets the harness report
+# "feature X fired on 0 of N target questions" instead of averaging a non-experiment.
+probes:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - text_only_index
+  - - wrong_base
+    - scope_inference
+  - - unit_size_bias
+    - decoy_guard

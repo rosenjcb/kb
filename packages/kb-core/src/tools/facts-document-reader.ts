@@ -5,6 +5,11 @@ import type { RunCollector } from '../core/telemetry'
 import type { DocType } from '../core/doc-taxonomy'
 import type { LLMProvider } from '../core/types'
 import { type CuratorRequery, type CurationRecord, curateFacts, shouldCurate } from './fact-curator'
+import {
+  causalTargetProbe,
+  detectCausalTarget,
+  isNegativeClaimGuardEnabled,
+} from '../query/causal-claim-intent.js'
 import { type Embedder, createEmbedder } from '../core/embeddings'
 import {
   DEFAULT_FACT_LIMIT,
@@ -227,25 +232,48 @@ export class FactsDocumentReader {
     const curatorQuery = process.env.KB_ABLATE_CURATOR_RAW_Q?.trim()
       ? process.env.KB_ABLATE_CURATOR_RAW_Q.trim()
       : query
+    // Negative-claim guard (#228): for "does X affect Y", oblige retrieval to actually visit Y's
+    // own code. Costs one extra shallow hybrid pass on matching questions and no LLM call.
+    const causalGuardOn = isNegativeClaimGuardEnabled()
+    const causal = causalGuardOn ? detectCausalTarget(curatorQuery) : null
+
     const { results, record } = await curateFacts({
       llm: this.llm,
       query: curatorQuery,
       results: response.results,
       requery,
+      ...(causal ? { requiredGaps: [causalTargetProbe(causal)] } : {}),
       collector,
     })
+
+    // Guard activity, stamped on the detail string the eval harness scrapes. Without this there
+    // is no way to tell from an artifact whether the guard fired, matched nothing, or was off —
+    // and "no measurable change" is indistinguishable from "never ran".
+    // Absent vs zero has to stay distinguishable: no `causal:` key means the guard was off,
+    // `causal:miss` means it ran and the question was not of that shape. Collapsing the two makes
+    // a null result unreadable — you cannot tell "measured, no gain" from "never ran".
+    const guardBit = !causalGuardOn
+      ? ''
+      : causal
+        ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
+        : 'causal:miss'
 
     // Total fallback: nothing was curated, so no audit detail is worth reporting — but if an
     // LLM error caused it, the record still has to travel or the degradation disappears.
     if (record.fellBack && record.dropped.length === 0 && record.added === 0) {
+      const fallbackDetail = [response.retrieval.detail ?? '', guardBit].filter(Boolean).join(';')
       return record.failure
-        ? { ...response, retrieval: { ...response.retrieval, curation: record } }
-        : response
+        ? {
+            ...response,
+            retrieval: { ...response.retrieval, detail: fallbackDetail, curation: record },
+          }
+        : { ...response, retrieval: { ...response.retrieval, detail: fallbackDetail } }
     }
 
     const detail = [
       response.retrieval.detail ?? '',
       `curated:kept=${results.length},dropped=${record.dropped.length},requeried=${record.requeried.length},rounds=${record.rounds}`,
+      guardBit,
     ]
       .filter(Boolean)
       .join(';')
