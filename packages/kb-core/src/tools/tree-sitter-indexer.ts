@@ -707,6 +707,33 @@ export class TreeSitterIndexer implements LanguageIndexer {
           // export never lingers under the old name.
           this.symbolIndexer.deleteCodeSymbolsForFile(this.gitRepo ?? '', rel)
 
+          // A single-file component's own name is nowhere in its script block: `Gantt.vue`
+          // declares handlers and refs, never a `Gantt`. So the component is unaddressable by
+          // the name everyone actually calls it, while a Java class gets its class name for
+          // free. Measured on `eval-kestra` Q7 ("the UI execution Gantt/logs views"): `Gantt`
+          // resolved to nothing and `Logs` resolved to two backend `Logs.java` files, so
+          // name-based lookup promoted the wrong `Logs` and the gold UI component dropped out
+          // of the citation list entirely (#238).
+          if (isEmbeddedScript) {
+            const componentName = path.basename(rel, ext)
+            if (componentName && !stats.symbolKeys.has(codeSymbolKey(rel, componentName))) {
+              stats.symbolKeys.add(codeSymbolKey(rel, componentName))
+              const capped =
+                src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                  ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                  : src
+              upsertCodeSymbol(
+                this.symbolIndexer,
+                rel,
+                componentName,
+                'component',
+                `${rel}\n${capped}`,
+                this.gitRepo
+              )
+              stats.symbols++
+            }
+          }
+
           // Import relationships still count toward `edges` for progress reporting, but the
           // flat doc/symbol index has nowhere to store a file→file edge.
           for (const q of compiled.importQueries) {

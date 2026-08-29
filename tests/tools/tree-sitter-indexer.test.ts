@@ -652,6 +652,33 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
+  it('[TC-SFC1] emits a component-name symbol for an SFC so the component is addressable by its own name', async () => {
+    // A .vue script block never declares the component's own name, so before this
+    // `Gantt.vue` was unreachable by a query saying "Gantt" — while a Java class gets
+    // its class name for free. Measured on eval-kestra Q7 (#238).
+    await writeFile(
+      join(repoRoot, 'src', 'Gantt.vue'),
+      '<script setup lang="ts">\nconst rows = []\n</script>\n<template><div/></template>'
+    )
+    await writeFile(
+      join(repoRoot, 'src', 'Sidebar.svelte'),
+      '<script>\nlet open = true\n</script>\n<div/>'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'Gantt', 'src/Gantt.vue')).toBe(true)
+    expect(querySymbol(db, 'Sidebar', 'src/Sidebar.svelte')).toBe(true)
+    // The extension is not part of the name — a question says "Gantt", never "Gantt.vue".
+    expect(querySymbol(db, 'Gantt.vue', 'src/Gantt.vue')).toBe(false)
+    db.close()
+  })
+
   it('[TC-FBSK] falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases', async () => {
     // No <script> block at all — nothing to extract, falls back to text.
     await writeFile(join(repoRoot, 'src', 'Empty.vue'), '<template><div>flow</div></template>')
