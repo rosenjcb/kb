@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync as Database } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runMigrations } from '@kb/core/core/db-migrations.js'
 import { CodeGraphStore } from '@kb/core/tools/code-graph-store.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 import { TreeSitterIndexer } from '@kb/core/tools/tree-sitter-indexer.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 let tmpDir: string
 let repoRoot: string
@@ -679,6 +679,50 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
+  it('[TC-3V0G] emits a filename-stem symbol when no export matches the kebab-case stem', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'scope-inference.ts'),
+      'export function inferQueryScope(): void {}\n'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'inferQueryScope', 'src/scope-inference.ts')).toBe(true)
+    expect(querySymbol(db, 'scope-inference', 'src/scope-inference.ts')).toBe(true)
+    db.close()
+  })
+
+  it('[TC-GQ8Q] does not emit a duplicate stem symbol when a class already matches the filename', async () => {
+    await writeFile(
+      join(repoRoot, 'src', 'Worker.java'),
+      'public class Worker { public void run() {} }\n'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const rows = db
+      .prepare('SELECT name, kind FROM code_symbols WHERE rel_path = ?')
+      .all('src/Worker.java') as { name: string; kind: string }[]
+    const workerRows = rows.filter(r => r.name === 'Worker')
+    expect(
+      workerRows.some(
+        r => r.kind === 'class' || r.kind === 'class_declaration' || r.kind !== 'file'
+      )
+    ).toBe(true)
+    expect(workerRows.every(r => r.kind !== 'file')).toBe(true)
+    db.close()
+  })
+
   it('[TC-ZSYM] emits a file-level symbol when a file parses cleanly but exports nothing', async () => {
     // shellcheck's `test/shellcheck.hs` is `module Main where` with a bare `main`:
     // it parses fine, the export queries capture nothing, and the whole test
@@ -704,10 +748,7 @@ describe('TreeSitterIndexer — text fallback', () => {
   it('[TC-MANIFEST] indexes build manifests that match no AST grammar', async () => {
     // `ShellCheck.cabal` matched neither EXT_MAP nor the text allowlist, so it was
     // skipped outright and "how does the Cabal build work" was unanswerable.
-    await writeFile(
-      join(repoRoot, 'Demo.cabal'),
-      'name: demo\nversion: 1.0\nbuild-depends: base\n'
-    )
+    await writeFile(join(repoRoot, 'Demo.cabal'), 'name: demo\nversion: 1.0\nbuild-depends: base\n')
 
     const { indexer, factIndexer } = makeIndexer()
     await indexer.indexProject(repoRoot)

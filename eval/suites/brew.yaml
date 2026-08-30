@@ -85,3 +85,31 @@ answers:
     `sudo: false` / `sudo_as_root: false` so fixtures never escalate. A correct answer keeps it
     distinct from ordinary `SystemCommand` and mentions test/cask fixture use — not kb
     inquiry-lane or query-length-gate behavior.
+
+# Graded retrieval gold citation sets (#238). Paths named in the answer keys.
+# Q7 (API-first 4.0) and Q10 (NeverSudo helper path) left null rather than guessed.
+gold_files:
+  - - path: Library/Homebrew/formula.rb
+      role: must_open
+  - - path: Library/Homebrew/brew.rb
+      role: must_open
+  - - path: Library/Homebrew/cmd/install.rb
+      role: must_open
+    - path: Library/Homebrew/sandbox.rb
+      role: supporting
+  - - path: Library/Homebrew/sandbox.rb
+      role: must_open
+  - - path: Library/Homebrew/cache_store.rb
+      role: must_open
+    - path: Library/Homebrew/linkage_cache_store.rb
+      role: supporting
+  - - path: Library/Homebrew/formula.rb
+      role: must_open
+    - path: Library/Homebrew/cask/cask.rb
+      role: supporting
+  - null
+  - - path: Library/Homebrew/formula.rb
+      role: must_open
+  - - path: Library/Homebrew/system_command.rb
+      role: must_open
+  - null

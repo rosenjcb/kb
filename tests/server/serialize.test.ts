@@ -663,4 +663,42 @@ describe('query entities on the wire', () => {
     expect(body.sources[0]).toEqual({ path: 'src/auth/login.ts', symbols: ['loginHandler'] })
     expect(body.sources[0]).not.toHaveProperty('relPath')
   })
+
+  it('[TC-Q651] two confident landings surface clarificationQuestion as a leading note', () => {
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'moderate',
+        data: {
+          answer: 'Both match.',
+          results: [factItem('src/a.ts')],
+          retrieval: {
+            method: 'hybrid',
+            clarificationQuestion: 'This matches service A and surface B. Which did you mean?',
+          },
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.notes?.[0]).toContain('Which did you mean?')
+    expect(body.retrieval.clarificationQuestion).toContain('Which did you mean?')
+  })
+
+  it('[TC-7B20] compactLanding appears as a leading serialize note', () => {
+    const compact = 'service auth — login\nOpen: src/auth.ts (AuthService, login)'
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'moderate',
+        data: {
+          answer: 'Auth lives in src/auth.ts.',
+          results: [factItem('src/auth.ts', 'AuthService')],
+          retrieval: { method: 'hybrid', compactLanding: compact },
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.notes?.[0]).toBe(compact)
+    expect(body.retrieval.compactLanding).toBe(compact)
+  })
 })

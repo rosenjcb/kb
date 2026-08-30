@@ -259,7 +259,7 @@ answers:
     arbitrary source folder or a Postgres database server.
 
   - >
-    When stage-0 resolves an entity (and `KB_ENTITY_SCOPE` is on), kb builds deterministic
+    When stage-0 resolves an entity, kb builds deterministic
     ontology-typed sub-queries from the entity graph — ownership, locus, dependency, composition, and
     kind-conditioned mechanism probes — with **no query-length gate**, so a long vague question about
     the tree-sitter indexer still gets targeted `retrieveHybrid` probes. The older LLM expander's
@@ -270,7 +270,7 @@ answers:
   - >
     `EntityRegistry` (`packages/kb-core/src/tools/entity-registry.ts`) stores canonical
     entities, aliases, typed edges, and links so stage-0 scope inference can partition the
-    retrieval pool (`KB_ENTITY_SCOPE`). A correct answer must describe that registry role and must
+    retrieval pool. A correct answer must describe that registry role and must
     not pivot lowercase "role" to the Prisma `Role` enum / `user_role`, or reduce the answer to
     "there is an entities SQL table" without the query-time scope use.
 

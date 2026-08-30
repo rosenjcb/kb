@@ -5,6 +5,7 @@ import {
   LEAN_ENTITY_CAP,
   assembleQueryEntities,
   capQueryEntities,
+  formatCompactRoutedReply,
   formatKnownEntitiesBlock,
 } from '@kb/core/query/query-entities.js'
 import type { ScopeVerdict } from '@kb/core/query/scope-inference.js'
@@ -101,5 +102,22 @@ describe('assembleQueryEntities', () => {
     expect(formatKnownEntitiesBlock(entities)).toMatch(/^Known entities: /)
     expect(capQueryEntities(entities, LEAN_ENTITY_CAP).length).toBeLessThanOrEqual(LEAN_ENTITY_CAP)
     expect(capQueryEntities([], 8)).toEqual([])
+  })
+
+  it('[TC-HI6B] formatCompactRoutedReply lists files and symbols to open', () => {
+    const text = formatCompactRoutedReply({
+      landings: [{ kind: 'service', name: 'internal', gloss: 'payments', role: 'scope' }],
+      results: [
+        {
+          metadata: { sourcePath: 'src/auth.ts', symbol: 'AuthService' },
+          content: 'class AuthService',
+        },
+        {
+          metadata: { sourcePath: 'src/auth.ts', symbol: 'login' },
+        },
+      ],
+    })
+    expect(text).toContain('service internal — payments')
+    expect(text).toContain('src/auth.ts (AuthService, login)')
   })
 })

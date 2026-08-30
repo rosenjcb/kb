@@ -82,3 +82,24 @@ answers:
     fish_config web UI (themes/colors) and drives live shell updates. A correct answer ties it
     to web_config ↔ session updates (not the core Rust reader loop) without kb length-gate
     language.
+
+# Graded retrieval gold citation sets (#238). Files named in the answer keys.
+# Conceptual rewrite/migration questions left null — no single owning file.
+gold_files:
+  - null
+  - - path: rust-toolchain.toml
+      role: must_open
+    - path: CMakeLists.txt
+      role: supporting
+  - null
+  - null
+  - null
+  - - path: share/tools/web_config/webconfig.py
+      role: must_open
+  - - path: src/builtins.rs
+      role: must_open
+  - null
+  - - path: src/event.rs
+      role: must_open
+  - - path: share/tools/web_config/webconfig.py
+      role: must_open

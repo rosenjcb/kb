@@ -5,7 +5,7 @@ sources: [./]
 tests: [../../../../tests/intents]
 description: Behavioral specification for Intent Routing
 tags: [spec, kb]
-timestamp: 2026-08-16T00:15:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -38,8 +38,9 @@ See companion doc for full vocabulary where applicable.
 | TC-GTAJ | FR-1 | Given query_truth with high-recall token query, then uses default limit without floor | pass |
 | TC-AX85 | FR-1 | Given query_truth without explicit limit, then defaults to DEFAULT_FACT_LIMIT facts | pass |
 | TC-HZOB | FR-1 | Given a collector on the constructor, then query_truth operationInput carries it through | pass |
-| TC-XH9F | FR-1 | Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong | pass |
+| TC-XH9F | FR-1 | [UPDATED] Given a read_facts result with one hit and no checkpoints, then evidence is weak | pass |
 | TC-1YYY | FR-1 | Given a read_facts result with zero results and no checkpoints, then evidence is none, not strong | pass |
+| TC-4GBT | FR-1 | [NEW] Given three read_facts hits and no checkpoints, then evidence is moderate, not strong | pass |
 
 ### Related docs
 

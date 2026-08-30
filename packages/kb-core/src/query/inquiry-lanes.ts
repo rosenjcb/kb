@@ -35,7 +35,7 @@ import {
   type EntityKind,
   type EntityRow,
 } from '../tools/entity-registry.js'
-import { isEntityScopeEnabled, type ScopeVerdict } from './scope-inference.js'
+import type { ScopeVerdict } from './scope-inference.js'
 
 /** What an individual lane is trying to establish about the entity. */
 export type InquiryFacet =
@@ -102,13 +102,10 @@ export interface BuildInquiryLanesInput {
 
 /**
  * Build typed sub-query lanes for a question. Returns `[]` whenever no entity
- * resolves, the registry is empty/unreadable, or the kill switch is set — the
- * caller then runs its existing expansion path unchanged.
+ * resolves or the registry is empty/unreadable — the caller then runs its
+ * existing expansion path unchanged.
  */
 export function buildInquiryLanes(input: BuildInquiryLanesInput): InquiryLane[] {
-  // Lanes are entity-scope machinery, so they follow the registry's existing
-  // switch — disabling the registry's influence on retrieval disables this too.
-  if (!isEntityScopeEnabled()) return []
   const query = input.query.trim()
   if (!query) return []
 

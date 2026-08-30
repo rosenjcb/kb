@@ -23,7 +23,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(baseDir, { recursive: true, force: true })
   await rm(scanDir, { recursive: true, force: true })
-  process.env.KB_ENTITY_INDEX = undefined
 })
 
 /**
@@ -129,28 +128,6 @@ describe('runEntityIndexCycle', () => {
     try {
       const repo = registry.findEntityByName('bare-repo')[0]
       expect(repo?.kind).toBe('repo')
-    } finally {
-      registry.close()
-    }
-  })
-
-  it('writes nothing when KB_ENTITY_INDEX=false', async () => {
-    await seedCollisionRepo()
-    process.env.KB_ENTITY_INDEX = 'false'
-
-    const stats = await runEntityIndexCycle({ baseDir, scanDir, gitRepo: 'payments-core' })
-    expect(stats).toEqual({
-      entitiesUpserted: 0,
-      factsLinked: 0,
-      collisions: 0,
-      edgesWritten: 0,
-      edgesExternal: 0,
-      edgesDropped: 0,
-    })
-
-    const registry = new EntityRegistry(dbPath)
-    try {
-      expect(registry.entityCount()).toBe(0)
     } finally {
       registry.close()
     }

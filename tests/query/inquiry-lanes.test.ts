@@ -17,7 +17,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(baseDir, { recursive: true, force: true })
-  process.env.KB_ENTITY_SCOPE = undefined
 })
 
 /** An empty index still needs the schema, which the indexer creates on open. */
@@ -156,13 +155,6 @@ describe('buildInquiryLanes — additivity', () => {
     expect(
       buildInquiryLanes({ dbPath: path.join(baseDir, 'nope.sqlite'), query: 'checkout' })
     ).toEqual([])
-  })
-
-  it('follows the registry switch — KB_ENTITY_SCOPE=false yields no lanes', () => {
-    seedServiceGraph()
-    process.env.KB_ENTITY_SCOPE = 'false'
-
-    expect(buildInquiryLanes({ dbPath, query: 'how does checkout work?' })).toEqual([])
   })
 
   it('does not land on repo entities — a repo match says little about the question', () => {

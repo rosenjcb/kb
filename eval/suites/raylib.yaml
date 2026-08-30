@@ -165,3 +165,44 @@ answers:
     BeginDrawing → draw calls → EndDrawing each frame. A correct answer covers that loop as
     one product and must not discuss kb inquiry lanes or length gates. This suite's registry
     is thin (library/repo aliases only); do not invent harvested classes.
+
+# Graded retrieval gold citation sets (#238). Files named in the answer keys.
+gold_files:
+  - - path: README.md
+      role: must_open
+  - - path: src/rcore.c
+      role: must_open
+    - path: src/config.h
+      role: supporting
+  - - path: src/Makefile
+      role: must_open
+    - path: CMakeLists.txt
+      role: supporting
+  - - path: src/platforms/rcore_desktop_glfw.c
+      role: must_open
+    - path: src/rcore.c
+      role: must_open
+  - - path: src/rcore.c
+      role: must_open
+  - - path: CONVENTIONS.md
+      role: must_open
+    - path: CONTRIBUTING.md
+      role: supporting
+  - - path: FAQ.md
+      role: must_open
+    - path: ROADMAP.md
+      role: supporting
+  - - path: src/raylib.h
+      role: must_open
+  - - path: src/rcore.c
+      role: must_open
+  - - path: src/rcore.c
+      role: must_open
+  - - path: examples/Makefile
+      role: must_open
+  - - path: README.md
+      role: must_open
+  - - path: src/rcore.c
+      role: must_open
+    - path: src/rlgl.h
+      role: supporting

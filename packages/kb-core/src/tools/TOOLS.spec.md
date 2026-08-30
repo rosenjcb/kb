@@ -22,7 +22,7 @@ tests:
   - ../../../../tests/tools/hybrid-retriever.test.ts
 description: Behavioral specification for KB Tools
 tags: [spec, kb]
-timestamp: 2026-08-16T00:00:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -58,6 +58,7 @@ See companion doc for full vocabulary where applicable.
 | FR-12 | Behaviors in subagent-eval-scenario.test.ts |
 | FR-13 | Behaviors in retrieval-checkpoint-orchestrator.test.ts |
 | FR-14 | Behaviors in markdown-md-writer-tool.test.ts |
+| FR-15 | [NEW] Prefer listed fact ids by set membership before rank fusion |
 
 ### QA Test Cases
 
@@ -131,6 +132,7 @@ See companion doc for full vocabulary where applicable.
 | TC-B37U | FR-1 | countUnembeddedRows reports pending counts, and embedAll emits a per-batch start and success event that counts remaining down to zero | pass |
 | TC-Q5DT | FR-1 | embedAll emits a retry event when the embedder backs off, and restores the embedder retry hook after it finishes | pass |
 | TC-O0JK | FR-3 | kind weighting lets a narrow symbol outrank a broad document tied on rank (#216) | pass |
+| TC-44C5 | FR-15 | [NEW] preferIds of a fact that would not rank | That fact is first in the hybrid result |
 | TC-K9RW | FR-1 | Given equal-relevance symbols, then a name-column match should rank above a source-text-only match (#217) | pass |
 
 ### Related docs

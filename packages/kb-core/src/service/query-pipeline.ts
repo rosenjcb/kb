@@ -10,7 +10,7 @@
 import { basename } from 'node:path'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
-import { isEvidenceLabel } from '@kb/core/core/evidence-label.js'
+import { assessQueryEvidence, isEvidenceLabel } from '@kb/core/core/evidence-label.js'
 import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import {
   type RunCollector,
@@ -30,7 +30,12 @@ import {
   getIntentQuestion,
   isReadFactsResult,
 } from '@kb/core/query/intent-cli.js'
-import { assembleQueryEntities, formatKnownEntitiesBlock } from '@kb/core/query/query-entities.js'
+import {
+  type QueryEntity,
+  assembleQueryEntities,
+  formatCompactRoutedReply,
+  formatKnownEntitiesBlock,
+} from '@kb/core/query/query-entities.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
 import { type ScopeVerdict, inferQueryScope } from '@kb/core/query/scope-inference.js'
 import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
@@ -165,7 +170,7 @@ export async function runQueryPipeline(
 
     // Stage 0 — scope inference (best-effort): infer which entity (service /
     // surface / domain) the question is about before any fuzzy retrieval runs.
-    // Inert when the registry is empty, unresolved, or KB_ENTITY_SCOPE=false.
+    // Inert when the registry is empty or the verdict is unresolved.
     // Best-effort stages that failed on an LLM error. Never block the query, never silent.
     const degraded: LLMFailure[] = []
 
@@ -225,6 +230,9 @@ export async function runQueryPipeline(
     const appliedExclusions = scope !== undefined && scope.excludedFactIds.length > 0
     if (appliedExclusions && scope) {
       ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = scope.excludedFactIds
+    }
+    if (scope?.promotedFactIds && scope.promotedFactIds.length > 0) {
+      ;(parsed.envelope.payload as { preferIds?: string[] }).preferIds = scope.promotedFactIds
     }
 
     let aligned = await runQueryTruthRetrieval({
@@ -309,6 +317,16 @@ export async function runQueryPipeline(
           ? `${graphRelationContext}\n\n${entitiesBlock}`
           : entitiesBlock
       }
+      aligned = applyRoutedShape(aligned, scope, entities, params.synthesize !== false)
+    }
+
+    const compactLanding = isReadFactsResult(aligned)
+      ? ((aligned.data ?? {}) as ReadDocumentsResultData).retrieval?.compactLanding
+      : undefined
+    if (compactLanding) {
+      graphRelationContext = graphRelationContext
+        ? `${compactLanding}\n\n${graphRelationContext}`
+        : compactLanding
     }
 
     const shouldSynthesize = params.synthesize !== false
@@ -452,4 +470,64 @@ function annotateScopeDetail(
   ]
   const detail = [retrieval.detail, ...bits].filter(Boolean).join(';')
   return { ...retrieval, detail }
+}
+
+/**
+ * Compact routed reply, multi-match clarification, and evidence that includes
+ * routing coverage — not a bare result count (#238).
+ */
+function applyRoutedShape(
+  result: IntentResult,
+  scope: ScopeVerdict | undefined,
+  entities: QueryEntity[],
+  shouldSynthesize: boolean
+): IntentResult {
+  const data = (result.data ?? {}) as ReadDocumentsResultData
+  const results = Array.isArray(data.results) ? data.results : []
+  const positives =
+    scope?.candidates.filter(c => c.label === 'very_confident' || c.label === 'confident') ?? []
+  const scopeEntities = entities.filter(e => e.role === 'scope')
+  const compact =
+    positives.length === 1
+      ? formatCompactRoutedReply({ landings: scopeEntities, results })
+      : undefined
+  const clarification =
+    positives.length > 1
+      ? `This matches ${positives.map(c => `${c.entity.kind} ${c.entity.canonicalName}`).join(' and ')}. Which did you mean?`
+      : undefined
+
+  const resultIds = new Set(
+    results.map(r => r.metadata?.id?.trim()).filter((id): id is string => Boolean(id))
+  )
+  const linked = scope?.promotedFactIds ?? []
+  const retrievedLinkedCount = linked.filter(id => resultIds.has(id)).length
+  const evidence = assessQueryEvidence({
+    uniqueFacts: results.length,
+    routing: {
+      landed: positives.length > 0,
+      linkedCount: linked.length,
+      retrievedLinkedCount,
+    },
+  })
+
+  const answer = !shouldSynthesize && compact && !data.answer?.trim() ? compact : data.answer
+
+  return {
+    ...result,
+    evidence,
+    data: {
+      ...data,
+      ...(answer !== data.answer ? { answer } : {}),
+      retrieval: {
+        ...data.retrieval,
+        ...(clarification ? { clarificationQuestion: clarification } : {}),
+        ...(compact ? { compactLanding: compact } : {}),
+        routing: {
+          landed: positives.length > 0,
+          linkedCount: linked.length,
+          retrievedLinkedCount,
+        },
+      },
+    },
+  }
 }

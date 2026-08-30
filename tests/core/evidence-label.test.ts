@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
 import {
-  assessRetrievalEvidence,
+  assessQueryEvidence,
   assessResultCount,
+  assessRetrievalEvidence,
   isEvidenceAtLeast,
   parseEvidenceLabel,
 } from '@kb/core/core/evidence-label.js'
+import { describe, expect, it } from 'vitest'
 
 /**
  * The float these labels replaced fed two live gates: chat refused a turn below
@@ -51,7 +52,9 @@ describe('evidence labels', () => {
   })
 
   it('[TC-36] Given no facts, then evidence is none regardless of other metrics', () => {
-    expect(assessRetrievalEvidence({ uniqueFacts: 0, avgTop: 0.9, conceptCoverage: 1 })).toBe('none')
+    expect(assessRetrievalEvidence({ uniqueFacts: 0, avgTop: 0.9, conceptCoverage: 1 })).toBe(
+      'none'
+    )
   })
 
   it('[TC-36] Given result counts, then labels are ordered and comparable', () => {
@@ -66,5 +69,22 @@ describe('evidence labels', () => {
     expect(parseEvidenceLabel('0.45', 'moderate')).toBe('moderate')
     expect(parseEvidenceLabel(undefined, 'moderate')).toBe('moderate')
     expect(parseEvidenceLabel('STRONG', 'moderate')).toBe('strong')
+  })
+
+  it('[TC-NZR6] Given three results and no relevance metrics, then evidence is moderate not strong', () => {
+    expect(assessQueryEvidence({ uniqueFacts: 3 })).toBe('moderate')
+    expect(assessQueryEvidence({ uniqueFacts: 0 })).toBe('none')
+    expect(assessQueryEvidence({ uniqueFacts: 1 })).toBe('weak')
+  })
+
+  it('[TC-AX6M] Given a landing whose linked facts were not retrieved, then evidence is weak', () => {
+    expect(
+      assessQueryEvidence({
+        uniqueFacts: 8,
+        avgTop: 0.9,
+        conceptCoverage: 1,
+        routing: { landed: true, linkedCount: 4, retrievedLinkedCount: 0 },
+      })
+    ).toBe('weak')
   })
 })

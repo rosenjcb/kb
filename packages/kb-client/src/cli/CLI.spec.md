@@ -1,7 +1,10 @@
 ---
 type: Spec
 title: "Spec: CLI Layer"
-sources: [./]
+sources:
+  - ./
+  - ../../../kb-core/src/query/chat-query-orchestrator.ts
+  - ../../../kb-core/src/query/chat-synthesis.ts
 # Precise, disjoint scope: tests/cli minus the files owned by CONNECTION.spec.md
 # (kb-api-client, cli-global-flags, mcp-config-sync, remote-commands). TC ids are
 # per-spec, so a whole-dir claim would over-select CONNECTION's [TC-N] tags. Add
@@ -13,6 +16,7 @@ tests:
   - ../../../../tests/cli/base-selection.test.ts
   - ../../../../tests/cli/chat-cli.test.ts
   - ../../../../tests/cli/chat-query-orchestrator.test.ts
+  - ../../../../tests/cli/chat-synthesis-manifest.test.ts
   - ../../../../tests/cli/chat-retrieval-refusal.test.ts
   - ../../../../tests/cli/cmd-ref.test.ts
   - ../../../../tests/cli/collect-source-files.test.ts
@@ -37,7 +41,7 @@ tests:
   - ../../../../tests/cli/uninstall-cli.test.ts
 description: Behavioral specification for CLI Layer
 tags: [spec, kb]
-timestamp: 2026-08-23T21:00:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -65,7 +69,7 @@ See companion doc for full vocabulary where applicable.
 | FR-3 | Repo slug/dir helpers and on-volume repo discovery |
 | FR-4 | [UPDATED] Base selection resolves `--base`, then the active base; with neither set, the hardcoded `default` slug applies — the client always resolves to a concrete name, never `undefined`, so it always sends an explicit `X-KB-Base` |
 | FR-5 | Chat REPL delegates to kb-server `/v1/chat`; synthesis helpers stay unit-tested in-client |
-| FR-6 | Chat query orchestrator delegates QUERY turns to shared retrieval |
+| FR-6 | [UPDATED] Chat retrieval uses the query pipeline when a base directory is set |
 | FR-7 | Chat retrieval refusal surfaces when evidence is insufficient |
 | FR-8 | Command reference generation stays in sync with registered commands |
 | FR-9 | Init collects source files from configured git targets |
@@ -93,6 +97,7 @@ See companion doc for full vocabulary where applicable.
 | FR-31 | Session CLI groups run reports by sessionId and summarizes the most recent (or a named) session, listing each run for `kb logs show` follow-up |
 | FR-32 | Bare `kb skills` reports install status per agent (installed / update available / not installed) without writing any files |
 | FR-33 | `--skip-embed` on `kb init`/`kb scan` sets `skipEmbeddings` (default `false`); when set, `create-embeddings` completes without writing any vectors, and a multi-repo scan skips the embedder for both the per-repo reindex and the trailing embed pass |
+| FR-34 | [NEW] Chat router prompt includes manifest entity names from the base registry |
 
 ### QA Test Cases
 
@@ -153,6 +158,7 @@ See companion doc for full vocabulary where applicable.
 | TC-UHDB | FR-5 | Given multi-round loop, then calls query_kb in parallel and populates lastIntentResult | pass |
 | TC-H58G | FR-5 | Given retrieval undefined (chat path), then starts loop from provided messages directly | pass |
 | TC-FR8X | FR-6 | Given a mocked read_facts result, then returns accepted read_facts IntentResult | pass |
+| TC-7Q1C | FR-6 | [NEW] Chat retrieval with a baseDir pointing at an empty index | Pipeline empty-base result; `read_facts` is not called |
 | TC-XMSJ | FR-7 | refuses when no results | pass |
 | TC-7HZP | FR-7 | allows when retrieval detail is all-facts:already-in-context even with zero results | pass |
 | TC-DICS | FR-7 | refuses when last checkpoint below default min | pass |
@@ -426,6 +432,8 @@ See companion doc for full vocabulary where applicable.
 | TC-CS34 | FR-12 | [NEW] code_file_state without searchable rows | GraphCommandError exit non-zero |
 | TC-NF34 | FR-12 | [NEW] --file when index DB is missing | GraphCommandError exit non-zero |
 | TC-PT34 | FR-12 | [NEW] --file with `..` or absolute path | GraphCommandError exit non-zero |
+| TC-F87H | FR-34 | [NEW] Base registry has a manifest entity | Chat router prompt names that entity |
+| TC-SU7R | FR-34 | [NEW] Base registry has only harvest entities | Chat router prompt has no manifest block |
 
 ### Related docs
 

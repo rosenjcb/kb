@@ -28,7 +28,7 @@ flowchart TD
   L --> LLM["LLM call w/ query_kb tool"]
   LLM -- end_turn --> A([answer done])
   LLM -- tool_use --> T["Promise.all tool calls (concurrent)"]
-  T --> GE["graph expand →<br/>executeChatQueryTruthRetrieval()"]
+  T --> GE["executeChatQueryTruthRetrieval()<br/>runQueryPipeline when baseDir is set"]
   GE -- weak_evidence --> RH["append retry hint"] --> L
   GE -- ok --> L
 ```
@@ -98,7 +98,7 @@ flowchart TD
 
 | File | Role |
 |------|------|
-| `chat-router-system.md` | When to call `query_kb`, multi-angle + weak-evidence retry |
+| `chat-router-system.md` | When to call `query_kb`; manifest names are appended at call time |
 | `chat-decompose-system.md` | 1–4 retrieval sub-queries, one per line |
 
 ## Why not shell out to `kb query`?

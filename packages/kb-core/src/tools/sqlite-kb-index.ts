@@ -1,8 +1,3 @@
-import type { EvidenceLabel } from '../core/evidence-label'
-import { isOpenableSourcePath } from '../core/fact-uri'
-import { isEnvFalse } from '../config/env-boolean.js'
-import { splitMarkdownSections } from '../core/markdown-sections.js'
-import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -11,6 +6,10 @@ import dayjs from 'dayjs'
 import { resolveEmbedFetchPageSize } from '../config/indexing-batch-size'
 import { runMigrations } from '../core/db-migrations'
 import type { Embedder } from '../core/embeddings'
+import type { EvidenceLabel } from '../core/evidence-label'
+import { DEFAULT_FACT_EVIDENCE, type FactEvidenceKind } from '../core/fact-evidence'
+import { isOpenableSourcePath } from '../core/fact-uri'
+import { splitMarkdownSections } from '../core/markdown-sections.js'
 import type { RetrievalLane } from './retrieval-lane-router'
 
 function runInTransaction(db: DatabaseSync, fn: () => void): void {
@@ -307,8 +306,7 @@ const FACT_ROW_SELECT_F =
   'f.id, f.git_repo, f.text, f.source_ref, f.evidence, f.tombstoned_at, f.created_at, f.updated_at'
 
 /** `documents` row projection — keep aligned with `DocumentIndexRow`. */
-const DOCUMENT_ROW_SELECT =
-  'id, git_repo, rel_path, title, body, content_hash, indexed_at'
+const DOCUMENT_ROW_SELECT = 'id, git_repo, rel_path, title, body, content_hash, indexed_at'
 
 /** `code_symbols` row projection — keep aligned with `CodeSymbolRow`. */
 const CODE_SYMBOL_ROW_SELECT =
@@ -887,9 +885,8 @@ export class SqliteKbIndexer {
     // Also include the camelCase-joined form so "agent OR loop" also matches the
     // single FTS5 token "agentloop" stored for symbols like "agentLoop".
     const joined = tokens.join('')
-    const ftsTokens = joined.length > 2 && joined !== tokens.join(' ')
-      ? [...new Set([...tokens, joined])]
-      : tokens
+    const ftsTokens =
+      joined.length > 2 && joined !== tokens.join(' ') ? [...new Set([...tokens, joined])] : tokens
     const ftsQuery = ftsTokens.length > 0 ? ftsTokens.join(' OR ') : trimmed
 
     try {
@@ -1033,18 +1030,14 @@ export class SqliteKbIndexer {
   /** Active facts whose `source_ref` exactly matches `sourceRef`. */
   listFactsBySourceRef(sourceRef: string): FactRow[] {
     return this.db
-      .prepare(
-        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ?`
-      )
+      .prepare(`SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref = ?`)
       .all(sourceRef) as unknown as FactRow[]
   }
 
   /** Active facts whose `source_ref` starts with `prefix` (e.g. `code:src/foo.ts@`). */
   listActiveFactsBySourceRefPrefix(prefix: string): FactRow[] {
     return this.db
-      .prepare(
-        `SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`
-      )
+      .prepare(`SELECT ${FACT_ROW_SELECT} FROM facts WHERE source_ref LIKE ?`)
       .all(`${prefix}%`) as unknown as FactRow[]
   }
 
@@ -1053,9 +1046,9 @@ export class SqliteKbIndexer {
    * dropped from a base leaves no facts behind. Returns the count.
    */
   deleteFactsByRepo(gitRepo: string): number {
-    const rows = this.db
-      .prepare('SELECT id FROM facts WHERE git_repo = ?')
-      .all(gitRepo) as Array<{ id: string }>
+    const rows = this.db.prepare('SELECT id FROM facts WHERE git_repo = ?').all(gitRepo) as Array<{
+      id: string
+    }>
     if (rows.length === 0) return 0
     const delFts = this.db.prepare('DELETE FROM facts_fts WHERE fact_id = ?')
     for (const { id } of rows) delFts.run(id)
@@ -1071,7 +1064,10 @@ export class SqliteKbIndexer {
    * re-inserted rather than updated — `documents_fts` is a contentless-style external index
    * keyed by `doc_id`, so an UPDATE would leave the old tokenization behind.
    */
-  upsertDocument(input: DocumentIndexUpsertInput): { id: string; operation: 'inserted' | 'updated' } {
+  upsertDocument(input: DocumentIndexUpsertInput): {
+    id: string
+    operation: 'inserted' | 'updated'
+  } {
     const now = dayjs().toISOString()
     const gitRepo = input.gitRepo ?? this.activeGitRepo ?? ''
     const relPath = input.relPath.replace(/\\/g, '/')
@@ -1106,12 +1102,7 @@ export class SqliteKbIndexer {
       // search joins back to `documents`, so several rows per document resolve to the same cited
       // file — the retrieval unit shrinks without the citation surface changing at all.
       const insertFts = this.db.prepare('INSERT INTO documents_fts (doc_id, body) VALUES (?, ?)')
-      // Temporary A/B scaffolding (#217 pt2): `KB_INDEX_MARKDOWN_SECTIONS=false` restores the
-      // pre-chunking one-row-per-file behavior so a rebuilt index can be measured against the
-      // chunked one. Delete this branch once chunking is confirmed or reverted.
-      const sections = isEnvFalse(process.env.KB_INDEX_MARKDOWN_SECTIONS)
-        ? [{ heading: '', text: input.body }]
-        : splitMarkdownSections(input.body)
+      const sections = splitMarkdownSections(input.body)
       if (sections.length === 0) {
         insertFts.run(id, input.title)
       } else {
@@ -1150,9 +1141,9 @@ export class SqliteKbIndexer {
   }
 
   getDocument(id: string): DocumentIndexRow | undefined {
-    return this.db
-      .prepare(`SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE id = ?`)
-      .get(id) as DocumentIndexRow | undefined
+    return this.db.prepare(`SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE id = ?`).get(id) as
+      | DocumentIndexRow
+      | undefined
   }
 
   getDocumentByPath(gitRepo: string, relPath: string): DocumentIndexRow | undefined {
@@ -1163,9 +1154,7 @@ export class SqliteKbIndexer {
 
   listDocumentsByRepo(gitRepo: string): DocumentIndexRow[] {
     return this.db
-      .prepare(
-        `SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE git_repo = ? ORDER BY rel_path`
-      )
+      .prepare(`SELECT ${DOCUMENT_ROW_SELECT} FROM documents WHERE git_repo = ? ORDER BY rel_path`)
       .all(gitRepo) as unknown as DocumentIndexRow[]
   }
 
@@ -1274,9 +1263,7 @@ export class SqliteKbIndexer {
   }
 
   /** Symbol identity for a repo, without source text — used for stale-file reconciliation. */
-  listCodeSymbolKeysByRepo(
-    gitRepo: string
-  ): Array<{ id: string; rel_path: string; name: string }> {
+  listCodeSymbolKeysByRepo(gitRepo: string): Array<{ id: string; rel_path: string; name: string }> {
     return this.db
       .prepare('SELECT id, rel_path, name FROM code_symbols WHERE git_repo = ?')
       .all(gitRepo) as Array<{ id: string; rel_path: string; name: string }>
@@ -2111,8 +2098,7 @@ export class SqliteKbIndexer {
       // (sanitizeId of the path → `src-core-init-md`) made citations unopenable.
       // Title is often the path for filesystem-imported companions.
       const titleAsPath = input.title?.trim().replace(/\\/g, '/')
-      const sourceRef =
-        titleAsPath && isOpenableSourcePath(titleAsPath) ? titleAsPath : input.id
+      const sourceRef = titleAsPath && isOpenableSourcePath(titleAsPath) ? titleAsPath : input.id
       this.upsertOriginalDoc({
         id: input.id,
         title: input.title,
@@ -2297,4 +2283,3 @@ const FACT_STOP_WORDS = new Set([
   'have',
   'has',
 ])
-

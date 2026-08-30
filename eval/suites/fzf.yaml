@@ -131,3 +131,32 @@ answers:
     / fzf-lua out of tree). A correct answer covers matching + TUI + shell/editor integration
     as one product, without kb inquiry-lane or length-gate language, and without inventing
     CamelCase module entities this thin registry does not harvest.
+
+# Graded retrieval gold citation sets (#238). Files named in the answer keys.
+gold_files:
+  - - path: README.md
+      role: must_open
+  - - path: src/core.go
+      role: must_open
+    - path: src/matcher.go
+      role: supporting
+    - path: src/terminal.go
+      role: supporting
+  - - path: BUILD.md
+      role: must_open
+  - - path: src/algo/algo.go
+      role: must_open
+  - - path: shell/key-bindings.bash
+      role: must_open
+    - path: shell/key-bindings.zsh
+      role: supporting
+  - null
+  - null
+  - - path: CHANGELOG.md
+      role: must_open
+  - - path: README.md
+      role: must_open
+  - - path: src/algo/algo.go
+      role: must_open
+    - path: src/terminal.go
+      role: supporting

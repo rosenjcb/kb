@@ -15,3 +15,17 @@ questions:
   # Alias / landing probes — product questions about the target repo, not kb internals.
   - What is the role of the main entrypoint or core library type this repository is named for?
   - How does that core named component fit into the rest of the project end-to-end — architecture, build, and the main operator loop?
+
+# Repo-neutral: gold paths cannot be named. Leave every question unannotated
+# rather than guess (#238 annotation discipline).
+gold_files:
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null
+  - null

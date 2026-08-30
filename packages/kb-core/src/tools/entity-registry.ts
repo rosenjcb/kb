@@ -6,7 +6,7 @@
  *
  * The registry partitions the fact pool via `entity_links` so query-time scope
  * inference (`src/query/scope-inference.ts`) can land in the right partition
- * and rule out provably-wrong ones (`KB_ENTITY_SCOPE=false` kills the gate).
+ * and rule out provably-wrong ones.
  *
  * Alias matching is exact/longest-match over normalized text — never fuzzy —
  * because entity resolution must be higher-precision than the fuzzy retrieval

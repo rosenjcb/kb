@@ -1,5 +1,5 @@
-import { type EvidenceLabel, assessResultCount, isEvidenceLabel } from '../core/evidence-label'
 import dayjs from 'dayjs'
+import { type EvidenceLabel, assessQueryEvidence, isEvidenceLabel } from '../core/evidence-label'
 import type { RunCollector } from '../core/telemetry'
 import type { ToolExecutor } from '../core/tool-registry'
 import type { LLMProvider, ToolUseRequest } from '../core/types'
@@ -50,6 +50,7 @@ export class DefaultIntentRouter implements IntentRouter {
             discoveryDepth: allFacts ? 'shallow' : effectiveDiscoveryDepth,
             surface: payload.surface === 'chat' ? 'chat' : 'query',
             excludeIds: Array.isArray(payload.excludeIds) ? payload.excludeIds : undefined,
+            preferIds: Array.isArray(payload.preferIds) ? payload.preferIds : undefined,
             ...(allFacts ? { allFacts: true } : {}),
             ...(this.collector ? { collector: this.collector } : {}),
           },
@@ -125,5 +126,31 @@ function deriveToolResultEvidence(result: unknown): EvidenceLabel {
   const last = checkpoints?.[checkpoints.length - 1]?.evidence
   if (isEvidenceLabel(last)) return last
   const results = (result as { results?: unknown[] }).results
-  return assessResultCount(Array.isArray(results) ? results.length : 0)
+  const uniqueFacts = Array.isArray(results) ? results.length : 0
+  const routing = (
+    result as {
+      retrieval?: {
+        routing?: {
+          landed?: boolean
+          linkedCount?: number
+          retrievedLinkedCount?: number
+        }
+      }
+    }
+  ).retrieval?.routing
+  return assessQueryEvidence({
+    uniqueFacts,
+    ...(routing &&
+    typeof routing.landed === 'boolean' &&
+    typeof routing.linkedCount === 'number' &&
+    typeof routing.retrievedLinkedCount === 'number'
+      ? {
+          routing: {
+            landed: routing.landed,
+            linkedCount: routing.linkedCount,
+            retrievedLinkedCount: routing.retrievedLinkedCount,
+          },
+        }
+      : {}),
+  })
 }

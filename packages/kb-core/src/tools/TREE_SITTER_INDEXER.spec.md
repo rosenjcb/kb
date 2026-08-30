@@ -1,12 +1,15 @@
 ---
 type: Spec
 title: "Spec: Tree-Sitter Code Graph Indexer"
-sources: [./tree-sitter-indexer.ts]
+sources:
+  - ./tree-sitter-indexer.ts
+  - ./file-stem-symbol.ts
 tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
+  - ../../../../tests/tools/file-stem-symbol.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-29T17:47:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -67,6 +70,11 @@ gives any unsupported extension, so a template-only file is never dropped.
 text-state indexing. The indexer does not attempt script extraction for
 them.
 
+**Filename-stem symbols.** A kebab-case file often exports a different name.
+The indexer adds a `kind=file` symbol named after the stem when no existing
+symbol already uses that stem or its PascalCase form. It skips generic stems
+such as `index` and `main`.
+
 ### Functional Requirements
 
 | ID | Requirement |
@@ -78,6 +86,8 @@ them.
 | FR-5 | [UPDATED] Text-only allowlist files write one `kind=file` code_symbol; content-hash skip requires searchable rows so legacy state-only indexes heal on rescan; parse failures also emit a file-level symbol |
 | FR-6 | [NEW] Emits a `kind=component` symbol named after the file basename for each .vue/.svelte file that has an embedded script |
 | FR-7 | [NEW] Emits a `kind=file` symbol when parse succeeds but yields no symbols; indexes build-manifest extensions (`.cabal`, `.gradle`) as file-level symbols |
+| FR-8 | [NEW] Emits a filename-stem symbol when no existing symbol matches the stem or its PascalCase form |
+| FR-9 | [NEW] Do not emit a filename-stem symbol for a generic role stem |
 
 ### QA Test Cases
 
@@ -115,6 +125,9 @@ them.
 | TC-SFC1 | FR-6 | [NEW] `Gantt.vue` / `Sidebar.svelte` with an embedded script | `kind=component` symbols named `Gantt` and `Sidebar`; not `Gantt.vue` |
 | TC-ZSYM | FR-7 | [NEW] a file that parses cleanly but exports nothing | one `kind=file` symbol so the path stays searchable |
 | TC-MANIFEST | FR-7 | [NEW] `Demo.cabal` with no AST grammar | indexed as a `kind=file` symbol |
+| TC-3V0G | FR-8 | [NEW] `scope-inference.ts` that exports `inferQueryScope` | also emits a `kind=file` symbol named `scope-inference` |
+| TC-GQ8Q | FR-8 | [NEW] `Worker.java` that declares `class Worker` | no extra `kind=file` stem symbol |
+| TC-1WQ0 | FR-9 | [NEW] `index.ts`, `main.go`, or `utils.ts` | `fileStem` returns undefined |
 
 ### Related docs
 

@@ -10,13 +10,7 @@
  * the facts already retrieved, not walked over dedicated `precedes` edges. It is
  * deliberately conservative — it changes how the answer is shaped, never what is
  * retrieved — so it is safe to ship ahead of any index-side work.
- *
- * Kill-switch: set `KB_PROCEDURAL_SYNTHESIS=false` to disable detection entirely
- * (answers fall back to the default synthesis shape). Used for A/B measurement
- * and as a production safety valve.
  */
-
-import { isEnvFalse } from '../config/env-boolean.js'
 
 /**
  * Phrasings that signal the reader wants a procedure (an ordered sequence of
@@ -82,7 +76,6 @@ const DEFINITIONAL_LEAD = /^\s*(?:what|which|who|whose|why|when)\b/
 
 /** True when the question reads as a how-to / procedural request. */
 export function isProceduralQuestion(question: string): boolean {
-  if (isEnvFalse(process.env.KB_PROCEDURAL_SYNTHESIS)) return false
   const q = question.toLowerCase().trim()
   if (!q) return false
   if (!PROCEDURAL_PATTERNS.some(re => re.test(q))) return false
