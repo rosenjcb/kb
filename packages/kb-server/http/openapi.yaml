@@ -495,11 +495,34 @@ components:
       properties:
         path:
           type: string
-          description: Openable repo-relative (or `slug/relPath`) file path.
+          description: Qualified `owner/repo/relPath` (or bare path when the repo is unknown).
+        repo:
+          type: string
+          description: `owner/repo` when known. Reconstruct repo-relative path as `path` minus `repo/` .
         symbols:
           type: array
           items: { type: string }
           description: Folded fact subjects when known; omitted when empty.
+        href:
+          type: string
+          description: Blob deep link when the repo registry resolved one.
+
+    QueryEntity:
+      type: object
+      required: [kind, name, role]
+      properties:
+        kind:
+          type: string
+          description: Harvested ontology kind (`api`, `service`, `surface`, …).
+        name:
+          type: string
+          description: Canonical name. For routes this is the path (`/v1/query`).
+        gloss:
+          type: string
+        role:
+          type: string
+          enum: [scope, cited]
+          description: `scope` is a stage-0 landing; `cited` was found after retrieval.
 
     GroupedSourceFact:
       type: object
@@ -513,6 +536,8 @@ components:
       required: [path, label, symbols, facts, factCount]
       properties:
         path: { type: string }
+        repo: { type: string }
+        relPath: { type: string }
         gitRepo: { type: string }
         label: { type: string }
         href: { type: string }
@@ -629,6 +654,12 @@ components:
         traceFile:
           type: string
           description: Server path to the deep trace dump when `trace: true` was requested.
+        entities:
+          type: array
+          description: >
+            Harvested ontology for this answer (`scope` landings plus cited hits).
+            Omitted when empty. Lean payloads cap at 8; verbose keeps up to 20.
+          items: { $ref: "#/components/schemas/QueryEntity" }
 
     ChatRequest:
       type: object

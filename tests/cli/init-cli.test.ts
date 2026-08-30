@@ -1130,8 +1130,10 @@ describe('init-cli token tracking', () => {
         collector,
       })
       const report = collector.finish('success')
-      expect(report.stages.find(s => s.stage === 'code-index')).toBeUndefined()
-      expect(report.totalInputTokens).toBe(0)
+      const codeIndex = report.stages.find(s => s.stage === 'code-index')
+      expect(codeIndex).toBeDefined()
+      expect(codeIndex?.inputTokens).toBe(0)
+      expect(codeIndex?.outputTokens).toBe(0)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

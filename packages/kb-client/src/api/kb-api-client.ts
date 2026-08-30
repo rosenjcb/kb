@@ -1,5 +1,5 @@
-import { KbConnectionError, formatApiError, throwConnectionError } from './connection-error.js'
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
+import { KbConnectionError, formatApiError, throwConnectionError } from './connection-error.js'
 import type { ServerConnection } from './types.js'
 import type {
   ApiErrorBody,
@@ -7,6 +7,7 @@ import type {
   ChatStreamEvent,
   GroupedSource,
   HealthResponse,
+  QueryEntity,
   QueryRequest,
   QueryResponse,
 } from './types.js'
@@ -114,7 +115,7 @@ export class KbApiClient {
   private async postJson<T>(
     path: string,
     body: unknown,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number }
   ): Promise<T> {
     const response = await this.request(path, {
       method: 'POST',
@@ -127,7 +128,7 @@ export class KbApiClient {
 
   private async request(
     path: string,
-    init: RequestInit & { auth?: boolean; timeoutMs?: number },
+    init: RequestInit & { auth?: boolean; timeoutMs?: number }
   ): Promise<Response> {
     const auth = init.auth !== false
     const headers = new Headers(init.headers)
@@ -189,6 +190,7 @@ function parseSsePart(part: string): ChatStreamEvent | undefined {
         text: payload.text,
         sources: Array.isArray(payload.sources) ? (payload.sources as GroupedSource[]) : [],
         factsRetrieved: typeof payload.factsRetrieved === 'number' ? payload.factsRetrieved : 0,
+        ...(Array.isArray(payload.entities) ? { entities: payload.entities as QueryEntity[] } : {}),
       }
     }
     if (type === 'reasoning' && typeof payload.text === 'string') {

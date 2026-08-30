@@ -2,18 +2,20 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import dayjs from 'dayjs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ReportWriter,
   RunCollector,
   TokenCountingProvider,
   TrajectoryCollector,
   estimateCost,
+  estimateEmbeddingTokens,
+  recordEmbeddingStage,
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
 import type { TrajectoryFile } from '@kb/core/core/telemetry.js'
 import type { LLMCallParams, LLMProvider, LLMResponse } from '@kb/core/core/types.js'
+import dayjs from 'dayjs'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── estimateCost ─────────────────────────────────────────────────
 
@@ -454,5 +456,43 @@ describe('summarizeQueryRetrievalTrace', () => {
     expect(trace.documents).toBeUndefined()
     expect(trace.hops).toBeUndefined()
     expect(trace.curation).toBeUndefined()
+  })
+})
+
+describe('embedding token estimates', () => {
+  it('[TC-EMB1] Given character counts, then estimateEmbeddingTokens is ceil(chars/4)', () => {
+    expect(estimateEmbeddingTokens(0)).toBe(0)
+    expect(estimateEmbeddingTokens(1)).toBe(1)
+    expect(estimateEmbeddingTokens(4)).toBe(1)
+    expect(estimateEmbeddingTokens(5)).toBe(2)
+  })
+
+  it('[TC-EMB2] Given a collector and gemini modelId, then recordEmbeddingStage bills input tokens', () => {
+    const collector = new RunCollector('init')
+    recordEmbeddingStage(collector, {
+      modelId: 'gemini:gemini-embedding-001:768',
+      chars: 400,
+      durationMs: 12,
+      startedAt: new Date().toISOString(),
+    })
+    const report = collector.finish('success')
+    expect(report.stages).toHaveLength(1)
+    expect(report.stages[0].stage).toBe('create-embeddings')
+    expect(report.stages[0].inputTokens).toBe(100)
+    expect(report.stages[0].outputTokens).toBe(0)
+    expect(report.stages[0].provider).toBe('gemini')
+  })
+
+  it('[TC-EMB3] Given a local ONNX modelId, then estimatedCostUsd is 0', () => {
+    const collector = new RunCollector('scan')
+    recordEmbeddingStage(collector, {
+      modelId: 'local:Xenova/all-MiniLM-L6-v2:384',
+      chars: 400,
+      durationMs: 5,
+      startedAt: new Date().toISOString(),
+    })
+    const report = collector.finish('success')
+    expect(report.totalEstimatedCostUsd).toBe(0)
+    expect(report.stages[0].provider).toBe('onnx')
   })
 })

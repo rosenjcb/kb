@@ -5,6 +5,7 @@ sources:
   - ./serialize.ts
   - ./chat-reply.ts
   - ../ui/printer.ts
+  - ../query/query-entities.ts
   - ../../../kb-server/src/http-server.ts
   - ../../../kb-server/src/mcp-tools.ts
   - ../../../kb-server/src/chat-stream.ts
@@ -14,9 +15,10 @@ tests:
   - ../../../../tests/server/serialize.test.ts
   - ../../../../tests/server/mcp-tools.test.ts
   - ../../../../tests/server/http-server.test.ts
+  - ../../../../tests/query/query-entities.test.ts
 description: Shared query payload semantics across REST, MCP, CLI, TUI, and chat surfaces
 tags: [spec, query, parity, serialization]
-timestamp: 2026-08-30T04:00:00Z
+timestamp: 2026-08-30T04:50:00Z
 ---
 
 ### Intro
@@ -53,6 +55,9 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | FR-6 | [NEW] When a query returns no sources, the serializer notes the served base and reminds the caller to check KB_BASE / eval-* naming |
 | FR-7 | [NEW] When the answer names a file the sources do not contain, or makes an unsupported claim, status is uncertain — not accepted |
 | FR-8 | [NEW] Lean MCP sources prefer files the answer names and drop prompt and changelog files the answer does not name |
+| FR-9 | [NEW] The lean MCP payload omits `relPath`. Reconstruct it from `path` and optional `repo` |
+| FR-10 | [NEW] Both serializers include `entities` when the pipeline assembled any; they omit the field when the list is empty |
+| FR-11 | [NEW] The lean payload caps `entities` at 8; the verbose payload keeps the pipeline list (up to 20) |
 
 ### QA Test Cases
 
@@ -68,3 +73,10 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | TC-UGST | FR-7 | [NEW] Answer names `dto.ts` and sources list `reversal.ts` | REST and MCP status are uncertain; evidence is weak |
 | TC-LEAN | FR-8 | [NEW] Answer names App.tsx; results lead with a prompt file and CHANGELOG | Lean MCP sources start with App.tsx and omit the prompt and changelog |
 | TC-NOIZ | FR-8 | [NEW] Answer names no files; results are a prompt file then INIT.md | Lean MCP sources contain only INIT.md |
+| TC-ENT4 | FR-9 | [NEW] Lean serialize of a cited file | Source has `path` (and `symbols` when present) and no `relPath` |
+| TC-ENT1 | FR-10 | [NEW] Verbose serialize with assembled entities | Body `entities` matches the pipeline list |
+| TC-ENT2 | FR-10 | [NEW] Lean serialize with entities / without | Field present when non-empty; omitted when empty |
+| TC-ENT5 | FR-10 | [NEW] Confident scope landings | Projected as `role: scope`; `repo` kind is skipped |
+| TC-ENT6 | FR-10 | [NEW] Retrieved facts linked to harvested entities | Cited `api`/`service` rows appear after retrieval |
+| TC-ENT3 | FR-11 | [NEW] Lean serialize with 12 entities | Body `entities` length is 8 |
+| TC-ENT7 | FR-10 | [NEW] formatKnownEntitiesBlock and lean cap helpers | Compact line; empty list stays empty |

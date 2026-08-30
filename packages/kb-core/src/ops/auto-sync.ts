@@ -1,18 +1,21 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
-import { createEmbedder } from '@kb/core/core/embeddings.js'
-import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import { readIgnorePatternsFromEnv } from '@kb/core/config/kb-ignore.js'
+import { CountingEmbedder, createEmbedder } from '@kb/core/core/embeddings.js'
 import { HARVEST_PIPELINE_VERSION, isPipelineStale } from '@kb/core/core/pipeline-version.js'
+import { type RunCollector, recordEmbeddingStage } from '@kb/core/core/telemetry.js'
 import { getHeadSha, pullRepo } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
+import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
 
 export interface ScanOptions {
   onProgress?: (line: string) => void
   /** Skip embedding entirely — see `InitOptions.skipEmbeddings`. Propagated to every per-repo
    *  reindex and to the trailing base-wide embed pass below. */
   skipEmbeddings?: boolean
+  /** When set, init/scan stages (code-index, entity-index, embeddings) record onto this collector. */
+  collector?: RunCollector
 }
 
 /**
@@ -39,7 +42,7 @@ function isRepoPipelineStale(baseDir: string, slug: string): boolean {
 async function reindexRepo(
   baseDir: string,
   repo: BaseRepo,
-  skipEmbeddings?: boolean
+  opts: { skipEmbeddings?: boolean; collector?: RunCollector } = {}
 ): Promise<void> {
   await runKbInit({
     base: path.basename(baseDir),
@@ -49,7 +52,8 @@ async function reindexRepo(
     nonInteractive: true,
     gitRepo: repo.slug,
     ignorePatterns: readIgnorePatternsFromEnv(),
-    skipEmbeddings,
+    skipEmbeddings: opts.skipEmbeddings,
+    collector: opts.collector,
   })
 }
 
@@ -84,7 +88,10 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
     : `pipeline v${HARVEST_PIPELINE_VERSION} rebuild`
   onProgress?.(`[kb] ${repo.slug}: re-indexing (${reason})…`)
   try {
-    await reindexRepo(baseDir, repo, opts.skipEmbeddings)
+    await reindexRepo(baseDir, repo, {
+      skipEmbeddings: opts.skipEmbeddings,
+      collector: opts.collector,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     onProgress?.(`[kb] Re-index failed for ${repo.slug}: ${msg}`)
@@ -101,11 +108,17 @@ async function syncRepo(baseDir: string, repo: BaseRepo, opts: ScanOptions): Pro
  * be reachable through the lexical lane. Throws on failure — a rescan that reports success
  * without vectors would leave the base's semantic lane silently stale.
  */
-async function embedNewRows(baseDir: string, onProgress?: (line: string) => void): Promise<void> {
-  const embedder = createEmbedder()
+async function embedNewRows(
+  baseDir: string,
+  onProgress?: (line: string) => void,
+  collector?: RunCollector
+): Promise<void> {
+  const counting = new CountingEmbedder(createEmbedder())
+  const startedAt = new Date().toISOString()
+  const startMs = Date.now()
   const indexer = new SqliteKbIndexer({
     dbPath: path.join(baseDir, '.kb-index.sqlite'),
-    embedder,
+    embedder: counting,
   })
   try {
     const documents = await indexer.embedAllDocuments()
@@ -117,6 +130,12 @@ async function embedNewRows(baseDir: string, onProgress?: (line: string) => void
       )
     }
   } finally {
+    recordEmbeddingStage(collector, {
+      modelId: counting.modelId,
+      chars: counting.chars,
+      durationMs: Date.now() - startMs,
+      startedAt,
+    })
     indexer.close()
   }
 }
@@ -141,6 +160,8 @@ export async function scanBaseRepos(baseDir: string, opts: ScanOptions = {}): Pr
     anyReindexed = anyReindexed || reindexed
   }
 
-  if (anyReindexed && !opts.skipEmbeddings) await embedNewRows(baseDir, opts.onProgress)
+  if (anyReindexed && !opts.skipEmbeddings) {
+    await embedNewRows(baseDir, opts.onProgress, opts.collector)
+  }
   return repos.length
 }

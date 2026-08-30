@@ -5,7 +5,7 @@ sources: [./, ./mcp-tools.ts, ./mcp-server.ts, ./mcp-feedback-elicitation.ts, ./
 tests: [../../../tests/server]
 description: Behavioral specification for KB HTTP, MCP, and Slack Server
 tags: [spec, kb]
-timestamp: 2026-08-23T07:30:00Z
+timestamp: 2026-08-29T17:47:00Z
 ---
 
 ### Intro
@@ -61,6 +61,8 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | FR-28 | [UPDATED] The server's boot-time default base has no persisted or configurable state. `kb-server start` binds `--base` \> `KB_SERVER_BASE_NAME` \> the hardcoded `default` constant, and never reads client-side state (the `kb base use` active-base file) or any state `kb-server init` might have left — because `init` leaves none. Resolving which base to boot guarantees only that base's **directory** exists; its index is deliberately **not** materialized at that point, so a genuinely fresh volume still reads as fresh to snapshot adoption (`--from` / `KB_SERVER_SNAPSHOT`) and to `--bootstrap-policy snapshot-only`'s refusal gate, both of which run immediately after. The index is self-healed — an empty, fully-migrated `.kb-index.sqlite` — once bootstrap has confirmed there is genuinely nothing to build (no snapshot adopted, no repos declared, none already cloned) and, under `auto` policy, that self-heal always completes by the time the server starts listening, matching what `kb-server init` would have produced even though it never ran. The server also pre-warms the golden `default` base at boot even when it bound to a different one, so the service registry's per-request self-heal for `default` rarely has to run synchronously inline in a request. |
 | FR-29 | [UPDATED] When `KB_BASE` or `KB_GIT_REPOS` (the client-scoped env vars) is set without its server-scoped counterpart (`KB_SERVER_BASE_NAME` / `KB_SERVER_BASE_GIT_REPOS`), `kb-server start` logs a warning naming both variables, so a same-machine install where the client's env leaks into the server's shell is observable rather than silently booting the wrong base. `start --daemon` surfaces the identical warning from its own parent process — the interactive shell still attached before it detaches — not only from the foreground boot path, since the detached child's stderr goes to `kb-server.err.log`, which an operator watching only the `-d` invocation's own output would not otherwise see. |
 | FR-30 | [NEW] `/v1/query` and MCP `query` responses include the served `base` slug from the resolved service health |
+| FR-31 | [NEW] Retain a per-query retrieval trace keyed by `requestId` (in-memory, 6h TTL, 200-entry cap) so a later `submit_feedback` can be enriched server-side. Written on every query, never surfaced to agents, and an unknown or expired id returns undefined rather than throwing |
+| FR-32 | [NEW] MCP `query` records a RunCollector and writes that report; init/scan/reindex write RunReports with token and cost totals; operator JSON logs include those fields |
 
 ### Known issues
 
@@ -286,7 +288,7 @@ Long-lived HTTP service with REST, optional MCP, and Slack. Stack wiring and inv
 | TC-QTS5 | FR-31 | More entries than the cap | Oldest evicted, recent retained |
 | TC-QTS6 | FR-31 | Entry older than the TTL | Pruned on next access |
 | TC-QTS7 | FR-31 | Optional grounding fields on the trace | Round-trip onto the snapshot |
-| FR-31 | [NEW] Retain a per-query retrieval trace keyed by `requestId` (in-memory, 6h TTL, 200-entry cap) so a later `submit_feedback` can be enriched server-side. Written on every query, never surfaced to agents, and an unknown or expired id returns undefined rather than throwing |
+| TC-MCPC | FR-32 | [NEW] MCP query with onQueryReport | Callback receives a finished `mcp` RunReport |
 
 ### Related docs
 

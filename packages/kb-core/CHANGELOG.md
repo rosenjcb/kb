@@ -4,6 +4,7 @@
 
 ### Patch Changes
 
+- Put harvested ontology (`entities`) on query and chat answers. Lean MCP sources omit `relPath`. Init, scan, reindex, and MCP query record RunCollector token and cost stages.
 - Do not return accepted query payloads when the answer names files absent from sources. Fail eval quality pass when evidence handling is below 3.
 
 ## 2.0.9

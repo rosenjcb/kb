@@ -11,7 +11,7 @@ tests:
   - ../../../../tests/cli/server-connection-error-propagation.test.ts
 description: Connection profile, --host override, MCP client sync, and user-visible host/base context
 tags: [spec, kb, client, connection]
-timestamp: 2026-08-23T21:00:00Z
+timestamp: 2026-08-29T17:47:00Z
 ---
 
 ### Intro
@@ -69,6 +69,7 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | FR-24 | `mcp install` has no independent flag parser — `--host`/`--port`/`--sslmode`/`--api-key`/`--key`/`--base`/`--connection-string` are all global flags stripped by `parseGlobalCliFlags` before dispatch; `mcp install` itself only rejects genuinely unrecognized leftover arguments and otherwise syncs from the already-applied ambient connection |
 | FR-25 | [UPDATED] `resolveDisplayBase` resolves the base to *display* (status bar / banner / chat header) by calling the same `resolveActiveBaseInfo` FR-19 resolves for the wire (not a separate reimplementation), computed **entirely locally — no network call**: the active base (`isFallback: false`) when one is selected, else the client's own `default` fallback (`isFallback: true`). `formatConnectionContext` labels the fallback case `base: <name> (no active base selected)` via the shared `BASE_FALLBACK_SUFFIX` constant — the TUI `StatusBar` component renders the identical suffix directly rather than its own copy of the string — a client-side fact, not a server-reported one, so the client never shows a bare `(none)` |
 | FR-26 | `dispatchRemoteChatStreamEvent`'s `answer` case exposes the SSE event's grouped sources via `onSources`, so `runRemoteChatSession` renders the same Sources footer `kb query` already does (count, then one citation per file, capped at 8) instead of silently dropping citations on the chat path |
+| FR-27 | [NEW] The `answer` case also exposes harvested `entities` via `onEntities` so chat prints the same Entities line as `kb query` |
 
 ### QA Test Cases
 
@@ -149,3 +150,4 @@ HTTP wiring and connection visibility for the kb client. Architecture: [CONNECTI
 | TC-XB33 | FR-9 | [NEW] Given MCP entry builders with a base slug | Headers include `X-KB-Base` alongside optional Bearer |
 | TC-XBCR | FR-9 | [NEW] Given a base slug containing CR/LF | Written `X-KB-Base` has CR/LF stripped |
 | TC-SQMB | FR-9 | [NEW] Given `syncKbMcpConfigs({ base: 'eval-raylib' })` | Cursor entry headers pin `X-KB-Base: eval-raylib` |
+| TC-ENTC | FR-27 | [NEW] Given an `answer` SSE event carrying `entities` | `onEntities` is called with the same array |

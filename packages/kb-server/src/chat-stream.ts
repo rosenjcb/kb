@@ -11,6 +11,7 @@
 import { describeLLMFailure } from '@kb/core/core/llm-error.js'
 import { runChatSynthesis } from '@kb/core/query/chat-synthesis.js'
 import { isReadFactsResult } from '@kb/core/query/intent-cli.js'
+import type { QueryEntity } from '@kb/core/query/query-entities.js'
 import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
 import type {
   ChatEvent,
@@ -62,6 +63,7 @@ export async function* streamChatTurn(
   let failure: Error | undefined
   let answer = ''
   let sources: GroupedSource[] = []
+  let entities: QueryEntity[] = []
   let factsRetrieved = 0
   let inputTokens = 0
   let outputTokens = 0
@@ -89,7 +91,9 @@ export async function* streamChatTurn(
         // source-centric files with blob hrefs resolved from the base's repo
         // registry — the same `sources` REST, MCP, Slack, and the CLI render.
         const sourceRepos = await resolveSourceRepos(deps.baseDir)
-        sources = serializeQueryResult(result.lastIntentResult, { sourceRepos }).sources
+        const serialized = serializeQueryResult(result.lastIntentResult, { sourceRepos })
+        sources = serialized.sources
+        entities = serialized.entities ?? []
       }
     })
     .catch((error: unknown) => {
@@ -117,6 +121,12 @@ export async function* streamChatTurn(
     yield { type: 'error', message: failure.message }
     return
   }
-  yield { type: 'answer', text: answer, sources, factsRetrieved }
+  yield {
+    type: 'answer',
+    text: answer,
+    sources,
+    factsRetrieved,
+    ...(entities.length > 0 ? { entities } : {}),
+  }
   yield { type: 'done', inputTokens, outputTokens }
 }

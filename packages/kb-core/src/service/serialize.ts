@@ -9,9 +9,14 @@ import {
   isEvidenceAtLeast,
   weakestEvidence,
 } from '@kb/core/core/evidence-label.js'
-import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
+import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
+import {
+  LEAN_ENTITY_CAP,
+  type QueryEntity,
+  capQueryEntities,
+} from '@kb/core/query/query-entities.js'
 import type { ChatSourceRepo } from './chat-reply.js'
 import { DEFAULT_SOURCE_LIMIT, type GroupedSource, groupSources } from './source-grouping.js'
 
@@ -74,7 +79,14 @@ export interface QueryResponseBody {
   answerError?: LLMFailure
   /** Server-side path to the deep trace dump when `trace: true` was requested. */
   traceFile?: string
+  /**
+   * Harvested ontology for this answer. Omitted when empty. Lean payloads cap
+   * at {@link LEAN_ENTITY_CAP}; verbose keeps the pipeline's longer list.
+   */
+  entities?: QueryEntity[]
 }
+
+export type { QueryEntity } from '@kb/core/query/query-entities.js'
 
 const SNIPPET_MAX_CHARS = 280
 
@@ -145,12 +157,6 @@ export interface McpSource {
   path: string
   /** `owner/repo` (GitHub `nameWithOwner`) when known. */
   repo?: string
-  /**
-   * Repo-relative path on its own. Split out so an agent can open or grep the
-   * file without parsing `path` — which is guesswork when the owner segment
-   * itself contains slashes (GitLab subgroups).
-   */
-  relPath: string
   /** Distinct fact subjects when known; omitted when empty. */
   symbols?: string[]
   /** Blob deep link when the repo registry resolved one. */
@@ -162,6 +168,11 @@ export interface McpQueryResponseBody {
   answer: string | null
   /** Lean file citations — open these to verify the answer. */
   sources: McpSource[]
+  /**
+   * Harvested ontology for this answer (`scope` landings + cited hits).
+   * Omitted when empty. Capped at {@link LEAN_ENTITY_CAP}.
+   */
+  entities?: QueryEntity[]
   evidence?: EvidenceLabel
   /** Actionable caveats: verify hints, answer/evidence path mismatches. */
   notes?: string[]
@@ -269,8 +280,7 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
     seen.add(normalized)
     const hasPath = normalized.includes('/')
     const grounded = hasPath
-      ? knownPaths.has(normalized) ||
-        [...knownPaths].some(p => p.endsWith(`/${normalized}`))
+      ? knownPaths.has(normalized) || [...knownPaths].some(p => p.endsWith(`/${normalized}`))
       : knownBasenames.has(normalized)
     if (!grounded) ungrounded.push(token)
   }
@@ -329,8 +339,8 @@ function demoteStatusWhenGroundingFails(
 /**
  * Lean `{ path, symbols?, href? }` citations for the agent payload. Reuses the
  * canonical {@link groupSources} then {@link selectLeanGroupedSources}. Omits
- * label/gitRepo/facts/factCount — those are verbose-only. Empty `symbols` is
- * omitted to save tokens.
+ * label/gitRepo/facts/factCount/`relPath` — `relPath` is reconstructible from
+ * `path` + optional `repo`. Empty `symbols` is omitted to save tokens.
  *
  * Takes the same `sourceRepos` as every other surface: the two citation forms
  * (repo-relative path, blob href) come from one registry, so an agent's `path`
@@ -349,7 +359,6 @@ function formatMcpSources(
   return selectLeanGroupedSources(grouped, answer, MCP_MAX_SOURCES).map(g => ({
     path: g.path,
     ...(g.repo ? { repo: g.repo } : {}),
-    relPath: g.relPath,
     ...(g.symbols.length > 0 ? { symbols: g.symbols } : {}),
     ...(g.href ? { href: g.href } : {}),
   }))
@@ -459,10 +468,12 @@ export function serializeMcpQueryResult(
   options: SerializeQueryOptions
 ): McpQueryResponseBody {
   const full = serializeQueryResult(result, options)
+  const entities = capQueryEntities(full.entities, LEAN_ENTITY_CAP)
   return {
     status: full.status,
     answer: full.answer,
     sources: formatMcpSources(full.results, options.sourceRepos, full.answer),
+    ...(entities.length > 0 ? { entities } : {}),
     ...(full.evidence ? { evidence: full.evidence } : {}),
     ...(full.notes && full.notes.length > 0 ? { notes: full.notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
@@ -523,5 +534,6 @@ export function serializeQueryResult(
     ...(evidence ? { evidence } : {}),
     ...(data.answerError ? { answerError: data.answerError } : {}),
     ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
+    ...(data.entities && data.entities.length > 0 ? { entities: data.entities } : {}),
   }
 }

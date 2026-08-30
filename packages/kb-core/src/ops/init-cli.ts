@@ -16,11 +16,16 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import dayjs from 'dayjs'
-import { deleteRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
+import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
+import {
+  type IgnoreMatcher,
+  createIgnoreMatcher,
+  readIgnorePatternsFromEnv,
+} from '@kb/core/config/kb-ignore.js'
 import { DOC_TYPES } from '@kb/core/core/doc-taxonomy.js'
-import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
+import { CountingEmbedder, requireEmbedderForInit } from '@kb/core/core/embeddings.js'
 import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
+import { ingestIntegrationSignals } from '@kb/core/core/integration-ingest.js'
 import { writePipelineVersion } from '@kb/core/core/pipeline-version.js'
 import {
   type ScanDocumentIngestProgress,
@@ -28,37 +33,13 @@ import {
   indexSourceMarkdownFilesAsDocuments,
 } from '@kb/core/core/scan-document-ingest.js'
 import type { RunCollector } from '@kb/core/core/telemetry.js'
-import { TokenCountingProvider, estimateCost } from '@kb/core/core/telemetry.js'
+import {
+  TokenCountingProvider,
+  estimateCost,
+  recordEmbeddingStage,
+} from '@kb/core/core/telemetry.js'
 import type { LLMProvider } from '@kb/core/core/types.js'
-import type { WriteDocumentInput } from '@kb/core/tools/document-writer.js'
-import {
-  type RescanApplyOrchestratorProgress,
-  runRescanApplyOrchestrator,
-} from '@kb/core/tools/rescan-apply-orchestrator.js'
-import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
-import { requireEmbedderForInit } from '@kb/core/core/embeddings.js'
-import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
-import {
-  type CodeIndexStats,
-  TREE_SITTER_SKIP_DIRS,
-  TreeSitterIndexer,
-  deleteStaleAstSymbols,
-  isTreeSitterIndexablePath,
-} from '@kb/core/tools/tree-sitter-indexer.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
-import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
-import {
-  repoDirForSlug,
-  repoDisplayFromGitUrl,
-  repoSlugFromGitUrl,
-} from '@kb/core/storage/repo-slug.js'
-import {
-  DEFAULT_BASE_SLUG,
-  ensureOperationalBaseDir,
-  getKbHomeDir,
-  resolveEffectiveBaseDir,
-  writeSessionBase,
-} from '@kb/core/storage/base-selection.js'
 import { baseNameFromGitUrl, cloneRepo } from '@kb/core/ops/git-sync.js'
 import {
   diffChangedAstFiles,
@@ -73,12 +54,35 @@ import {
   writeSourceFilesManifest,
 } from '@kb/core/ops/init-source-files-manifest.js'
 import { assessTopicCoverage, summariseCoverage } from '@kb/core/ops/init-topic-coverage.js'
-import { createLLMProviderFromConfig, readKbConfig } from '@kb/core/config/kb-config.js'
+import { type BaseRepo, discoverBaseRepos } from '@kb/core/storage/base-repos.js'
 import {
-  type IgnoreMatcher,
-  createIgnoreMatcher,
-  readIgnorePatternsFromEnv,
-} from '@kb/core/config/kb-ignore.js'
+  DEFAULT_BASE_SLUG,
+  ensureOperationalBaseDir,
+  getKbHomeDir,
+  resolveEffectiveBaseDir,
+  writeSessionBase,
+} from '@kb/core/storage/base-selection.js'
+import {
+  repoDirForSlug,
+  repoDisplayFromGitUrl,
+  repoSlugFromGitUrl,
+} from '@kb/core/storage/repo-slug.js'
+import { deleteRemovedCodeFiles } from '@kb/core/tools/code-fact-writer.js'
+import type { WriteDocumentInput } from '@kb/core/tools/document-writer.js'
+import {
+  type RescanApplyOrchestratorProgress,
+  runRescanApplyOrchestrator,
+} from '@kb/core/tools/rescan-apply-orchestrator.js'
+import { SqliteDocumentWriter } from '@kb/core/tools/sqlite-document-writer.js'
+import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import {
+  type CodeIndexStats,
+  TREE_SITTER_SKIP_DIRS,
+  TreeSitterIndexer,
+  deleteStaleAstSymbols,
+  isTreeSitterIndexablePath,
+} from '@kb/core/tools/tree-sitter-indexer.js'
+import dayjs from 'dayjs'
 
 export type InitCycle =
   | 'code-index'
@@ -547,7 +551,7 @@ export function parseScanCommand(args: string[]): InitOptions {
 }
 
 function makeCycleTimer(
-  cycle: InitCycle,
+  cycle: string,
   provider: LLMProvider | undefined,
   collector: RunCollector | undefined,
   counter?: TokenCountingProvider
@@ -715,6 +719,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
     // Step 1/3: code-index (Deterministic Tree-Sitter AST code indexing)
     // ─────────────────────────────────────────────────────────────────────────
     if (!checkpoint.completedCycles.includes('code-index')) {
+      const endCodeIndex = makeCycleTimer('code-index', provider, options.collector, counter)
       progress.start('code-index', 'indexing code graph (AST)…')
       try {
         const dbPath = path.join(baseDir, '.kb-index.sqlite')
@@ -786,6 +791,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         const message = err instanceof Error ? err.message : String(err)
         await persist({ completedCycles: ['code-index'] })
         progress.finish('code-index', `failed (${message.slice(0, 80)})`)
+      } finally {
+        endCodeIndex()
       }
       if (options.stopAfter === 'code-index') throw new InitPausedError('code-index')
     } else {
@@ -896,6 +903,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
 
         // Sub-step: Harvest entity ontology
         progress.update('document-index', 'harvesting entity ontology…', 0.45)
+        const endEntities = makeCycleTimer('entity-index', provider, options.collector, counter)
         try {
           const entityStats = await runEntityIndexCycle({
             baseDir,
@@ -912,6 +920,8 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           progress.update('document-index', `entities skipped (${message.slice(0, 40)})`, 0.6)
+        } finally {
+          endEntities()
         }
 
         // Stamp the pipeline version
@@ -998,7 +1008,10 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           let mutationWritten: string[] = []
           const safeguards = planResult.plan.safeguards?.triggered ?? []
           if (safeguards.length > 0) {
-            writeInitNotice(options.progressSink, `[kb scan] safeguards triggered: ${safeguards.join(', ')}`)
+            writeInitNotice(
+              options.progressSink,
+              `[kb scan] safeguards triggered: ${safeguards.join(', ')}`
+            )
           }
           const applyResult = await runRescanApplyOrchestrator({
             base,
@@ -1090,19 +1103,25 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
         progress.start('create-embeddings', 'resolving embedder…')
         let embedIndexer: SqliteKbIndexer | undefined
         let modelId = ''
+        let counting: CountingEmbedder | undefined
+        let embedStartedAt = ''
+        let embedStartMs = 0
         try {
-          const embedder = requireEmbedderForInit()
-          modelId = embedder.modelId
+          const rawEmbedder = requireEmbedderForInit()
+          counting = new CountingEmbedder(rawEmbedder)
+          embedStartedAt = new Date().toISOString()
+          embedStartMs = Date.now()
+          modelId = counting.modelId
           embedIndexer = new SqliteKbIndexer({
             dbPath: path.join(baseDir, '.kb-index.sqlite'),
-            embedder,
+            embedder: counting,
           })
-          progress.update('create-embeddings', `embedding with ${embedder.modelId}…`)
-          const counts = embedIndexer.countUnembeddedRows(embedder.modelId)
+          progress.update('create-embeddings', `embedding with ${counting.modelId}…`)
+          const counts = embedIndexer.countUnembeddedRows(counting.modelId)
           if (counts.total === 0) {
             progress.finish(
               'create-embeddings',
-              `up to date (0 items to embed) with ${embedder.modelId}`
+              `up to date (0 items to embed) with ${counting.modelId}`
             )
           } else {
             const tableLabels: Record<string, string> = {
@@ -1138,7 +1157,7 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
             })
             progress.finish(
               'create-embeddings',
-              `Embedded ${res.documents} doc(s), ${res.symbols} symbol(s), ${res.facts} fact(s) with ${embedder.modelId}.`
+              `Embedded ${res.documents} doc(s), ${res.symbols} symbol(s), ${res.facts} fact(s) with ${counting.modelId}.`
             )
           }
           await persist({ completedCycles: ['create-embeddings'] })
@@ -1152,6 +1171,14 @@ export async function runKbInit(inputOptions: InitOptions): Promise<InitResult> 
           progress.finish('create-embeddings', `skipped (${message.slice(0, 80)})`)
           await persist({ completedCycles: ['create-embeddings'] })
         } finally {
+          if (counting) {
+            recordEmbeddingStage(options.collector, {
+              modelId: counting.modelId,
+              chars: counting.chars,
+              durationMs: Date.now() - embedStartMs,
+              startedAt: embedStartedAt,
+            })
+          }
           embedIndexer?.close()
         }
         if (options.stopAfter === 'create-embeddings')
@@ -1393,7 +1420,10 @@ async function collectRescanSourceFiles(options: {
   )
   const n = Object.keys(allSourceFiles).length
   if (n === 0) {
-    writeInitNotice(options.progressSink, '[kb scan] found no markdown sources under the working directory.')
+    writeInitNotice(
+      options.progressSink,
+      '[kb scan] found no markdown sources under the working directory.'
+    )
   }
   return allSourceFiles
 }

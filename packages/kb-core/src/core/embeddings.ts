@@ -27,6 +27,26 @@ export interface Embedder {
   onRetry?: (attempt: number, maxRetries: number, reason: string, waitMs: number) => void
 }
 
+/** Wraps an embedder and counts input characters for index-time cost logs. */
+export class CountingEmbedder implements Embedder {
+  chars = 0
+  constructor(private readonly inner: Embedder) {
+    this.onRetry = inner.onRetry
+  }
+  get modelId(): string {
+    return this.inner.modelId
+  }
+  get dimensions(): number {
+    return this.inner.dimensions
+  }
+  onRetry?: Embedder['onRetry']
+  async embed(texts: string[]): Promise<number[][]> {
+    for (const text of texts) this.chars += text.length
+    this.inner.onRetry = this.onRetry
+    return this.inner.embed(texts)
+  }
+}
+
 /** Max texts per Gemini batchEmbedContents request. */
 const GEMINI_BATCH_SIZE = 100
 
@@ -157,7 +177,9 @@ export class GeminiEmbedder implements Embedder {
       // transient here and let the finite retry budget decide when to fail.
       const retryable = RETRYABLE_STATUS.has(response.status)
       if (!retryable || attempt >= maxRetries) {
-        throw new Error(`[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`)
+        throw new Error(
+          `[gemini-embed] request failed (${response.status}): ${detail.slice(0, 200)}`
+        )
       }
       await this.backoff(attempt, retryAfterMs(response.headers.get('retry-after')), lastError)
     }
@@ -169,7 +191,11 @@ export class GeminiEmbedder implements Embedder {
    * Wait before the next attempt: `Retry-After` when the provider sent one, otherwise
    * exponential backoff (1s, 2s, 4s, …) with jitter, capped so a single wait stays bounded.
    */
-  private async backoff(attempt: number, retryAfter: number | undefined, reason: string): Promise<void> {
+  private async backoff(
+    attempt: number,
+    retryAfter: number | undefined,
+    reason: string
+  ): Promise<void> {
     const maxRetries = embedMaxRetries()
     const exponential = 1000 * 2 ** attempt
     const jitter = Math.floor(Math.random() * 250)

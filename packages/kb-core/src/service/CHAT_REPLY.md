@@ -4,7 +4,7 @@ title: Chat Reply Presentation
 description: Shared answer + Sources footer; per-repo blob links from the volume registry.
 resource: ./chat-reply.ts
 tags: [chat, slack, presentation, sources]
-timestamp: 2026-08-19T19:55:00Z
+timestamp: 2026-08-29T17:47:00Z
 ---
 
 # Chat reply presentation
@@ -39,8 +39,10 @@ A citation carries three fields, all from `sourceRepos`, which the serializers *
 |---|---|---|
 | `path` | `rosenjcb/kb/packages/kb-core/src/cli/help.ts` | display, everywhere |
 | `repo` | `rosenjcb/kb` | which repo it came from |
-| `relPath` | `packages/kb-core/src/cli/help.ts` | opening/grepping locally |
+| `relPath` | `packages/kb-core/src/cli/help.ts` | verbose `GroupedSource` only (opening/grepping locally) |
 | `href` | `https://github.com/rosenjcb/kb/blob/main/…` | clicking |
+
+The lean MCP payload omits `relPath`. Reconstruct it as `path` minus `repo/` when `repo` is set, else `path`. Verbose `GroupedSource` still carries `relPath`.
 
 `path` is **always** qualified — a base can hold many repos, so an unqualified path does not say which one a file came from. The `owner/repo` form is GitHub's `nameWithOwner`, the same shape `gh --repo OWNER/REPO` takes. No `@` prefix: that is npm scope notation and would read as a package.
 
