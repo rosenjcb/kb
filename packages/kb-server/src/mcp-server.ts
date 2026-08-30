@@ -119,6 +119,7 @@ export async function handleMcpHttpRequest(
       return
     }
     session.opts.requestId = opts.requestId
+    session.opts.onQueryReport = opts.onQueryReport
     await session.transport.handleRequest(req, res, parsedBody)
     return
   }
@@ -131,6 +132,7 @@ export async function handleMcpHttpRequest(
   const existing = sessionId ? sessions.get(sessionId) : undefined
   if (existing) {
     existing.opts.requestId = opts.requestId
+    existing.opts.onQueryReport = opts.onQueryReport
     await existing.transport.handleRequest(req, res, parsedBody)
     return
   }
@@ -138,6 +140,7 @@ export async function handleMcpHttpRequest(
   if (!sessionId && isInitializeRequest(parsedBody)) {
     const session = await createSession(service, opts)
     session.opts.requestId = opts.requestId
+    session.opts.onQueryReport = opts.onQueryReport
     await session.transport.handleRequest(req, res, parsedBody)
     return
   }

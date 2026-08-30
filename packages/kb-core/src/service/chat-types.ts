@@ -1,10 +1,17 @@
+import type { QueryEntity } from '../query/query-entities.js'
 import type { GroupedSource } from './source-grouping.js'
 
 export type ChatEvent =
   | { type: 'reasoning'; text: string }
   | { type: 'meta'; text: string }
   /** `sources` are source-centric (one entry per file, symbols folded), with blob hrefs baked in. */
-  | { type: 'answer'; text: string; sources: GroupedSource[]; factsRetrieved: number }
+  | {
+      type: 'answer'
+      text: string
+      sources: GroupedSource[]
+      factsRetrieved: number
+      entities?: QueryEntity[]
+    }
   | { type: 'error'; message: string }
   | { type: 'done'; inputTokens?: number; outputTokens?: number }
 

@@ -54,12 +54,18 @@ export interface LeanSource {
   path: string
   /** `owner/repo` (GitHub `nameWithOwner`) when known. */
   repo?: string
-  /** Repo-relative path on its own, for opening the file locally. */
-  relPath: string
   /** Folded fact subjects when known; omitted when empty. */
   symbols?: string[]
   /** Blob deep link when the server's repo registry resolved one. */
   href?: string
+}
+
+/** Harvested ontology row on a query/chat answer. */
+export interface QueryEntity {
+  kind: string
+  name: string
+  gloss?: string
+  role: 'scope' | 'cited'
 }
 
 /** One underlying fact folded under its file. */
@@ -121,6 +127,8 @@ export interface QueryResponse {
   /** Set when synthesis was attempted and failed; `answer` is null and this says why. */
   answerError?: LLMFailureResponse
   traceFile?: string
+  /** Harvested ontology for this answer. Omitted when empty. Lean payloads cap at 8. */
+  entities?: QueryEntity[]
 }
 
 export interface ChatRequest {
@@ -134,7 +142,13 @@ export type ChatStreamEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'reasoning'; text: string }
   | { type: 'meta'; text: string }
-  | { type: 'answer'; text: string; sources: GroupedSource[]; factsRetrieved: number }
+  | {
+      type: 'answer'
+      text: string
+      sources: GroupedSource[]
+      factsRetrieved: number
+      entities?: QueryEntity[]
+    }
   | { type: 'error'; message: string }
   | { type: 'done' }
 

@@ -7,37 +7,38 @@
  * it can run inside an HTTP request or an MCP tool call.
  */
 
-import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
-import type { LLMProvider } from '@kb/core/core/types.js'
-import type { IntentResult } from '@kb/core/intents/types.js'
+import { basename } from 'node:path'
+import type { KbConfig } from '@kb/core/config/kb-config.js'
+import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
+import { isEvidenceLabel } from '@kb/core/core/evidence-label.js'
+import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
 import {
   type RunCollector,
   TokenCountingProvider,
   estimateCost,
   summarizeQueryRetrievalTrace,
 } from '@kb/core/core/telemetry.js'
-import { type LLMFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
-import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
+import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
+import type { IntentResult } from '@kb/core/intents/types.js'
+import { shouldVerifyClaims, verifyAnswerClaims } from '@kb/core/query/claim-verification.js'
+import { buildInquiryLanes } from '@kb/core/query/inquiry-lanes.js'
 import {
-  countKbIndexRows,
-  isKbIndexEmpty,
-  SPARSE_KB_INDEX_MAX_ROWS,
-} from '@kb/core/tools/sqlite-kb-index.js'
-import { basename } from 'node:path'
-import type { KbConfig } from '@kb/core/config/kb-config.js'
-import { resolveFactRetrievalMethod } from '@kb/core/config/kb-config.js'
-import {
+  type ParsedIntentCommand,
+  type ReadDocumentsResultData,
   enrichReadDocumentsAnswerWithLLM,
   getIntentQuestion,
   isReadFactsResult,
-  type ParsedIntentCommand,
-  type ReadDocumentsResultData,
 } from '@kb/core/query/intent-cli.js'
+import { assembleQueryEntities, formatKnownEntitiesBlock } from '@kb/core/query/query-entities.js'
 import { runQueryTruthRetrieval } from '@kb/core/query/query-truth-retrieval.js'
-import { inferQueryScope, type ScopeVerdict } from '@kb/core/query/scope-inference.js'
-import { buildInquiryLanes } from '@kb/core/query/inquiry-lanes.js'
-import { shouldVerifyClaims, verifyAnswerClaims } from '@kb/core/query/claim-verification.js'
-import { isEvidenceLabel } from '@kb/core/core/evidence-label.js'
+import { type ScopeVerdict, inferQueryScope } from '@kb/core/query/scope-inference.js'
+import { kbIndexDbPath } from '@kb/core/tools/kb-index-path.js'
+import {
+  SPARSE_KB_INDEX_MAX_ROWS,
+  countKbIndexRows,
+  isKbIndexEmpty,
+} from '@kb/core/tools/sqlite-kb-index.js'
 
 export interface QueryPipelineDeps {
   toolExecutor: ToolExecutor
@@ -158,178 +159,204 @@ export async function runQueryPipeline(
   }
 
   try {
-  // Capture the pre-expansion question so synthesis/scaffold use the user's words,
-  // not the graph-expanded retrieval payload.
-  const synthesisQuestion = getIntentQuestion(parsed).trim() || query
+    // Capture the pre-expansion question so synthesis/scaffold use the user's words,
+    // not the graph-expanded retrieval payload.
+    const synthesisQuestion = getIntentQuestion(parsed).trim() || query
 
-  // Stage 0 — scope inference (best-effort): infer which entity (service /
-  // surface / domain) the question is about before any fuzzy retrieval runs.
-  // Inert when the registry is empty, unresolved, or KB_ENTITY_SCOPE=false.
-  // Best-effort stages that failed on an LLM error. Never block the query, never silent.
-  const degraded: LLMFailure[] = []
+    // Stage 0 — scope inference (best-effort): infer which entity (service /
+    // surface / domain) the question is about before any fuzzy retrieval runs.
+    // Inert when the registry is empty, unresolved, or KB_ENTITY_SCOPE=false.
+    // Best-effort stages that failed on an LLM error. Never block the query, never silent.
+    const degraded: LLMFailure[] = []
 
-  let scope: ScopeVerdict | undefined
-  if (!allFacts) {
-    try {
-      const verdict = await inferQueryScope({
-        dbPath: kbIndexDbPath(baseDir),
-        query,
-        ...(llmProvider ? { llm: llmProvider } : {}),
-      })
-      if (!verdict.unresolved) scope = verdict
-    } catch (error) {
-      // Scope inference is best-effort; never block the query. But a failure here means the
-      // answer may silently be about the wrong entity *and* the disclosure line that would
-      // have exposed that is missing — so it gets recorded.
-      degraded.push(toLLMFailure('scope-inference', error, llmProvider?.name))
-    }
-  }
-
-  // Entity-guarded expansion (best-effort): when scope resolved, the entity's own aliases
-  // widen the retrieval query. There is no generic graph widening fallback — that path
-  // pulled colliding neighborhoods into the query string, and the hybrid retriever's
-  // lexical + neural lanes cover the recall it was there for.
-  let graphRelationContext: string | undefined
-  if (!allFacts && scope?.expansionTerms && scope.expansionTerms.length > 0) {
-    const extra = scope.expansionTerms
-      .filter(term => !query.toLowerCase().includes(term.toLowerCase()))
-      .slice(0, 8)
-    ;(parsed.envelope.payload as { query?: string }).query = [query, ...extra].join(' ')
-  }
-
-  // Ontology-typed inquiry lanes: turn the resolved entity into targeted sub-queries
-  // (its owner, its parent, its dependencies, kind-appropriate mechanism probes)
-  // rather than letting the reader guess facets from the question string. Reuses the
-  // stage-0 verdict, so lane targets match the scope disclosure the user is shown.
-  // Deterministic and additive — no lanes means the reader's existing path runs.
-  let inquiryLaneCount = 0
-  if (!allFacts) {
-    try {
-      const lanes = buildInquiryLanes({
-        dbPath: kbIndexDbPath(baseDir),
-        query,
-        ...(scope ? { verdict: scope } : {}),
-      })
-      inquiryLaneCount = lanes.length
-      if (lanes.length > 0) {
-        ;(parsed.envelope.payload as { inquiryLanes?: unknown }).inquiryLanes = lanes
+    let scope: ScopeVerdict | undefined
+    if (!allFacts) {
+      try {
+        const verdict = await inferQueryScope({
+          dbPath: kbIndexDbPath(baseDir),
+          query,
+          ...(llmProvider ? { llm: llmProvider } : {}),
+        })
+        if (!verdict.unresolved) scope = verdict
+      } catch (error) {
+        // Scope inference is best-effort; never block the query. But a failure here means the
+        // answer may silently be about the wrong entity *and* the disclosure line that would
+        // have exposed that is missing — so it gets recorded.
+        degraded.push(toLLMFailure('scope-inference', error, llmProvider?.name))
       }
-    } catch {
-      // Lane construction is best-effort; never block the query.
     }
-  }
 
-  // Hard pruning under the confidence gates: exclusions are only ever fact ids
-  // linked to `certainly_incorrect` entities (unlinked facts are never prunable).
-  const appliedExclusions = scope !== undefined && scope.excludedFactIds.length > 0
-  if (appliedExclusions && scope) {
-    ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = scope.excludedFactIds
-  }
-
-  let aligned = await runQueryTruthRetrieval({
-    parsed,
-    toolExecutor,
-    llmProvider,
-    kbStorageDir: baseDir,
-    collector: params.collector,
-  })
-
-  // Un-pruning safety valve: a wrong scope verdict costs a retry, never the
-  // answer. If pruned retrieval came back empty, lift exclusions and re-run.
-  if (appliedExclusions && isReadFactsResult(aligned)) {
-    const data = (aligned.data ?? {}) as ReadDocumentsResultData
-    const resultCount = Array.isArray(data.results) ? data.results.length : 0
-    if (resultCount === 0) {
-      ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = undefined
-      aligned = await runQueryTruthRetrieval({
-        parsed,
-        toolExecutor,
-        llmProvider,
-        kbStorageDir: baseDir,
-        collector: params.collector,
-      })
+    // Entity-guarded expansion (best-effort): when scope resolved, the entity's own aliases
+    // widen the retrieval query. There is no generic graph widening fallback — that path
+    // pulled colliding neighborhoods into the query string, and the hybrid retriever's
+    // lexical + neural lanes cover the recall it was there for.
+    let graphRelationContext: string | undefined
+    if (!allFacts && scope?.expansionTerms && scope.expansionTerms.length > 0) {
+      const extra = scope.expansionTerms
+        .filter(term => !query.toLowerCase().includes(term.toLowerCase()))
+        .slice(0, 8)
+      ;(parsed.envelope.payload as { query?: string }).query = [query, ...extra].join(' ')
     }
-  }
 
-  // Disclose the interpretation to synthesis — always, whenever resolution
-  // happened. Silent disambiguation is how trust dies.
-  if (scope?.disclosure) {
-    const disclosureBlock = `Scope interpretation: ${scope.disclosure}`
-    graphRelationContext = graphRelationContext
-      ? `${disclosureBlock}\n\n${graphRelationContext}`
-      : disclosureBlock
-  }
-
-  // Fold pipeline-level degradations in with any recorded during retrieval, so every
-  // best-effort LLM failure for this query arrives on one channel.
-  if (degraded.length > 0 && isReadFactsResult(aligned)) {
-    const data = (aligned.data ?? {}) as ReadDocumentsResultData
-    aligned = {
-      ...aligned,
-      data: {
-        ...data,
-        retrieval: {
-          ...data.retrieval,
-          degraded: [...(data.retrieval?.degraded ?? []), ...degraded],
-        },
-      },
+    // Ontology-typed inquiry lanes: turn the resolved entity into targeted sub-queries
+    // (its owner, its parent, its dependencies, kind-appropriate mechanism probes)
+    // rather than letting the reader guess facets from the question string. Reuses the
+    // stage-0 verdict, so lane targets match the scope disclosure the user is shown.
+    // Deterministic and additive — no lanes means the reader's existing path runs.
+    let inquiryLaneCount = 0
+    if (!allFacts) {
+      try {
+        const lanes = buildInquiryLanes({
+          dbPath: kbIndexDbPath(baseDir),
+          query,
+          ...(scope ? { verdict: scope } : {}),
+        })
+        inquiryLaneCount = lanes.length
+        if (lanes.length > 0) {
+          ;(parsed.envelope.payload as { inquiryLanes?: unknown }).inquiryLanes = lanes
+        }
+      } catch {
+        // Lane construction is best-effort; never block the query.
+      }
     }
-  }
 
-  // Stamp scope/lane counters onto the retrieval detail the client prints and
-  // the eval harness scrapes — not only the collector's structured trace.
-  if (isReadFactsResult(aligned)) {
-    const data = (aligned.data ?? {}) as ReadDocumentsResultData
-    if (data.retrieval) {
+    // Hard pruning under the confidence gates: exclusions are only ever fact ids
+    // linked to `certainly_incorrect` entities (unlinked facts are never prunable).
+    const appliedExclusions = scope !== undefined && scope.excludedFactIds.length > 0
+    if (appliedExclusions && scope) {
+      ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = scope.excludedFactIds
+    }
+
+    let aligned = await runQueryTruthRetrieval({
+      parsed,
+      toolExecutor,
+      llmProvider,
+      kbStorageDir: baseDir,
+      collector: params.collector,
+    })
+
+    // Un-pruning safety valve: a wrong scope verdict costs a retry, never the
+    // answer. If pruned retrieval came back empty, lift exclusions and re-run.
+    if (appliedExclusions && isReadFactsResult(aligned)) {
+      const data = (aligned.data ?? {}) as ReadDocumentsResultData
+      const resultCount = Array.isArray(data.results) ? data.results.length : 0
+      if (resultCount === 0) {
+        ;(parsed.envelope.payload as { excludeIds?: string[] }).excludeIds = undefined
+        aligned = await runQueryTruthRetrieval({
+          parsed,
+          toolExecutor,
+          llmProvider,
+          kbStorageDir: baseDir,
+          collector: params.collector,
+        })
+      }
+    }
+
+    // Disclose the interpretation to synthesis — always, whenever resolution
+    // happened. Silent disambiguation is how trust dies.
+    if (scope?.disclosure) {
+      const disclosureBlock = `Scope interpretation: ${scope.disclosure}`
+      graphRelationContext = graphRelationContext
+        ? `${disclosureBlock}\n\n${graphRelationContext}`
+        : disclosureBlock
+    }
+
+    // Fold pipeline-level degradations in with any recorded during retrieval, so every
+    // best-effort LLM failure for this query arrives on one channel.
+    if (degraded.length > 0 && isReadFactsResult(aligned)) {
+      const data = (aligned.data ?? {}) as ReadDocumentsResultData
       aligned = {
         ...aligned,
         data: {
           ...data,
-          retrieval: annotateScopeDetail(data.retrieval, scope, inquiryLaneCount),
+          retrieval: {
+            ...data.retrieval,
+            degraded: [...(data.retrieval?.degraded ?? []), ...degraded],
+          },
         },
       }
     }
-  }
 
-  const shouldSynthesize = params.synthesize !== false
-  if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
-    const enrichStarted = Date.now()
-    const enrichStartedAt = new Date().toISOString()
-    const enriched = await enrichReadDocumentsAnswerWithLLM(parsed, aligned, llmProvider, undefined, undefined, {
-      graphRelationContext,
-      synthesisQuestion,
-    })
-    recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
+    // Stamp scope/lane counters onto the retrieval detail the client prints and
+    // the eval harness scrapes — not only the collector's structured trace.
+    if (isReadFactsResult(aligned)) {
+      const data = (aligned.data ?? {}) as ReadDocumentsResultData
+      if (data.retrieval) {
+        aligned = {
+          ...aligned,
+          data: {
+            ...data,
+            retrieval: annotateScopeDetail(data.retrieval, scope, inquiryLaneCount),
+          },
+        }
+      }
+    }
 
-    // Opt-in prose-claim grounding (#223): re-read the answer against the evidence and
-    // flag unsupported claims. Attached to retrieval data; serialize turns it into a
-    // caveat note and downgrades the evidence label. Best-effort — a verify outage is
-    // recorded as degraded, never allowed to sink the answer we already have.
-    const verified = await maybeVerifyAnswerClaims({
-      result: enriched,
-      question: synthesisQuestion,
-      llmProvider,
-      verifyClaims: params.verifyClaims,
-      recordLlmStage,
-    })
+    // Outbound ontology: project the same landings that already expanded, plus
+    // cited registry hits. Not a second expansion pass — cited rows are too late
+    // for this turn's lanes. The compact list goes to synthesis only.
+    if (isReadFactsResult(aligned)) {
+      const data = (aligned.data ?? {}) as ReadDocumentsResultData
+      const entities = assembleQueryEntities({
+        dbPath: kbIndexDbPath(baseDir),
+        scope,
+        results: data.results,
+      })
+      if (entities.length > 0) {
+        aligned = { ...aligned, data: { ...data, entities } }
+        const entitiesBlock = formatKnownEntitiesBlock(entities)
+        graphRelationContext = graphRelationContext
+          ? `${graphRelationContext}\n\n${entitiesBlock}`
+          : entitiesBlock
+      }
+    }
 
-    if (params.collector && isReadFactsResult(verified)) {
-      const retrievalData = (verified.data as ReadDocumentsResultData | undefined)?.retrieval
+    const shouldSynthesize = params.synthesize !== false
+    if (shouldSynthesize && llmProvider && isReadFactsResult(aligned)) {
+      const enrichStarted = Date.now()
+      const enrichStartedAt = new Date().toISOString()
+      const enriched = await enrichReadDocumentsAnswerWithLLM(
+        parsed,
+        aligned,
+        llmProvider,
+        undefined,
+        undefined,
+        {
+          graphRelationContext,
+          synthesisQuestion,
+        }
+      )
+      recordLlmStage('query_truth:answer-enrichment', Date.now() - enrichStarted, enrichStartedAt)
+
+      // Opt-in prose-claim grounding (#223): re-read the answer against the evidence and
+      // flag unsupported claims. Attached to retrieval data; serialize turns it into a
+      // caveat note and downgrades the evidence label. Best-effort — a verify outage is
+      // recorded as degraded, never allowed to sink the answer we already have.
+      const verified = await maybeVerifyAnswerClaims({
+        result: enriched,
+        question: synthesisQuestion,
+        llmProvider,
+        verifyClaims: params.verifyClaims,
+        recordLlmStage,
+      })
+
+      if (params.collector && isReadFactsResult(verified)) {
+        const retrievalData = (verified.data as ReadDocumentsResultData | undefined)?.retrieval
+        if (retrievalData) {
+          params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
+        }
+      }
+      return attachSparseBaseNote(verified, sparseBaseNote)
+    }
+
+    if (params.collector && isReadFactsResult(aligned)) {
+      const retrievalData = (aligned.data as ReadDocumentsResultData | undefined)?.retrieval
       if (retrievalData) {
         params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
       }
     }
-    return attachSparseBaseNote(verified, sparseBaseNote)
-  }
 
-  if (params.collector && isReadFactsResult(aligned)) {
-    const retrievalData = (aligned.data as ReadDocumentsResultData | undefined)?.retrieval
-    if (retrievalData) {
-      params.collector.setRetrievalTrace(summarizeQueryRetrievalTrace(retrievalData))
-    }
-  }
-
-  return attachSparseBaseNote(aligned, sparseBaseNote)
+    return attachSparseBaseNote(aligned, sparseBaseNote)
   } finally {
     if (params.trace) {
       if (prevTraceEnv === undefined) process.env.KB_QUERY_TRACE = undefined

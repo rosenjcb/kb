@@ -1,10 +1,9 @@
-import dayjs from 'dayjs'
 import { formatEvidenceSummaryHeader } from '@kb/core/core/evidence-summary.js'
-import {
-  formatRetrievedFactsForLLM,
-  MAX_FACT_CONTENT_CHARS,
-} from '@kb/core/core/retrieval-context.js'
 import { type LLMFailure, emptyResponseFailure, toLLMFailure } from '@kb/core/core/llm-error.js'
+import {
+  MAX_FACT_CONTENT_CHARS,
+  formatRetrievedFactsForLLM,
+} from '@kb/core/core/retrieval-context.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider, Message } from '@kb/core/core/types.js'
 import { assertConsumerSafeCommand } from '@kb/core/intents/policy.js'
@@ -14,13 +13,15 @@ import type {
   ConsumerIntentEnvelope,
   IntentResult,
 } from '@kb/core/intents/types.js'
+import dayjs from 'dayjs'
 import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
-import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
 import {
   NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE,
   detectCausalTarget,
   isNegativeClaimGuardEnabled,
 } from './causal-claim-intent.js'
+import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
+import type { QueryEntity } from './query-entities.js'
 
 /** Minimal printer surface for intent result rendering (implemented by client Printer). */
 export interface IntentResultPrinter {
@@ -31,13 +32,13 @@ export interface IntentResultPrinter {
   sourceCitation(label: string, opts?: { href?: string; symbols?: string[] }): void
 }
 import { type CmdMode, cmd } from '@kb/core/config/cmd-ref.js'
-import { appendQuerySession, loadQuerySessionMessages } from './query-session.js'
 import { toSource } from '@kb/core/service/serialize.js'
 import {
   DEFAULT_SOURCE_LIMIT,
   type GroupedSource,
   groupSources,
 } from '@kb/core/service/source-grouping.js'
+import { appendQuerySession, loadQuerySessionMessages } from './query-session.js'
 
 export function formatRetrievalMatchesMeta(retrievedCount: number): string {
   if (retrievedCount === 0) return '0'
@@ -289,6 +290,11 @@ export interface ReadDocumentsResultData {
   answerError?: LLMFailure
   /** Path to the opt-in deep trace dump when `kb query --trace` ran. */
   traceFile?: string
+  /**
+   * Harvested ontology that this answer is about (`scope`) or that the evidence
+   * cites (`cited`). Outbound only — not a second expansion pass.
+   */
+  entities?: QueryEntity[]
 }
 
 /** Subset of the curator's {@link CurationRecord} consumed by synthesis framing. */

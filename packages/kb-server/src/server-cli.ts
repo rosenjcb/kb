@@ -12,8 +12,14 @@ import {
   getKbConfigDir,
   persistInferredLLMProvider,
 } from '@kb/core/config/kb-config.js'
-import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
 import { KB_ENV } from '@kb/core/config/kb-env.js'
+import { DEFAULT_KB_SERVER_PORT } from '@kb/core/config/kb-server-port.js'
+import {
+  ReportWriter,
+  RunCollector,
+  costLogFields,
+  defaultLogsDir,
+} from '@kb/core/core/telemetry.js'
 import { cloneRepo, isAncestorOfHead, resetToSha } from '@kb/core/ops/git-sync.js'
 import { runKbInit } from '@kb/core/ops/init-cli.js'
 import { runScanCommand } from '@kb/core/ops/scan-command.js'
@@ -38,7 +44,6 @@ import {
   writePidFile,
 } from './daemon-cli.js'
 import { createHttpServer } from './http-server.js'
-import { createKbServiceRegistry } from './service-registry.js'
 import { log } from './logger.js'
 import { parseDuration, startReindexScheduler } from './reindex-scheduler.js'
 import {
@@ -48,6 +53,7 @@ import {
   resolveBootstrapPolicy,
   resolveSnapshotSource,
 } from './server-bootstrap.js'
+import { createKbServiceRegistry } from './service-registry.js'
 import { runServerUninstallCommand } from './uninstall-cli.js'
 import { resolveServerVersion } from './version.js'
 
@@ -58,12 +64,30 @@ export interface ServerLogger {
 
 const DEFAULT_PORT = DEFAULT_KB_SERVER_PORT
 
+async function runIndexedOp(
+  command: 'init' | 'scan',
+  base: string,
+  run: (collector: RunCollector) => Promise<void>
+): Promise<void> {
+  const collector = new RunCollector(command, { base })
+  const reporter = new ReportWriter(defaultLogsDir())
+  try {
+    await run(collector)
+    const report = collector.finish('success', undefined, base)
+    await reporter.append(report)
+    log.info(`${command} complete`, { base, ...costLogFields(report) })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const report = collector.finish('error', message, base)
+    await reporter.append(report)
+    log.error(`${command} error`, { base, error: message, ...costLogFields(report) })
+    throw error
+  }
+}
+
 function isVersionArg(argv: string[]): boolean {
   return (
-    argv.includes('--version') ||
-    argv.includes('-V') ||
-    argv[0] === 'version' ||
-    argv[0] === '-v'
+    argv.includes('--version') || argv.includes('-V') || argv[0] === 'version' || argv[0] === '-v'
   )
 }
 
@@ -89,7 +113,10 @@ function readAllowedOrigins(args: string[]): string[] {
   const seen = new Set<string>()
   const origins: string[] = []
   for (const raw of [fromEnv, ...fromFlags]) {
-    for (const origin of raw.split(',').map(o => o.trim()).filter(o => o.length > 0)) {
+    for (const origin of raw
+      .split(',')
+      .map(o => o.trim())
+      .filter(o => o.length > 0)) {
       if (!seen.has(origin)) {
         seen.add(origin)
         origins.push(origin)
@@ -162,13 +189,16 @@ async function planBootstrapTask(
       startMessage: `No index found; building "${base.baseRef}" from ${plan.source} (${plan.gitTargets.length} repo(s)) in the background…`,
       successMessage: 'Index build complete.',
       run: async () => {
-        await runKbInit({
-          base: base.baseRef,
-          nonInteractive: true,
-          gitTargets: plan.gitTargets,
-          ignorePatterns: plan.ignore,
-          progressSink: log,
-        })
+        await runIndexedOp('init', base.baseRef, collector =>
+          runKbInit({
+            base: base.baseRef,
+            nonInteractive: true,
+            gitTargets: plan.gitTargets,
+            ignorePatterns: plan.ignore,
+            progressSink: log,
+            collector,
+          }).then(() => undefined)
+        )
       },
     }
   }
@@ -179,7 +209,9 @@ async function planBootstrapTask(
       startMessage: `No index found; scanning ${repos.length} cloned repo(s) in the background…`,
       successMessage: 'Index build complete.',
       run: async () => {
-        await runScanCommand(['--base', base.baseRef], log)
+        await runIndexedOp('scan', base.baseRef, collector =>
+          runScanCommand(['--base', base.baseRef], log, collector).then(() => undefined)
+        )
       },
     }
   }
@@ -240,13 +272,16 @@ async function planWarmVolumeTask(
     run: async () => {
       for (const repo of toHydrate) await hydrateRepoFromProvenance(base.baseDir, repo, log)
       if (newTargets.length > 0) {
-        await runKbInit({
-          base: base.baseRef,
-          nonInteractive: true,
-          gitTargets: newTargets,
-          ignorePatterns: plan.ignore,
-          progressSink: log,
-        })
+        await runIndexedOp('init', base.baseRef, collector =>
+          runKbInit({
+            base: base.baseRef,
+            nonInteractive: true,
+            gitTargets: newTargets,
+            ignorePatterns: plan.ignore,
+            progressSink: log,
+            collector,
+          }).then(() => undefined)
+        )
       }
     },
   }
@@ -517,7 +552,22 @@ export async function runServerCommand(
           onProgress?.('skipped: bootstrap indexing still in progress')
           return undefined
         }
-        return await service.reindex(onProgress)
+        const base = service.health().base
+        const collector = new RunCollector('scan', { base })
+        const reporter = new ReportWriter(defaultLogsDir())
+        try {
+          const summary = await service.reindex(onProgress, collector)
+          const report = collector.finish('success', undefined, base)
+          await reporter.append(report)
+          log.info('reindex complete', { base, summary, ...costLogFields(report) })
+          return summary
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          const report = collector.finish('error', message, base)
+          await reporter.append(report)
+          log.error('reindex error', { base, error: message, ...costLogFields(report) })
+          throw error
+        }
       },
       onLog: line => {
         out.error(line)

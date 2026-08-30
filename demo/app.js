@@ -330,7 +330,7 @@ function addAssistantMessage() {
       thinkingText = (txt || '').trim()
       renderPending()
     },
-    setAnswer(txt, sources) {
+    setAnswer(txt, sources, entities) {
       bubble.innerHTML = renderMarkdown(txt || '_(no answer)_')
       if (sources?.length) {
         const s = document.createElement('div')
@@ -351,6 +351,17 @@ function addAssistantMessage() {
           })
           .join('')}`
         bubble.appendChild(s)
+      }
+      if (entities?.length) {
+        const e = document.createElement('div')
+        e.className = 'sources'
+        e.innerHTML = `<div class="label">Routes / services</div>${entities
+          .map(ent => {
+            const kind = ent.kind ? `${escapeHtml(ent.kind)} ` : ''
+            return `<div class="source"><span class="path">${kind}${escapeHtml(ent.name || '')}</span></div>`
+          })
+          .join('')}`
+        bubble.appendChild(e)
       }
       scrollDown()
     },
@@ -551,7 +562,7 @@ async function sendChat(message) {
           if (!answered) turn.setThinking(ev.data.text || 'Thinking…')
         } else if (ev.event === 'answer') {
           answered = true
-          turn.setAnswer(ev.data.text, ev.data.sources)
+          turn.setAnswer(ev.data.text, ev.data.sources, ev.data.entities)
         } else if (ev.event === 'error') {
           turn.setError('The server returned an error', ev.data.message || 'unknown error')
           answered = true

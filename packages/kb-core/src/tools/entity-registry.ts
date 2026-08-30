@@ -336,6 +336,28 @@ export class EntityRegistry {
     return row.n
   }
 
+  /** Live entities linked to any of the given fact ids. Empty input → empty result. */
+  entitiesForFactIds(factIds: string[]): EntityRow[] {
+    if (factIds.length === 0) return []
+    const placeholders = factIds.map(() => '?').join(',')
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT e.id, e.kind, e.canonical_name, e.gloss, e.git_repo, e.source_kind
+         FROM entities e
+         JOIN entity_links l ON l.entity_id = e.id
+         WHERE e.tombstoned_at IS NULL AND l.fact_id IN (${placeholders})`
+      )
+      .all(...factIds) as Array<{
+      id: string
+      kind: string
+      canonical_name: string
+      gloss: string | null
+      git_repo: string | null
+      source_kind: string
+    }>
+    return rows.map(toEntityRow)
+  }
+
   /** Fact ids linked to any of the given entities. Unlinked facts are never returned. */
   linkedFactIds(entityIds: string[]): string[] {
     if (entityIds.length === 0) return []

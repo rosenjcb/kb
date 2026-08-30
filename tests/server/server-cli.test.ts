@@ -37,8 +37,20 @@ vi.mock('@kb/core/storage/repo-slug.js', () => ({
   repoSlugFromGitUrl: vi.fn((url: string) => url.split('/').slice(-2).join('-')),
 }))
 
+vi.mock('@kb/core/core/telemetry.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@kb/core/core/telemetry.js')>()
+  return {
+    ...actual,
+    ReportWriter: class {
+      async append() {}
+    },
+  }
+})
+
 vi.mock('@kb/core/tools/kb-index-path.js', () => ({
-  kbIndexDbPath: vi.fn(() => '/tmp/demo/.kb-index.sqlite'),
+  // Unique missing path so parallel suites cannot leave a leftover index at /tmp/demo
+  // and flip this file onto the warm-volume bootstrap path.
+  kbIndexDbPath: vi.fn(() => `/tmp/kb-server-cli-${process.pid}/.kb-index.sqlite`),
 }))
 
 vi.mock('@kb/core/service/kb-service.js', () => ({

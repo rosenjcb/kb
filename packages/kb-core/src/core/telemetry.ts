@@ -6,11 +6,11 @@
  * When --debug is passed, live stage summaries are printed to stderr.
  */
 
-import type { EvidenceLabel } from './evidence-label'
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { calculateModelCost } from 'pricetoken'
+import type { EvidenceLabel } from './evidence-label'
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -117,6 +117,56 @@ export function formatLogTarget(host?: string, base?: string): string {
   if (host && base) return `${host}/${base}`
   if (host) return host
   return `-/${base}`
+}
+
+/** Token and cost totals for operator JSON logs. */
+export function costLogFields(report: {
+  totalDurationMs: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalEstimatedCostUsd: number
+}): {
+  durationMs: number
+  inputTokens: number
+  outputTokens: number
+  estimatedCostUsd: number
+} {
+  return {
+    durationMs: report.totalDurationMs,
+    inputTokens: report.totalInputTokens,
+    outputTokens: report.totalOutputTokens,
+    estimatedCostUsd: report.totalEstimatedCostUsd,
+  }
+}
+
+/**
+ * Approximate embedding tokens from input character count (4 chars ≈ 1 token).
+ * Used for index-time embed cost, not LLM synthesis.
+ */
+export function estimateEmbeddingTokens(chars: number): number {
+  if (chars <= 0) return 0
+  return Math.ceil(chars / 4)
+}
+
+/** Record a create-embeddings stage. Gemini is billed; local ONNX is $0. */
+export function recordEmbeddingStage(
+  collector: RunCollector | undefined,
+  opts: { modelId: string; chars: number; durationMs: number; startedAt: string }
+): void {
+  if (!collector) return
+  const inputTokens = estimateEmbeddingTokens(opts.chars)
+  const isGemini = opts.modelId.startsWith('gemini:')
+  const model = isGemini ? (opts.modelId.split(':')[1] ?? opts.modelId) : opts.modelId
+  collector.addStage({
+    stage: 'create-embeddings',
+    startedAt: opts.startedAt,
+    durationMs: opts.durationMs,
+    inputTokens,
+    outputTokens: 0,
+    estimatedCostUsd: isGemini ? estimateCost('gemini', model, inputTokens, 0) : 0,
+    provider: isGemini ? 'gemini' : 'onnx',
+    model: opts.modelId,
+  })
 }
 
 export function estimateCost(
@@ -245,7 +295,12 @@ export class RunCollector {
 export function summarizeQueryRetrievalTrace(retrieval: {
   method?: string
   detail?: string
-  checkpoints?: Array<{ stage?: string; status?: string; nextAction?: string; evidence?: EvidenceLabel }>
+  checkpoints?: Array<{
+    stage?: string
+    status?: string
+    nextAction?: string
+    evidence?: EvidenceLabel
+  }>
   curation?: {
     evaluated?: number
     dropped?: unknown[]
@@ -260,8 +315,7 @@ export function summarizeQueryRetrievalTrace(retrieval: {
     const m = re.exec(detail)
     return m ? Number(m[1]) : undefined
   }
-  const curatedMatch =
-    /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
+  const curatedMatch = /curated:kept=(\d+),dropped=(\d+),requeried=(\d+),rounds=(\d+)/.exec(detail)
 
   const rawCuration = retrieval.curation
   let curation: QueryCurationTrace | undefined
@@ -299,11 +353,15 @@ export function summarizeQueryRetrievalTrace(retrieval: {
 
   return {
     ...(retrieval.method ? { method: retrieval.method } : {}),
-    ...(num(/(?:^|[;:])docs=(\d+)/) !== undefined ? { documents: num(/(?:^|[;:])docs=(\d+)/) } : {}),
+    ...(num(/(?:^|[;:])docs=(\d+)/) !== undefined
+      ? { documents: num(/(?:^|[;:])docs=(\d+)/) }
+      : {}),
     ...(num(/(?:^|,)symbols=(\d+)/) !== undefined ? { symbols: num(/(?:^|,)symbols=(\d+)/) } : {}),
     ...(num(/(?:^|,)facts=(\d+)/) !== undefined ? { facts: num(/(?:^|,)facts=(\d+)/) } : {}),
     ...(num(/(?:^|,)hops=(\d+)/) !== undefined ? { hops: num(/(?:^|,)hops=(\d+)/) } : {}),
-    ...(num(/(?:^|;)expanded:(\d+)/) !== undefined ? { expanded: num(/(?:^|;)expanded:(\d+)/) } : {}),
+    ...(num(/(?:^|;)expanded:(\d+)/) !== undefined
+      ? { expanded: num(/(?:^|;)expanded:(\d+)/) }
+      : {}),
     ...(Array.isArray(retrieval.checkpoints) && retrieval.checkpoints.length > 0
       ? { checkpoints: retrieval.checkpoints }
       : {}),

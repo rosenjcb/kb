@@ -1,3 +1,4 @@
+import type { CmdMode } from '@kb/core/config/cmd-ref.js'
 import type { KbConfig } from '@kb/core/config/kb-config.js'
 import { readKbConfig } from '@kb/core/config/kb-config.js'
 import {
@@ -5,20 +6,20 @@ import {
   isIntentCommand,
   parseIntentCommand,
 } from '@kb/core/query/intent-cli.js'
-import type { CmdMode } from '@kb/core/config/cmd-ref.js'
+import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createKbApiClient } from '../api/kb-api-client.js'
+import {
+  formatConnectionContext,
+  resolveActiveBaseInfo,
+  resolveServerConnectionWithBase,
+} from '../api/server-connection.js'
 import type {
   ChatStreamEvent,
   GroupedSource,
-  LeanSource,
   LLMFailureResponse,
+  LeanSource,
+  QueryEntity,
 } from '../api/types.js'
-import {
-  resolveServerConnectionWithBase,
-  resolveActiveBaseInfo,
-  formatConnectionContext,
-} from '../api/server-connection.js'
-import type { CliOutput } from '@kb/core/ui/cli-output.js'
 import { createPrinter } from '../ui/printer.js'
 import type { ChatIO, ChatSessionDeps } from './chat-cli.js'
 
@@ -38,6 +39,10 @@ function citationParts(source: LeanSource | GroupedSource): {
   }
   // Lean payloads carry `href` too, so the CLI links them the same as verbose ones.
   return { label: source.path, href: source.href, symbols: source.symbols }
+}
+
+function formatEntitiesLine(entities: QueryEntity[]): string {
+  return entities.map(e => `${e.kind} ${e.name}`).join(' · ')
 }
 
 /**
@@ -233,6 +238,9 @@ export async function runRemoteIntentCommand(
     if (verbose && result.evidence) {
       printer.metadata('Evidence', result.evidence)
     }
+    if (result.entities && result.entities.length > 0) {
+      printer.metadata('Entities', formatEntitiesLine(result.entities))
+    }
     if (result.traceFile) {
       out.log(`[kb] query trace written on server: ${result.traceFile}`)
     }
@@ -257,6 +265,7 @@ export function dispatchRemoteChatStreamEvent(
     onSession?: (sessionId: string) => void
     onAnswer?: (text: string) => void
     onSources?: (sources: GroupedSource[]) => void
+    onEntities?: (entities: QueryEntity[]) => void
   } = {}
 ): void {
   switch (event.type) {
@@ -272,6 +281,7 @@ export function dispatchRemoteChatStreamEvent(
     case 'answer':
       hooks.onAnswer?.(event.text)
       hooks.onSources?.(event.sources)
+      if (event.entities && event.entities.length > 0) hooks.onEntities?.(event.entities)
       break
     case 'error':
       throw new Error(event.message)
@@ -285,13 +295,19 @@ export async function runRemoteChatTurn(
   sessionId: string | undefined,
   out: CliOutput,
   config: KbConfig
-): Promise<{ sessionId: string; answer: string; sources: GroupedSource[] }> {
+): Promise<{
+  sessionId: string
+  answer: string
+  sources: GroupedSource[]
+  entities: QueryEntity[]
+}> {
   const client = createKbApiClient(await resolveServerConnectionWithBase(config))
   await client.connect()
 
   let activeSession = sessionId
   let answer = ''
   let sources: GroupedSource[] = []
+  let entities: QueryEntity[] = []
 
   for await (const event of client.chatStream({ sessionId, message })) {
     dispatchRemoteChatStreamEvent(event, out, {
@@ -304,10 +320,13 @@ export async function runRemoteChatTurn(
       onSources: grouped => {
         sources = grouped
       },
+      onEntities: listed => {
+        entities = listed
+      },
     })
   }
 
-  return { sessionId: activeSession ?? sessionId ?? 'default', answer, sources }
+  return { sessionId: activeSession ?? sessionId ?? 'default', answer, sources, entities }
 }
 
 export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): Promise<void> {
@@ -344,12 +363,12 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
     }
 
     try {
-      const { sessionId: nextSession, answer, sources } = await runRemoteChatTurn(
-        input,
-        sessionId,
-        chatOut,
-        kbConfig
-      )
+      const {
+        sessionId: nextSession,
+        answer,
+        sources,
+        entities,
+      } = await runRemoteChatTurn(input, sessionId, chatOut, kbConfig)
       if (nextSession !== sessionId) deps.onSessionStart?.(nextSession)
       sessionId = nextSession
       io.setProgressLine?.(null)
@@ -360,6 +379,9 @@ export async function runRemoteChatSession(deps: ChatSessionDeps, io: ChatIO): P
           const { label, href, symbols } = citationParts(source)
           printer.sourceCitation(label, { href, symbols })
         }
+      }
+      if (entities.length > 0) {
+        printer.metadata('Entities', formatEntitiesLine(entities))
       }
     } catch (error) {
       io.setProgressLine?.(null)

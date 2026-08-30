@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.10
+
+### Patch Changes
+
+- Put harvested ontology (`entities`) on query and chat answers. Lean MCP sources omit `relPath`. Init, scan, reindex, and MCP query record RunCollector token and cost stages.
+
 ## 2.0.9
 
 ### Patch Changes

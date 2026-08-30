@@ -29,10 +29,10 @@
  * answering immediately or re-scraping past responses for ids.
  */
 
-import type { KbService } from '@kb/core/service/kb-service.js'
+import { RunCollector, type RunReport } from '@kb/core/core/telemetry.js'
 import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
 import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
-import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
   CallToolRequestSchema,
@@ -51,7 +51,6 @@ import {
   parseElicitedHelped,
 } from './mcp-feedback-elicitation.js'
 import { PendingFeedbackStore } from './pending-feedback-store.js'
-import { QueryTraceSnapshotStore } from './query-trace-snapshot-store.js'
 import {
   type FeedbackHelped,
   type FeedbackScores,
@@ -60,6 +59,8 @@ import {
   type QueryFeedbackTrace,
   defaultFeedbackDir,
 } from './query-feedback-store.js'
+import { QueryTraceSnapshotStore } from './query-trace-snapshot-store.js'
+import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 
 const QUERY_TOOL = {
   name: 'query',
@@ -214,6 +215,11 @@ export interface McpDispatchOptions {
    * the live MCP `Server` when `elicitationEnabled` is true; overridden in unit tests.
    */
   elicitFeedback?: (ctx: FeedbackElicitContext) => Promise<FeedbackElicitOutcome>
+  /**
+   * Called after an MCP `query` finishes its own RunCollector, so the HTTP
+   * layer can persist the real token/cost report instead of an empty shell.
+   */
+  onQueryReport?: (report: RunReport) => void
   /**
    * When true, wire live `server.elicitInput` for sampled feedback and use SSE
    * POST streams. Defaults to on (`KB_MCP_ELICITATION` unset/`true`); set
@@ -439,47 +445,64 @@ export async function dispatchMcpToolCall(
       }
     }
     // Always answer-first: synthesize a direct answer, with source files as evidence.
-    const result = await svc.query({ query: q, synthesize: true })
-    // Resolve the blob-link registry once so cited files carry the same hrefs the
-    // REST/demo/Slack surfaces get — one payload, rendered per surface.
-    const sourceRepos = await resolveSourceRepos(svc.baseDir)
-    // Default is the trimmed agent payload (answer + citations + notes); the full
-    // fact dump and retrieval metadata are opt-in via verbose.
-    const servedBase = svc.health().base
-    const body: Record<string, unknown> = {
-      query: q,
-      // Echo the base that actually answered — agents otherwise cannot tell a
-      // sticky wrong-base session from a correct one (#233).
-      base: servedBase,
-      ...(verbose
-        ? serializeQueryResult(result, { sourceRepos, base: servedBase })
-        : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })),
-    }
-    if (opts.requestId) body.requestId = opts.requestId
-    // Snapshot what retrieval actually returned, for every query rather than only sampled ones —
-    // feedback arrives minutes later, and the MCP RunReport carries no retrieval trace to join
-    // against afterwards, so this is the only point the information still exists.
-    if (opts.requestId) {
-      resolveTraceSnapshotStore(opts).record(
-        opts.requestId,
-        servedBase,
-        snapshotFromQueryBody(body)
-      )
-    }
-    // Sampled feedback ask — trimmed payload only; verbose callers are debugging.
-    // Prefer MCP form elicitation (user-facing yes/partial/no) when the client
-    // supports it; otherwise keep the AGENT_INSTRUCTION + pending-queue path so
-    // the agent can submit_feedback later.
-    // Never ask "did this answer help?" about an answer that failed to generate — the
-    // reply would score a provider outage as a knowledge-base quality problem.
-    if (!verbose && !body.answerError) {
-      const rate = opts.feedbackSampleRate ?? readFeedbackSampleRate()
-      const random = opts.random ?? Math.random
-      if (rate > 0 && random() < rate) {
-        await applySampledFeedbackAsk(body, q, opts)
+    const collector = new RunCollector('mcp', {
+      sessionId: opts.requestId,
+      base: svc.health().base,
+    })
+    try {
+      const result = await svc.query({ query: q, synthesize: true, collector })
+      // Resolve the blob-link registry once so cited files carry the same hrefs the
+      // REST/demo/Slack surfaces get — one payload, rendered per surface.
+      const sourceRepos = await resolveSourceRepos(svc.baseDir)
+      // Default is the trimmed agent payload (answer + citations + notes); the full
+      // fact dump and retrieval metadata are opt-in via verbose.
+      const servedBase = svc.health().base
+      const body: Record<string, unknown> = {
+        query: q,
+        // Echo the base that actually answered — agents otherwise cannot tell a
+        // sticky wrong-base session from a correct one (#233).
+        base: servedBase,
+        ...(verbose
+          ? serializeQueryResult(result, { sourceRepos, base: servedBase })
+          : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })),
       }
+      const answerError = body.answerError
+      opts.onQueryReport?.(
+        collector.finish(
+          answerError ? 'error' : 'success',
+          answerError ? String((answerError as { message?: string }).message) : undefined
+        )
+      )
+      if (opts.requestId) body.requestId = opts.requestId
+      // Snapshot what retrieval actually returned, for every query rather than only sampled ones —
+      // feedback arrives minutes later, and the MCP RunReport carries no retrieval trace to join
+      // against afterwards, so this is the only point the information still exists.
+      if (opts.requestId) {
+        resolveTraceSnapshotStore(opts).record(
+          opts.requestId,
+          servedBase,
+          snapshotFromQueryBody(body)
+        )
+      }
+      // Sampled feedback ask — trimmed payload only; verbose callers are debugging.
+      // Prefer MCP form elicitation (user-facing yes/partial/no) when the client
+      // supports it; otherwise keep the AGENT_INSTRUCTION + pending-queue path so
+      // the agent can submit_feedback later.
+      // Never ask "did this answer help?" about an answer that failed to generate — the
+      // reply would score a provider outage as a knowledge-base quality problem.
+      if (!verbose && !body.answerError) {
+        const rate = opts.feedbackSampleRate ?? readFeedbackSampleRate()
+        const random = opts.random ?? Math.random
+        if (rate > 0 && random() < rate) {
+          await applySampledFeedbackAsk(body, q, opts)
+        }
+      }
+      return textResult(body)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      opts.onQueryReport?.(collector.finish('error', message))
+      return errorResult(message)
     }
-    return textResult(body)
   } catch (error) {
     return errorResult(error instanceof Error ? error.message : String(error))
   }
