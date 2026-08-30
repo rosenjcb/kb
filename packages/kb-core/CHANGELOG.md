@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Add a temporary named-symbol retrieval lane behind `KB_QUERY_SYMBOL_LANE` (default off) for the #238 A/B: when a question names a declaration, look it up in `code_symbols` by name and fuse it as an extra ranked lane rather than relying on BM25 over prose.
+- Emit a component-name symbol for `.vue` / `.svelte` single-file components, so a component is addressable by its own name. An SFC's script block never declares the component's name, leaving `Gantt.vue` unreachable by a query saying "Gantt" while a Java class gets its class name for free.
 
 ## 2.0.8
 
