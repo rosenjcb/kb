@@ -454,6 +454,20 @@ export const TREE_SITTER_TEXT_EXTENSIONS = new Set([
   '.sql',
   '.tf',
   '.hcl',
+  // Build manifests declare the module graph, deps, and entrypoints, and are a
+  // common target of "how do I build this" questions. Without them a repo's
+  // build story is unanswerable from source: `ShellCheck.cabal` matched neither
+  // EXT_MAP nor this list, so it was skipped outright.
+  '.cabal',
+  '.gradle',
+  '.kts',
+  '.gemspec',
+  '.podspec',
+  '.cmake',
+  '.bazel',
+  '.bzl',
+  '.mk',
+  '.nix',
   // Vue/Svelte fall back to text-state here only when their inline <script> block can't be
   // extracted or parsed (see EMBEDDED_SCRIPT_EXTENSIONS) — the normal case is AST symbols.
   '.vue',
@@ -702,6 +716,8 @@ export class TreeSitterIndexer implements LanguageIndexer {
       if (tree == null) return
 
       try {
+        const symbolsBefore = stats.symbols
+        const wroteAnySymbol = () => stats.symbols > symbolsBefore
         await this.symbolIndexer.runInTransaction(() => {
           // Re-extracting a file replaces its symbols wholesale, so a renamed or deleted
           // export never lingers under the old name.
@@ -847,6 +863,23 @@ export class TreeSitterIndexer implements LanguageIndexer {
                 stats.symbols++
               }
             }
+          }
+
+          // A file can parse cleanly and still export nothing the queries
+          // capture — `test/shellcheck.hs` is `module Main where` with a bare
+          // `main`, so shellcheck's entire test entrypoint produced zero rows
+          // and was invisible to retrieval. Parse *failure* already falls back
+          // to a file-level symbol; parse-success-with-no-symbols did not, which
+          // is the same #234 invisibility by a different route.
+          if (!wroteAnySymbol()) {
+            const basename = path.basename(rel)
+            const capped =
+              src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                : src
+            upsertCodeSymbol(this.symbolIndexer, rel, basename, 'file', `${rel}\n${capped}`, this.gitRepo)
+            stats.symbolKeys.add(codeSymbolKey(rel, basename))
+            stats.symbols++
           }
         })
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)
