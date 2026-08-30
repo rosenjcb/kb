@@ -226,6 +226,48 @@ describe('serializeMcpQueryResult', () => {
     expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
   })
 
+  it('[TC-LEAN] lean MCP sources prefer files the answer names and drop prompt noise', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'The TUI session lives in `App.tsx`.',
+          results: [
+            factItem('packages/kb-core/src/prompts/chat-decompose-system.md', undefined, 'p1'),
+            factItem('packages/kb-core/CHANGELOG.md', undefined, 'p2'),
+            factItem('packages/kb-client/src/tui/App.tsx', 'App', 'p3'),
+            factItem('packages/kb-core/src/intents/INTENTS.md', undefined, 'p4'),
+          ],
+          retrieval: {},
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.status).toBe('accepted')
+    expect(body.sources[0]?.path).toContain('App.tsx')
+    expect(body.sources.map(s => s.path).join('\n')).not.toMatch(/prompts\//)
+    expect(body.sources.map(s => s.path).join('\n')).not.toMatch(/CHANGELOG/i)
+  })
+
+  it('[TC-NOIZ] lean MCP drops prompt files even when the answer names no files', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'Indexing runs on the server, not in the client.',
+          results: [
+            factItem('packages/kb-core/src/prompts/query-expand.md', undefined, 'n1'),
+            factItem('packages/kb-core/src/core/INIT.md', undefined, 'n2'),
+          ],
+          retrieval: {},
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.sources.map(s => s.path)).toEqual(['packages/kb-core/src/core/INIT.md'])
+  })
+
   it('[TC-8URR] flags answer file references that match no cited source path', () => {
     const body = serializeMcpQueryResult({
       status: 'accepted',
@@ -239,6 +281,7 @@ describe('serializeMcpQueryResult', () => {
     expect(body.notes?.[0]).toContain('dto.ts')
     expect(body.notes?.[0]).not.toContain('reversal.ts')
     expect(body.notes?.[0]).toContain('trust the sources list')
+    expect(body.status).toBe('uncertain')
   })
 
   it('[TC-OADK] notes when sources exist but no answer was synthesized', () => {
@@ -265,6 +308,25 @@ describe('serializeMcpQueryResult', () => {
     // A note alone isn't enough — the top-level label an agent scans for must
     // reflect the same mismatch the note describes.
     expect(body.evidence).toBe('weak')
+    expect(body.status).toBe('uncertain')
+  })
+
+  it('[TC-UGST] ungrounded file names demote status from accepted to uncertain', () => {
+    const result = {
+      status: 'accepted' as const,
+      evidence: 'strong' as const,
+      data: {
+        answer: 'The schema lives in `dto.ts`.',
+        results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+        retrieval: {},
+      },
+    }
+    const rest = serializeQueryResult(result, { sourceRepos: [] })
+    const mcp = serializeMcpQueryResult(result, { sourceRepos: [] })
+    expect(rest.status).toBe('uncertain')
+    expect(mcp.status).toBe('uncertain')
+    expect(rest.evidence).toBe('weak')
+    expect(mcp.evidence).toBe('weak')
   })
 
   it('[TC-KG1I] leaves evidence untouched when every citation is grounded', () => {
@@ -278,6 +340,7 @@ describe('serializeMcpQueryResult', () => {
       },
     }, { sourceRepos: [] })
     expect(body.evidence).toBe('strong')
+    expect(body.status).toBe('accepted')
   })
 
   it('[TC-SVF8] notes and downgrades on unsupported prose claims even when the cited file is real', () => {
@@ -292,6 +355,7 @@ describe('serializeMcpQueryResult', () => {
     }, { sourceRepos: [] })
     // The file name is grounded, so the file-name check stays silent — but the claim check fires.
     expect(body.evidence).toBe('weak')
+    expect(body.status).toBe('uncertain')
     const claimNote = (body.notes ?? []).find(n => n.includes('do not directly support'))
     expect(claimNote).toBeDefined()
     expect(claimNote).toContain('POSTs the flow to the backend')

@@ -1,3 +1,5 @@
+> **Not the query-eval judge.** This template is loaded only by `eval/losses/jury-loss.ts` (MOEL jury, 0–5 scores). Query-harvest auto-score uses `buildRubric()` / `RUBRIC_AXES` in `scripts/eval-score.mjs` (label-based 0–4 axes, including evidence_handling). Editing this file does not change `pnpm run eval --auto-score`.
+
 You are an expert software engineering judge evaluating an agent's output.
 
 Step 1: List all functional requirements from the task specification.

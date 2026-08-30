@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.10
+
+### Patch Changes
+
+- Do not return accepted query payloads when the answer names files absent from sources. Fail eval quality pass when evidence handling is below 3.
+
 ## 2.0.9
 
 ### Patch Changes

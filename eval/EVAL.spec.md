@@ -9,7 +9,7 @@ tests:
   - ../tests/eval-task.test.ts
 description: Behavioral specification for MOEL Evaluation Framework
 tags: [spec, kb, multi-base]
-timestamp: 2026-08-16T20:45:00Z
+timestamp: 2026-08-30T04:00:00Z
 ---
 
 ### Intro
@@ -49,6 +49,7 @@ See companion doc for full vocabulary where applicable.
 | FR-17 | `--from-snapshot` adopts the published Fly.io snapshot for the suite (download → verify → `kb-server import` into the eval base) instead of indexing locally: it implies `--skip-scan`, cancels `--force-init` so the adopted index is never wiped, records `command_durations_ms.snapshot_pull`, and is forwarded to multi-suite children |
 | FR-18 | `scripts/eval-task.mjs` (`pnpm run eval:task`) runs a real coding task twice in isolated clones pinned to the same commit — kb arm (MCP + kb:dev-workflow skill inlined, base forced) vs control arm (no MCP/kb tools, full Edit/Write/commit access) — with the identical verbatim task prompt (from `eval/tasks/<id>.yaml` or `--issue`/`--prompt-file`), then inspects each clone's git state for whether it committed and writes a `TASK_EVALUATION.md`-schema artifact; no correctness judging, cost/completion only |
 | FR-19 | `--skip-embed` is accepted by `parseArgs` (default `false`) and forwarded to every multi-suite child by `buildChildArgv`; the underlying skip-during-rebuild behavior is CLI-level and specified in [CLI.spec.md](../packages/kb-client/src/cli/CLI.spec.md) FR-43 |
+| FR-20 | [NEW] Headline quality pass requires evidence_handling ≥ 3 with correctness, usefulness, and relevance. The judge fails ungrounded file paths on evidence handling |
 
 ### QA Test Cases
 
@@ -330,6 +331,9 @@ See companion doc for full vocabulary where applicable.
 | TC-24AP | FR-18 | buildArtifact task block carries the resolved prompt, not just the task id | pass |
 | TC-VYQ2 | FR-19 | parseArgs accepts --skip-embed, defaulting to false | pass |
 | TC-ZKD3 | FR-19 | buildChildArgv forwards --skip-embed to every multi-suite child | pass |
+| TC-RUBR | FR-20 | [NEW] Judge rubric text | Ungrounded file path is a fail on evidence, not "grounded" |
+| TC-PGAT | FR-20 | [NEW] Fluent scores with evidence_handling 2 | passesQualityGate is false; 3 passes |
+| TC-PRQ3 | FR-20 | [NEW] Two conceptual rows, one with evidence 2 and one with 3 | pass_rate_quality_axes_at_least_3 is 0.5 |
 
 ### Related docs
 
