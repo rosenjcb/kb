@@ -1,17 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest'
 import {
   NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE,
   causalTargetProbe,
   detectCausalTarget,
-  isNegativeClaimGuardEnabled,
 } from '@kb/core/query/causal-claim-intent.js'
-
-afterEach(() => {
-  process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD = undefined
-})
+import { describe, expect, it } from 'vitest'
 
 describe('detectCausalTarget', () => {
-  it('[TC-NCG1] Given a "could X leave Y ..." question, then it extracts Y as the target', () => {
+  it('[TC-NCG1] [TC-NCGA] Given a "could X leave Y ..." question, then it extracts Y as the target', () => {
     const t = detectCausalTarget(
       'could the YAML import path leave the flow store in a state where the Save button is disabled?'
     )
@@ -67,23 +62,6 @@ describe('causalTargetProbe', () => {
     expect(probe).toContain('flow store')
     expect(probe).toContain('definition')
     expect(probe).not.toContain('?')
-  })
-})
-
-describe('isNegativeClaimGuardEnabled', () => {
-  it('[TC-NCGA] Given no env var, then the guard is on', () => {
-    process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD = undefined
-    expect(isNegativeClaimGuardEnabled()).toBe(true)
-  })
-
-  it('[TC-NCGB] Given the var set to "false", then the guard is off', () => {
-    process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD = 'false'
-    expect(isNegativeClaimGuardEnabled()).toBe(false)
-  })
-
-  it('[TC-NCGC] Given an unrecognized value, then the guard stays on rather than silently disabling', () => {
-    process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD = 'nope'
-    expect(isNegativeClaimGuardEnabled()).toBe(true)
   })
 })
 

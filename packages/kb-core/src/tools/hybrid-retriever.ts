@@ -71,6 +71,12 @@ export interface HybridRetrievalOptions {
   includeContent?: boolean
   /** Unit ids the caller has already seen (session exclusions, scope pruning). */
   excludeIds?: Set<string>
+  /**
+   * Fact ids that must appear in the result when they exist (landed-entity
+   * membership). Included first, then hybrid fills remaining slots — not a
+   * weighted score (#238).
+   */
+  preferIds?: Set<string>
 }
 
 export interface HybridRetrievalResult {
@@ -88,7 +94,11 @@ export interface Candidate {
 }
 
 /** Add one ranked lane's reciprocal-rank contribution to the running fusion. */
-export function fuseLane(fused: Map<string, Candidate>, kind: RetrievedUnitKind, ids: string[]): void {
+export function fuseLane(
+  fused: Map<string, Candidate>,
+  kind: RetrievedUnitKind,
+  ids: string[]
+): void {
   const weight = KIND_WEIGHT[kind]
   ids.forEach((id, index) => {
     const existing = fused.get(id)
@@ -184,13 +194,18 @@ export function retrieveHybrid(
   const limit = options.limit && options.limit > 0 ? options.limit : DEFAULT_FACT_LIMIT
   const includeContent = options.includeContent === true
   const exclude = options.excludeIds
+  const prefer = options.preferIds
 
   const documents = new Map<string, DocumentIndexRow>()
   const symbols = new Map<string, CodeSymbolRow>()
   const facts = new Map<string, FactRow>()
 
   if (!query) {
-    return { units: [], detail: 'hybrid:empty-query', counts: { document: 0, symbol: 0, fact: 0, hops: 0 } }
+    return {
+      units: [],
+      detail: 'hybrid:empty-query',
+      counts: { document: 0, symbol: 0, fact: 0, hops: 0 },
+    }
   }
 
   const lexicalDocs = indexer.searchDocumentsFts(query, LANE_DEPTH)
@@ -201,9 +216,21 @@ export function retrieveHybrid(
   for (const row of lexicalFacts) facts.set(row.id, row)
 
   const fused = new Map<string, Candidate>()
-  fuseLane(fused, 'document', lexicalDocs.map(r => r.id))
-  fuseLane(fused, 'symbol', lexicalSymbols.map(r => r.id))
-  fuseLane(fused, 'fact', lexicalFacts.map(r => r.id))
+  fuseLane(
+    fused,
+    'document',
+    lexicalDocs.map(r => r.id)
+  )
+  fuseLane(
+    fused,
+    'symbol',
+    lexicalSymbols.map(r => r.id)
+  )
+  fuseLane(
+    fused,
+    'fact',
+    lexicalFacts.map(r => r.id)
+  )
 
   // Neural lanes re-rank the lexical pool rather than scanning every embedding: cosine over
   // the whole index would be a full table scan per query, and a unit no lane surfaced at all
@@ -218,7 +245,11 @@ export function retrieveHybrid(
     'symbol',
     rankByScore([...symbols.keys()], indexer.semanticCodeSymbolScores(query, [...symbols.keys()]))
   )
-  fuseLane(fused, 'fact', rankByScore([...facts.keys()], indexer.semanticFactScores(query, [...facts.keys()])))
+  fuseLane(
+    fused,
+    'fact',
+    rankByScore([...facts.keys()], indexer.semanticFactScores(query, [...facts.keys()]))
+  )
 
   const ranked = [...fused.values()].sort((a, b) => b.score - a.score)
 
@@ -256,9 +287,26 @@ export function retrieveHybrid(
     hops,
   }
   const units: RetrievedUnit[] = []
+  const seen = new Set<string>()
+
+  // Set membership first: facts linked to the landed entity are candidates
+  // because the entity said so, not because a ranker scored them.
+  if (prefer && prefer.size > 0) {
+    for (const id of prefer) {
+      if (units.length >= limit) break
+      if (exclude?.has(id) || seen.has(id)) continue
+      const row = facts.get(id) ?? indexer.getActiveFactById(id)
+      if (!row) continue
+      facts.set(id, row)
+      units.push(factToUnit(row, includeContent))
+      seen.add(id)
+      counts.fact += 1
+    }
+  }
+
   for (const candidate of [...ranked, ...hopped]) {
     if (units.length >= limit) break
-    if (exclude?.has(candidate.id)) continue
+    if (exclude?.has(candidate.id) || seen.has(candidate.id)) continue
     let unit: RetrievedUnit | undefined
     if (candidate.kind === 'document') {
       const row = documents.get(candidate.id)
@@ -272,6 +320,7 @@ export function retrieveHybrid(
     }
     if (!unit) continue
     counts[candidate.kind] += 1
+    seen.add(candidate.id)
     units.push(unit)
   }
 

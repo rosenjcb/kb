@@ -1,12 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { LLMProvider } from '@kb/core/core/types.js'
 import { runEntityIndexCycle } from '@kb/core/core/entity-index-cycle.js'
+import type { LLMProvider } from '@kb/core/core/types.js'
 import { inferQueryScope } from '@kb/core/query/scope-inference.js'
 import { EntityRegistry } from '@kb/core/tools/entity-registry.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 let baseDir: string
 let dbPath: string
@@ -18,7 +18,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(baseDir, { recursive: true, force: true })
-  process.env.KB_ENTITY_SCOPE = undefined
 })
 
 /** Seed the #167 scenario: a service `internal` and a surface `Internal Services`. */
@@ -87,6 +86,15 @@ describe('inferQueryScope — deterministic tier', () => {
     expect(verdict.disclosure).toContain('not')
   })
 
+  it('[TC-FIWX] a unique landing promotes the entity linked facts', async () => {
+    const { serviceFact } = seedCollisionScenario()
+    const verdict = await inferQueryScope({
+      dbPath,
+      query: 'how does internal handle payment authentication?',
+    })
+    expect(verdict.promotedFactIds).toEqual([serviceFact])
+  })
+
   it('longest-alias match wins the span: "Internal Services" queries land on the surface', async () => {
     const { serviceFact } = seedCollisionScenario()
 
@@ -104,7 +112,11 @@ describe('inferQueryScope — deterministic tier', () => {
     const registry = new EntityRegistry(dbPath)
     try {
       registry.upsertEntity({ kind: 'service', canonicalName: 'internal', sourceKind: 'manifest' })
-      registry.upsertEntity({ kind: 'surface', canonicalName: 'Internal Services', sourceKind: 'manifest' })
+      registry.upsertEntity({
+        kind: 'surface',
+        canonicalName: 'Internal Services',
+        sourceKind: 'manifest',
+      })
       registry.detectCollisions()
     } finally {
       registry.close()
@@ -122,14 +134,9 @@ describe('inferQueryScope — deterministic tier', () => {
     expect(verdict.excludedFactIds).toEqual([])
   })
 
-  it('returns unresolved on an empty registry and when KB_ENTITY_SCOPE=false', async () => {
+  it('[smoke] returns unresolved on an empty registry', async () => {
     const empty = await inferQueryScope({ dbPath, query: 'how does internal work?' })
     expect(empty.unresolved).toBe(true)
-
-    seedCollisionScenario()
-    process.env.KB_ENTITY_SCOPE = 'false'
-    const disabled = await inferQueryScope({ dbPath, query: 'how does internal work?' })
-    expect(disabled.unresolved).toBe(true)
   })
 
   it('labels colliding multi-entity mentions confident and excludes nothing', async () => {

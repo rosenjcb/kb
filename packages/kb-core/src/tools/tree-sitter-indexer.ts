@@ -24,9 +24,10 @@ import {
   deleteStaleCodeSymbols,
   getCodeFileState,
   hasSearchableIndexRows,
-  upsertCodeSymbol,
   upsertCodeFileState,
+  upsertCodeSymbol,
 } from './code-fact-writer'
+import { fileStem, stemAlreadyIndexed } from './file-stem-symbol'
 import type { SqliteKbIndexer } from './sqlite-kb-index'
 
 const require = createRequire(import.meta.url)
@@ -877,9 +878,44 @@ export class TreeSitterIndexer implements LanguageIndexer {
               src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
                 ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
                 : src
-            upsertCodeSymbol(this.symbolIndexer, rel, basename, 'file', `${rel}\n${capped}`, this.gitRepo)
+            upsertCodeSymbol(
+              this.symbolIndexer,
+              rel,
+              basename,
+              'file',
+              `${rel}\n${capped}`,
+              this.gitRepo
+            )
             stats.symbolKeys.add(codeSymbolKey(rel, basename))
             stats.symbols++
+          }
+
+          // Conditional filename-stem symbol: only when no existing symbol already
+          // matches the stem / PascalCase / camelCase. Generalizes the SFC fix
+          // (`Gantt.vue` → `Gantt`) to kebab-case modules like `scope-inference.ts`.
+          const stem = fileStem(rel)
+          if (stem) {
+            const prefix = `${rel}@`
+            const namesOnFile: string[] = []
+            for (const key of stats.symbolKeys) {
+              if (key.startsWith(prefix)) namesOnFile.push(key.slice(prefix.length))
+            }
+            if (!stemAlreadyIndexed(stem, namesOnFile)) {
+              const capped =
+                src.length > SYMBOL_SOURCE_TEXT_MAX_CHARS
+                  ? `${src.slice(0, SYMBOL_SOURCE_TEXT_MAX_CHARS - 3)}…`
+                  : src
+              stats.symbolKeys.add(codeSymbolKey(rel, stem))
+              upsertCodeSymbol(
+                this.symbolIndexer,
+                rel,
+                stem,
+                'file',
+                `${rel}\n${capped}`,
+                this.gitRepo
+              )
+              stats.symbols++
+            }
           }
         })
         upsertCodeFileState(this.db, rel, contentHash, SOURCE)

@@ -20,7 +20,6 @@
 
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { isEnvFalse } from '../config/env-boolean.js'
 import type { CandidateEdge, EntityCandidate } from '../tools/ecosystem-harvesters.js'
 import { harvestRepoEntities } from '../tools/ecosystem-harvesters.js'
 import { EntityRegistry, normalizeEntityName } from '../tools/entity-registry.js'
@@ -50,11 +49,6 @@ export interface EntityIndexResult {
    * that nothing harvested. Non-zero here means the graph is losing real structure.
    */
   edgesDropped: number
-}
-
-/** Kill switch: KB_ENTITY_INDEX=false skips the harvest entirely. */
-export function isEntityIndexEnabled(): boolean {
-  return !isEnvFalse(process.env.KB_ENTITY_INDEX)
 }
 
 /**
@@ -168,7 +162,6 @@ export async function runEntityIndexCycle(input: EntityIndexInput): Promise<Enti
     edgesExternal: 0,
     edgesDropped: 0,
   }
-  if (!isEntityIndexEnabled()) return result
 
   const dbPath = path.join(input.baseDir, '.kb-index.sqlite')
   const registry = new EntityRegistry(dbPath)

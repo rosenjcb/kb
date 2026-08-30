@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { retrieveHybrid } from '@kb/core/tools/hybrid-retriever.js'
 import { SqliteKbIndexer } from '@kb/core/tools/sqlite-kb-index.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 let tmpDir: string
 let indexer: SqliteKbIndexer
@@ -92,12 +92,28 @@ describe('hybrid-retriever', () => {
       sourceText: 'export function renderGizmo() { /* gizmo */ }',
     })
 
-    const rankOf = (units: ReturnType<typeof retrieveHybrid>['units'], tag: 'document' | 'symbol') =>
-      units.findIndex(u => u.metadata.tags?.includes(tag))
+    const rankOf = (
+      units: ReturnType<typeof retrieveHybrid>['units'],
+      tag: 'document' | 'symbol'
+    ) => units.findIndex(u => u.metadata.tags?.includes(tag))
 
     // Both lanes match at rank 0, so plain RRF would tie them — kind weighting always applies,
     // so the symbol (1.15x) outranks the document (0.9x) even at an equal rank position.
     const weighted = retrieveHybrid(indexer, { query: 'gizmo', limit: 10 })
     expect(rankOf(weighted.units, 'symbol')).toBeLessThan(rankOf(weighted.units, 'document'))
+  })
+
+  it('[TC-44C5] preferIds include a linked fact by set membership even when it would not rank', () => {
+    const { id: buriedId } = indexer.upsertCuratedFact({
+      text: 'Unrelated buried assertion about widgets only.',
+      gitRepo: 'demo',
+    })
+    const result = retrieveHybrid(indexer, {
+      query: 'AuthService login cookies',
+      limit: 10,
+      preferIds: new Set([buriedId]),
+    })
+    expect(result.units.some(u => u.metadata.id === buriedId)).toBe(true)
+    expect(result.units[0]?.metadata.id).toBe(buriedId)
   })
 })

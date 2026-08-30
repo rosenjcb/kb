@@ -81,3 +81,23 @@ answers:
     `StagingController` drives patch-explorer staging/discard/select keybindings for staged vs
     unstaged contexts and ties UI actions to the Git index. A correct answer should cover that
     controller locus (not a one-line "press space to stage") without kb length-gate language.
+
+# Graded retrieval gold citation sets (#238). Files named in the answer keys.
+# Q1 panel layout and Q2 XDG config paths have no single repo file. Left null.
+gold_files:
+  - null
+  - null
+  - - path: pkg/gui/controllers/helpers/confirmation_helper.go
+      role: must_open
+  - - path: pkg/gui/controllers/helpers/confirmation_helper.go
+      role: must_open
+  - - path: pkg/commands/oscommands/cmd_obj_runner.go
+      role: must_open
+  - null
+  - - path: pkg/commands/git_commands/worktree.go
+      role: must_open
+  - null
+  - - path: pkg/gui/controllers/confirmation_controller.go
+      role: must_open
+  - - path: pkg/gui/controllers/staging_controller.go
+      role: must_open

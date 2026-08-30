@@ -1,7 +1,9 @@
 ---
 type: Spec
 title: "Spec: Query Intent & Claim Verification"
-sources: [./]
+sources:
+  - ./
+  - ../service/query-pipeline.ts
 # tests/query was previously owned by no spec, so its [TC-N] tags were orphan
 # (`spec-md coverage` reported them as "tagged but not in spec"). This spec adopts
 # them. Files with no TC tags are listed anyway so new tags land in scope here.
@@ -9,14 +11,15 @@ tests:
   - ../../../../tests/query/causal-claim-intent.test.ts
   - ../../../../tests/query/claim-verification.test.ts
   - ../../../../tests/query/query-pipeline-empty.test.ts
-description: Question-shape detection and post-synthesis claim grounding on the kb query path
+  - ../../../../tests/query/scope-inference.test.ts
+description: Question-shape detection, entity-scope landing, and post-synthesis claim grounding on the kb query path
 tags: [query, retrieval, synthesis, grounding, spec]
-timestamp: 2026-08-24T03:30:00Z
+timestamp: 2026-08-30T06:00:00Z
 ---
 
 ### Intro
 
-Two concerns on the `kb query` deep path that both act on the *question* or the *answer* rather than on ranking: recognizing what shape of question was asked so synthesis can be constrained accordingly, and checking the produced prose back against the evidence that was actually retrieved.
+The query path detects the question shape. It infers entity scope from the question. It checks claims in the answer against retrieved evidence.
 
 ### Definitions
 
@@ -24,11 +27,13 @@ Two concerns on the `kb query` deep path that both act on the *question* or the 
 - **Causal target**: the side of that question a claim is being made *about* (the `Y`), which is the side retrieval tends not to visit
 - **Required gap**: a caller-declared retrieval obligation handed to the curator, resolved regardless of the judge's `sufficient` verdict
 - **Claim verification**: opt-in second pass (`KB_QUERY_VERIFY_CLAIMS`) that re-reads the answer against the evidence and flags unsupported prose claims
+- **Promoted fact ids**: Linked fact ids of a unique scope landing. Retrieval prefers those ids (`promotedFactIds`).
 
 ### Scope
 
 ## In Scope
 - Causal-question detection and the synthesis guidance it triggers
+- Entity scope landing and fact-id promotion
 - Claim extraction, the opt-in gate, and its confidence floor
 
 ## Out of Scope
@@ -44,13 +49,14 @@ Two concerns on the `kb query` deep path that both act on the *question* or the 
 | FR-2 | Return no target for ordinary lookup questions, so a non-matching query pays no extra retrieval |
 | FR-3 | Bound the extracted target to a usable retrieval probe rather than a restated sentence |
 | FR-4 | Build a probe that asks for the target's own definition and state handling |
-| FR-5 | Gate the guard on `KB_QUERY_NEGATIVE_CLAIM_GUARD`, defaulting on, with unrecognized values treated as on |
+| FR-5 | The negative-claim guard is always on |
 | FR-6 | Synthesis guidance must state that absence of evidence is not evidence of absence, and require naming what was not inspected |
 | FR-7 | Extract prose claims from a verifier reply, tolerating bullets, numbering, and a bare NONE |
 | FR-8 | Cap the extracted claim list so one runaway reply cannot flood the caller |
 | FR-9 | Claim verification is opt-in — off by default, enabled by env or explicit parameter, and floored on evidence confidence |
 | FR-10 | Report flagged claims with token usage echoed back to the caller |
 | FR-11 | An empty retrieval pool short-circuits the pipeline without synthesizing |
+| FR-12 | [NEW] A unique scope landing promotes the entity linked fact ids for retrieval |
 
 ### QA Test Cases
 
@@ -65,9 +71,7 @@ Two concerns on the `kb query` deep path that both act on the *question* or the 
 | TC-NCG7 | FR-3 | Very long trailing phrase | Target capped to at most 8 words |
 | TC-NCG8 | FR-3 | Leading article on the target | Article stripped |
 | TC-NCG9 | FR-4 | A detected target | Probe names the target and asks for its definition |
-| TC-NCGA | FR-5 | No env var set | Guard enabled |
-| TC-NCGB | FR-5 | `KB_QUERY_NEGATIVE_CLAIM_GUARD=false` | Guard disabled |
-| TC-NCGC | FR-5 | Unrecognized env value | Guard stays enabled |
+| TC-NCGA | FR-5 | Causal question with no enablement flag | Target is extracted |
 | TC-NCGD | FR-6 | Guidance text | States absence is not evidence of absence; requires naming what was not inspected |
 | TC-CV00 | FR-7 | A lone NONE in any case/punctuation | Treated as everything supported |
 | TC-CV01 | FR-7 | Bulleted and numbered claim lines | Markers stripped, claims parsed |
@@ -82,3 +86,4 @@ Two concerns on the `kb query` deep path that both act on the *question* or the 
 | TC-CV10 | FR-10 | Verifier reply handling | Reported without sinking the answer |
 | TC-CV11 | FR-10 | Verifier failure | Degraded, answer preserved |
 | TC-QPE1 | FR-11 | Retrieval returns nothing | Pipeline short-circuits without synthesis |
+| TC-FIWX | FR-12 | [NEW] Unique alias landing on a service with linked facts | `promotedFactIds` contains those fact ids |

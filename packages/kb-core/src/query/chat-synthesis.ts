@@ -4,18 +4,20 @@ import {
   isEvidenceLabel,
   parseEvidenceLabel,
 } from '../core/evidence-label'
+import { type LLMFailure, emptyResponseFailure } from '../core/llm-error.js'
 import {
   MAX_FACT_CONTENT_CHARS,
   formatRetrievedFactsForLLM,
   formatToolQueryFactsForLLM,
 } from '../core/retrieval-context.js'
-import { type LLMFailure, emptyResponseFailure } from '../core/llm-error.js'
 import type { ToolExecutor } from '../core/tool-registry.js'
 import type { LLMProvider, Message, ToolDefinition } from '../core/types.js'
 import type { IntentResult } from '../intents/types.js'
 import { loadPrompt } from '../prompts/loader.js'
 import type { ChatTrace } from '../service/chat-types.js'
+import { EntityRegistry } from '../tools/entity-registry.js'
 import { DEFAULT_FACT_LIMIT } from '../tools/hybrid-retriever.js'
+import { kbIndexDbPath } from '../tools/kb-index-path.js'
 import { type Printer, createReasoningProgressSink } from '../ui/printer.js'
 import { executeChatQueryTruthRetrieval } from './chat-query-orchestrator.js'
 import type { CuratorAudit } from './intent-cli.js'
@@ -34,6 +36,7 @@ export interface ReadDocumentsResult {
     method?: string
     detail?: string
     clarificationQuestion?: string
+    compactLanding?: string
     checkpoints?: Array<{
       stage?: string
       status?: string
@@ -233,7 +236,7 @@ export async function runChatSynthesis(params: {
         params.llmProvider.call({
           messages: turnMessages,
           tools: [CHAT_QUERY_KB_TOOL],
-          systemPrompt: CHAT_ROUTER_SYSTEM_PROMPT,
+          systemPrompt: `${CHAT_ROUTER_SYSTEM_PROMPT}${formatManifestNamesForChat(params.kbStorageDir)}`,
           temperature: 0.15,
           maxTokens: CHAT_MAX_OUTPUT_TOKENS,
           onReasoning,
@@ -298,6 +301,12 @@ export async function runChatSynthesis(params: {
               toolExecutor: params.toolExecutor,
               expandedQuery,
               retrievalLimit,
+              ...(params.kbStorageDir
+                ? {
+                    baseDir: params.kbStorageDir,
+                    llmProvider: params.llmProvider,
+                  }
+                : {}),
             }),
           { heartbeatMs, noticeMs }
         )
@@ -455,14 +464,39 @@ export function buildToolQueryResult(snapshot: ReadDocumentsResult): string {
   if (results.length === 0) return lines
   const notes = formatCuratorResearchNotes(snapshot.retrieval?.curation)
   const withNotes = notes ? `${lines}\n\n${notes}` : lines
+  const prefix = [snapshot.retrieval?.clarificationQuestion, snapshot.retrieval?.compactLanding]
+    .filter(Boolean)
+    .join('\n\n')
+  const body = prefix ? `${prefix}\n\n${withNotes}` : withNotes
   const detail = snapshot.retrieval?.detail ?? ''
   const isWeakEvidence = detail.includes('weak_evidence_after_exhaustion')
   const isFrontierExhausted = detail.includes('frontier_exhausted')
   if (isWeakEvidence) {
-    return `${withNotes}\n\n[Retrieval evidence was weak — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
+    return `${body}\n\n[Retrieval evidence was weak — the graph frontier was exhausted without strong evidence. Try querying with different or broader terms before answering.]`
   }
   if (isFrontierExhausted) {
-    return `${withNotes}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`
+    return `${body}\n\n[Graph frontier exhausted — all reachable nodes from initial query seeds were visited. If the above facts don't fully answer the question, try at least two more queries using specific technical identifiers (function names, file paths, constant names) rather than natural-language descriptions.]`
   }
-  return withNotes
+  return body
+}
+
+/** Manifest-derived names the chat router should use as query_kb terms (#238). */
+export function formatManifestNamesForChat(baseDir: string | undefined): string {
+  if (!baseDir) return ''
+  try {
+    const registry = new EntityRegistry(kbIndexDbPath(baseDir), { readOnly: true })
+    try {
+      const names = registry
+        .listEntities()
+        .filter(e => e.sourceKind === 'manifest')
+        .slice(0, 60)
+        .map(e => `${e.kind} ${e.canonicalName}`)
+      if (names.length === 0) return ''
+      return `\n\nKnown manifest names (prefer these as query_kb terms): ${names.join(', ')}.`
+    } finally {
+      registry.close()
+    }
+  } catch {
+    return ''
+  }
 }

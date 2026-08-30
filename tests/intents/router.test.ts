@@ -103,7 +103,7 @@ describe('DefaultIntentRouter', () => {
     expect(decision.operationInput.collector).toBe(collector)
   })
 
-  it('[TC-XH9F] Given a read_facts result with no checkpoints, then evidence reflects the actual result count instead of a hardcoded strong', async () => {
+  it('[TC-XH9F] Given a read_facts result with one hit and no checkpoints, then evidence is weak', async () => {
     const executor = createExecutorMock()
     const router = new DefaultIntentRouter(executor)
 
@@ -130,5 +130,29 @@ describe('DefaultIntentRouter', () => {
     })
 
     expect(result.evidence).toBe('none')
+  })
+
+  it('[TC-4GBT] Given three read_facts hits and no checkpoints, then evidence is moderate, not strong', async () => {
+    const executor: ToolExecutor = {
+      register: vi.fn(),
+      getTools: vi.fn(() => []),
+      execute: vi.fn(async () => ({
+        results: [
+          { metadata: { id: 'a' }, content: 'one' },
+          { metadata: { id: 'b' }, content: 'two' },
+          { metadata: { id: 'c' }, content: 'three' },
+        ],
+        total: 3,
+        retrieval: { method: 'hybrid' },
+      })),
+    }
+    const router = new DefaultIntentRouter(executor)
+
+    const result = await router.execute({
+      intent: 'query_truth',
+      payload: { query: 'anything' },
+    })
+
+    expect(result.evidence).toBe('moderate')
   })
 })

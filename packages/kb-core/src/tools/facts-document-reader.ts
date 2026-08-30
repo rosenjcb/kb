@@ -1,23 +1,19 @@
-import type { EvidenceLabel } from '../core/evidence-label'
 import { isEnvTrue } from '../config/env-boolean.js'
+import type { DocType } from '../core/doc-taxonomy'
+import { type Embedder, createEmbedder } from '../core/embeddings'
+import type { EvidenceLabel } from '../core/evidence-label'
 import type { LLMFailure } from '../core/llm-error.js'
 import type { RunCollector } from '../core/telemetry'
-import type { DocType } from '../core/doc-taxonomy'
 import type { LLMProvider } from '../core/types'
-import { type CuratorRequery, type CurationRecord, curateFacts, shouldCurate } from './fact-curator'
-import {
-  causalTargetProbe,
-  detectCausalTarget,
-  isNegativeClaimGuardEnabled,
-} from '../query/causal-claim-intent.js'
-import { type Embedder, createEmbedder } from '../core/embeddings'
+import { causalTargetProbe, detectCausalTarget } from '../query/causal-claim-intent.js'
+import type { InquiryLane } from '../query/inquiry-lanes.js'
+import { type CurationRecord, type CuratorRequery, curateFacts, shouldCurate } from './fact-curator'
 import {
   DEFAULT_FACT_LIMIT,
   type HybridRetrievalResult,
   factToUnit,
   retrieveHybrid,
 } from './hybrid-retriever'
-import type { InquiryLane } from '../query/inquiry-lanes.js'
 import { expandQuery, shouldExpandQuery } from './query-expander'
 import { SqliteKbIndexer } from './sqlite-kb-index'
 
@@ -41,6 +37,11 @@ export interface QueryDocumentsInput {
   surface?: 'query' | 'chat'
   /** Optional fact IDs to skip during retrieval entirely (caller-supplied exclusions). */
   excludeIds?: string[]
+  /**
+   * Fact IDs to include by set membership (landed-entity links). Hybrid fills
+   * remaining slots after these.
+   */
+  preferIds?: string[]
   /** When true, bypass all query expansion and load every fact in the KB. */
   allFacts?: boolean
   /**
@@ -143,6 +144,8 @@ export class FactsDocumentReader {
     const baseQuery = input.query?.trim() ?? ''
     const excludeIdSet =
       input.excludeIds && input.excludeIds.length > 0 ? new Set(input.excludeIds) : undefined
+    const preferIdSet =
+      input.preferIds && input.preferIds.length > 0 ? new Set(input.preferIds) : undefined
 
     // H5 ablation: score against the raw question (env-provided) while discovery stays on
     // the (expanded) baseQuery. Curator keying below is switched to the same raw question.
@@ -160,6 +163,7 @@ export class FactsDocumentReader {
         limit,
         includeContent,
         ...(excludeIdSet ? { excludeIds: excludeIdSet } : {}),
+        ...(preferIdSet ? { preferIds: preferIdSet } : {}),
       })
 
     if (input.discoveryDepth !== 'deep') {
@@ -192,7 +196,14 @@ export class FactsDocumentReader {
       expansions.length,
       typedLanes.length > 0 ? describeTypedLanes(typedLanes) : undefined
     )
-    return this.curateRelevance(merged, baseQuery, includeContent, excludeIdSet, input.collector)
+    return this.curateRelevance(
+      merged,
+      baseQuery,
+      includeContent,
+      excludeIdSet,
+      preferIdSet,
+      input.collector
+    )
   }
 
   /**
@@ -205,6 +216,7 @@ export class FactsDocumentReader {
     query: string,
     includeContent: boolean,
     excludeIds?: Set<string>,
+    preferIds?: Set<string>,
     collector?: RunCollector
   ): Promise<QueryResponse> {
     if (!this.llm || !shouldCurate(response.results)) return response
@@ -217,6 +229,7 @@ export class FactsDocumentReader {
         limit: budget * 3,
         includeContent,
         ...(excludeIds ? { excludeIds } : {}),
+        ...(preferIds ? { preferIds } : {}),
       })
       const out: QueryResult[] = []
       for (const unit of units) {
@@ -234,8 +247,7 @@ export class FactsDocumentReader {
       : query
     // Negative-claim guard (#228): for "does X affect Y", oblige retrieval to actually visit Y's
     // own code. Costs one extra shallow hybrid pass on matching questions and no LLM call.
-    const causalGuardOn = isNegativeClaimGuardEnabled()
-    const causal = causalGuardOn ? detectCausalTarget(curatorQuery) : null
+    const causal = detectCausalTarget(curatorQuery)
 
     const { results, record } = await curateFacts({
       llm: this.llm,
@@ -246,17 +258,12 @@ export class FactsDocumentReader {
       collector,
     })
 
-    // Guard activity, stamped on the detail string the eval harness scrapes. Without this there
-    // is no way to tell from an artifact whether the guard fired, matched nothing, or was off —
-    // and "no measurable change" is indistinguishable from "never ran".
-    // Absent vs zero has to stay distinguishable: no `causal:` key means the guard was off,
-    // `causal:miss` means it ran and the question was not of that shape. Collapsing the two makes
-    // a null result unreadable — you cannot tell "measured, no gain" from "never ran".
-    const guardBit = !causalGuardOn
-      ? ''
-      : causal
-        ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
-        : 'causal:miss'
+    // Guard activity, stamped on the detail string the eval harness scrapes.
+    // `causal:miss` means the question was not of that shape; `causal:hit` means
+    // the extra probe ran.
+    const guardBit = causal
+      ? `causal:hit,reqgapsunmet=${record.requiredGapsUnmet?.length ?? 0}`
+      : 'causal:miss'
 
     // Total fallback: nothing was curated, so no audit detail is worth reporting — but if an
     // LLM error caused it, the record still has to travel or the degradation disappears.
@@ -285,7 +292,6 @@ export class FactsDocumentReader {
       retrieval: { ...response.retrieval, detail, curation: record },
     }
   }
-
 }
 
 /** `facets:ownership+mechanism` — which typed probes ran, for --debug / --trace. */

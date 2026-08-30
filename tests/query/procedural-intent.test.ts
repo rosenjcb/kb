@@ -67,17 +67,6 @@ describe('isProceduralQuestion', () => {
     expect(isProceduralQuestion('What flags do you pass in order to enable vsync?')).toBe(false)
   })
 
-  it('can be disabled with KB_PROCEDURAL_SYNTHESIS=false', () => {
-    const prev = process.env.KB_PROCEDURAL_SYNTHESIS
-    try {
-      process.env.KB_PROCEDURAL_SYNTHESIS = 'false'
-      expect(isProceduralQuestion('How do I install and build raylib?')).toBe(false)
-    } finally {
-      if (prev === undefined) delete process.env.KB_PROCEDURAL_SYNTHESIS
-      else process.env.KB_PROCEDURAL_SYNTHESIS = prev
-    }
-  })
-
   it('exposes non-empty ordering guidance for wiring into synthesis prompts', () => {
     expect(PROCEDURAL_SYNTHESIS_GUIDANCE).toContain('ordered')
     expect(PROCEDURAL_SYNTHESIS_GUIDANCE.length).toBeGreaterThan(200)

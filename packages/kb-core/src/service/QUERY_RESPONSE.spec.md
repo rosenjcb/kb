@@ -3,6 +3,7 @@ type: Spec
 title: "Spec: Query Response Parity"
 sources:
   - ./serialize.ts
+  - ./query-pipeline.ts
   - ./chat-reply.ts
   - ../ui/printer.ts
   - ../query/query-entities.ts
@@ -18,7 +19,7 @@ tests:
   - ../../../../tests/query/query-entities.test.ts
 description: Shared query payload semantics across REST, MCP, CLI, TUI, and chat surfaces
 tags: [spec, query, parity, serialization]
-timestamp: 2026-08-30T04:50:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -58,6 +59,8 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | FR-9 | [NEW] The lean MCP payload omits `relPath`. Reconstruct it from `path` and optional `repo` |
 | FR-10 | [NEW] Both serializers include `entities` when the pipeline assembled any; they omit the field when the list is empty |
 | FR-11 | [NEW] The lean payload caps `entities` at 8; the verbose payload keeps the pipeline list (up to 20) |
+| FR-12 | [NEW] A single confident landing adds a compact note of files and symbols to open |
+| FR-13 | [NEW] Two or more confident landings populate `retrieval.clarificationQuestion` |
 
 ### QA Test Cases
 
@@ -80,3 +83,6 @@ This spec defines one canonical query payload for all KB surfaces. The same payl
 | TC-ENT6 | FR-10 | [NEW] Retrieved facts linked to harvested entities | Cited `api`/`service` rows appear after retrieval |
 | TC-ENT3 | FR-11 | [NEW] Lean serialize with 12 entities | Body `entities` length is 8 |
 | TC-ENT7 | FR-10 | [NEW] formatKnownEntitiesBlock and lean cap helpers | Compact line; empty list stays empty |
+| TC-HI6B | FR-12 | [NEW] Compact landing with one file and two symbols | Text names the entity and `Open: path (symbols)` |
+| TC-7B20 | FR-12 | [NEW] Serialize with compactLanding set | Leading note carries the compact landing text |
+| TC-Q651 | FR-13 | [NEW] Serialize with clarificationQuestion set | Leading note and retrieval field carry the question |

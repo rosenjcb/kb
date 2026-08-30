@@ -10,21 +10,12 @@
  *
  * The fix is not smarter synthesis, it is a retrieval obligation: if the question makes a claim
  * about Y, Y's own definition has to be in the evidence, or the answer has to admit it isn't.
+ * The guard is always on.
  */
-
-import { isEnvFalse } from '../config/env-boolean.js'
 
 export interface CausalTarget {
   /** The thing being asked about — the side whose own code must be inspected. */
   target: string
-}
-
-/**
- * On by default; `KB_QUERY_NEGATIVE_CLAIM_GUARD=false` disables it so an A/B can measure off-vs-on.
- * Temporary scaffolding — the whole switch is removed once the gain is confirmed.
- */
-export function isNegativeClaimGuardEnabled(): boolean {
-  return !isEnvFalse(process.env.KB_QUERY_NEGATIVE_CLAIM_GUARD)
 }
 
 const CAUSAL_VERBS =
@@ -36,7 +27,10 @@ const CAUSAL_VERBS =
  */
 const CAUSAL_PATTERNS: RegExp[] = [
   // "does/can/could/will X <verb> Y"
-  new RegExp(`\\b(?:does|do|can|could|will|would|might)\\b.*?\\b(?:${CAUSAL_VERBS})\\b\\s+(.+)`, 'i'),
+  new RegExp(
+    `\\b(?:does|do|can|could|will|would|might)\\b.*?\\b(?:${CAUSAL_VERBS})\\b\\s+(.+)`,
+    'i'
+  ),
   // "is/are Y affected by X"
   /\b(?:is|are|was|were)\s+(.+?)\s+affected\s+by\b/i,
   // "without breaking Y" / "does this break Y"
@@ -44,7 +38,8 @@ const CAUSAL_PATTERNS: RegExp[] = [
 ]
 
 /** Words that end the target phrase — everything after them is a new clause, not the target. */
-const TARGET_STOP = /\s+\b(?:when|if|because|since|so that|which|that|after|before|while|and then)\b/i
+const TARGET_STOP =
+  /\s+\b(?:when|if|because|since|so that|which|that|after|before|while|and then)\b/i
 
 function cleanTarget(raw: string): string {
   let t = raw.trim()

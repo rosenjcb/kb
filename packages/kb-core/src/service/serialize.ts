@@ -57,6 +57,8 @@ export interface QueryResponseBody {
     degraded?: LLMFailure[]
     /** Prose claims the opt-in verification pass judged unsupported by the evidence (#223). */
     unsupportedClaims?: string[]
+    clarificationQuestion?: string
+    compactLanding?: string
   }
   /**
    * Actionable caveats every surface should show: verify hints, ungrounded-file /
@@ -299,7 +301,11 @@ export function isLeanCitationNoise(path: string): boolean {
   return base === 'changelog.md'
 }
 
-function sourceMentionedInAnswer(path: string, relPath: string | undefined, answer: string): boolean {
+function sourceMentionedInAnswer(
+  path: string,
+  relPath: string | undefined,
+  answer: string
+): boolean {
   const hay = answer.toLowerCase()
   const rel = (relPath || path).replace(/\\/g, '/').toLowerCase()
   const base = rel.split('/').pop()
@@ -510,6 +516,15 @@ export function serializeQueryResult(
     base: options.base,
   })
 
+  const compactLanding = data.retrieval?.compactLanding?.trim()
+  if (compactLanding && compactLanding !== answer) {
+    notes.unshift(compactLanding)
+  }
+  const clarification = data.retrieval?.clarificationQuestion?.trim()
+  if (clarification) {
+    notes.unshift(clarification)
+  }
+
   // Empty-base (and other intent-level) explanations used to stay CLI-only —
   // REST/MCP saw a hollow "no evidence" payload. Surface them as notes so an
   // agent can tell "this base has no index" from "retrieval found nothing".
@@ -529,6 +544,10 @@ export function serializeQueryResult(
       detail: data.retrieval?.detail,
       ...(degraded && degraded.length > 0 ? { degraded } : {}),
       ...(unsupportedClaims.length > 0 ? { unsupportedClaims } : {}),
+      ...(data.retrieval?.clarificationQuestion
+        ? { clarificationQuestion: data.retrieval.clarificationQuestion }
+        : {}),
+      ...(data.retrieval?.compactLanding ? { compactLanding: data.retrieval.compactLanding } : {}),
     },
     ...(notes.length > 0 ? { notes } : {}),
     ...(evidence ? { evidence } : {}),

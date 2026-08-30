@@ -18,7 +18,6 @@ import { formatOrchestrationMetaLine } from '../ui/orchestration-meta.js'
 import {
   NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE,
   detectCausalTarget,
-  isNegativeClaimGuardEnabled,
 } from './causal-claim-intent.js'
 import { PROCEDURAL_SYNTHESIS_GUIDANCE, isProceduralQuestion } from './procedural-intent.js'
 import type { QueryEntity } from './query-entities.js'
@@ -280,6 +279,15 @@ export interface ReadDocumentsResultData {
      * downgrade the evidence label, mirroring the ungrounded-file-name check.
      */
     unsupportedClaims?: string[]
+    /** Populated when two or more confident landings share the question (#238). */
+    clarificationQuestion?: string
+    /** Compact explanation + files + symbols for a single confident landing. */
+    compactLanding?: string
+    routing?: {
+      landed: boolean
+      linkedCount: number
+      retrievedLinkedCount: number
+    }
   }
   /**
    * Set when answer synthesis was attempted and did not produce an answer. Absent
@@ -487,10 +495,9 @@ export async function enrichReadDocumentsAnswerWithLLM(
 
     const proceduralGuidance = isProceduralQuestion(question) ? PROCEDURAL_SYNTHESIS_GUIDANCE : ''
 
-    const negativeClaimGuidance =
-      isNegativeClaimGuardEnabled() && detectCausalTarget(question)
-        ? NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE
-        : ''
+    const negativeClaimGuidance = detectCausalTarget(question)
+      ? NEGATIVE_CLAIM_SYNTHESIS_GUIDANCE
+      : ''
 
     const userContent = [
       'Answer from the evidence below. Use only the facts that bear on the question and ignore the rest — do not pad the answer with loosely related facts. Always give a useful response: a high-level summary for broad questions, precise detail for specific ones. Only say evidence is insufficient if the question is completely unrelated to anything retrieved.',

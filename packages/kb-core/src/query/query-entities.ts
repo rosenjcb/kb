@@ -51,6 +51,34 @@ export function formatEntitiesLine(entities: QueryEntity[]): string {
 }
 
 /**
+ * Compact routed reply for a confident landing: short explanation plus the
+ * files and symbols to open, so a calling agent stops exploring (#238).
+ */
+export function formatCompactRoutedReply(input: {
+  landings: QueryEntity[]
+  results?: ReadDocumentsResultItem[]
+}): string | undefined {
+  if (input.landings.length === 0) return undefined
+  const header = input.landings
+    .map(e => `${e.kind} ${e.name}${e.gloss ? ` — ${e.gloss}` : ''}`)
+    .join('; ')
+  const byFile = new Map<string, string[]>()
+  for (const item of input.results ?? []) {
+    const location = item.metadata?.sourcePath ?? item.metadata?.filePath
+    if (!location) continue
+    const symbols = byFile.get(location) ?? []
+    const symbol = item.metadata?.symbol?.trim()
+    if (symbol && !symbols.includes(symbol)) symbols.push(symbol)
+    byFile.set(location, symbols)
+  }
+  if (byFile.size === 0) return header
+  const open = [...byFile.entries()]
+    .slice(0, 12)
+    .map(([file, symbols]) => (symbols.length > 0 ? `${file} (${symbols.join(', ')})` : file))
+  return `${header}\nOpen: ${open.join('; ')}`
+}
+
+/**
  * Assemble the outbound entity list. Scope landings first, then cited hits.
  * Best-effort: an unreadable registry returns only the in-memory scope rows.
  */

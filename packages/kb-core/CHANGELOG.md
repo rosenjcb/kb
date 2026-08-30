@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.11
+
+### Patch Changes
+
+- Finish remaining #238 routing work: chat uses the query pipeline, evidence reflects routing coverage, filename-stem symbols close the kebab-case addressability gap, and leftover experiment flags (`KB_ENTITY_SCOPE`, `KB_ENTITY_INDEX`, `KB_PROCEDURAL_SYNTHESIS`, `KB_QUERY_NEGATIVE_CLAIM_GUARD`) are removed. Claim verification stays opt-in (`KB_QUERY_VERIFY_CLAIMS`).
+
 ## 2.0.10
 
 ### Patch Changes

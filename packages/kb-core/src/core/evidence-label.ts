@@ -61,7 +61,10 @@ export function weakestEvidence(labels: readonly EvidenceLabel[]): EvidenceLabel
  * Parse a configured floor (env var / config value). Unknown or absent input
  * returns `fallback` — a misconfigured label must never silently disable a gate.
  */
-export function parseEvidenceLabel(raw: string | undefined, fallback: EvidenceLabel): EvidenceLabel {
+export function parseEvidenceLabel(
+  raw: string | undefined,
+  fallback: EvidenceLabel
+): EvidenceLabel {
   const normalized = raw?.trim().toLowerCase()
   return isEvidenceLabel(normalized) ? normalized : fallback
 }
@@ -111,4 +114,43 @@ export function assessResultCount(totalResults: number): EvidenceLabel {
   if (totalResults === 1) return 'weak'
   if (totalResults === 2) return 'moderate'
   return 'strong'
+}
+
+/**
+ * Live query evidence: relevance when the metrics exist, otherwise a count
+ * that cannot read as `strong`. Routing coverage floors a confident landing
+ * that retrieved none of the entity's linked facts (#238).
+ *
+ * Count-alone used to map 3+ results → `strong` with no relevance term, so a
+ * wrong-subtree pool still looked like a hit. Cap that path at `moderate`.
+ */
+export function assessQueryEvidence(input: {
+  uniqueFacts: number
+  avgTop?: number
+  conceptCoverage?: number
+  routing?: {
+    landed: boolean
+    linkedCount: number
+    retrievedLinkedCount: number
+  }
+}): EvidenceLabel {
+  if (input.uniqueFacts <= 0) return 'none'
+
+  let label: EvidenceLabel
+  if (input.avgTop !== undefined && input.conceptCoverage !== undefined) {
+    label = assessRetrievalEvidence({
+      uniqueFacts: input.uniqueFacts,
+      avgTop: input.avgTop,
+      conceptCoverage: input.conceptCoverage,
+    })
+  } else {
+    const byCount = assessResultCount(input.uniqueFacts)
+    label = byCount === 'strong' ? 'moderate' : byCount
+  }
+
+  const routing = input.routing
+  if (routing?.landed && routing.linkedCount > 0 && routing.retrievedLinkedCount === 0) {
+    return isEvidenceAtLeast(label, 'moderate') ? 'weak' : label
+  }
+  return label
 }

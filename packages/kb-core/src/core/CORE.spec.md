@@ -32,9 +32,10 @@ tests:
   - ../../../../tests/core/yield.test.ts
   - ../../../../tests/core/scan-document-ingest.test.ts
   - ../../../../tests/core/markdown-sections.test.ts
+  - ../../../../tests/core/evidence-label.test.ts
 description: Behavioral specification for KB Core
 tags: [spec, kb]
-timestamp: 2026-08-29T17:47:00Z
+timestamp: 2026-08-30T05:15:00Z
 ---
 
 ### Intro
@@ -80,6 +81,8 @@ See companion doc for full vocabulary where applicable.
 | FR-29 | [NEW] Cap Gemini thinking: every Gemini 2.5/3 generateContent call sends an explicit `thinkingConfig.thinkingBudget` (never omit it). Resolve budget as per-call `thinkingBudget` → `GEMINI_THINKING_BUDGET` env → mode default (1024 when reasoning/`includeThoughts`, else 0). Parse `usageMetadata` so `outputTokens` = `candidatesTokenCount` + `thoughtsTokenCount` (thinking billed as output) |
 | FR-30 | [NEW] Split a markdown body into indexable sections on heading boundaries, carrying the heading trail, merging runs too small to stand alone and splitting oversized ones on paragraph boundaries — so the retrieval unit is a section rather than a whole file |
 | FR-31 | [NEW] Init and scan record a RunCollector with code-index, entity-index, and create-embeddings stages. Embed cost uses character count divided by 4. Gemini embed bills; local ONNX cost is 0 |
+| FR-32 | [NEW] Cap count-only query evidence at moderate |
+| FR-33 | [NEW] Set evidence to weak when a landing retrieves none of its linked facts |
 
 ### QA Test Cases
 
@@ -246,6 +249,8 @@ See companion doc for full vocabulary where applicable.
 | TC-EMB1 | FR-31 | [NEW] Character counts 0, 1, 4, 5 | Token estimates 0, 1, 1, 2 |
 | TC-EMB2 | FR-31 | [NEW] Gemini embedder modelId and 400 chars | Stage `create-embeddings` with 100 input tokens |
 | TC-EMB3 | FR-31 | [NEW] Local ONNX modelId | `estimatedCostUsd` is 0 |
+| TC-NZR6 | FR-32 | [NEW] Three results and no relevance metrics | Evidence is moderate, not strong |
+| TC-AX6M | FR-33 | [NEW] Landed entity with linked facts and zero of them retrieved | Evidence is weak |
 
 ### Related docs
 

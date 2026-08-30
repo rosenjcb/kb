@@ -81,3 +81,20 @@ answers:
     handling) dispatches addon lifecycle hooks and waits for flow resume in mode servers. A
     correct answer places it in proxy connection handling (not the web `FlowHandler`) and
     must not discuss kb retrieval internals.
+
+# Graded retrieval gold citation sets (#238). Files named in the answer keys.
+gold_files:
+  - null
+  - - path: mitmproxy/io.py
+      role: must_open
+  - null
+  - null
+  - null
+  - null
+  - null
+  - - path: mitmproxy/tools/console/master.py
+      role: must_open
+  - - path: mitmproxy/tools/web/app.py
+      role: must_open
+  - - path: mitmproxy/proxy/mode_servers.py
+      role: must_open

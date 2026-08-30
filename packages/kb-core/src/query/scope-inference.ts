@@ -20,7 +20,6 @@
  */
 
 import type { LLMProvider } from '../core/types.js'
-import { isEnvFalse } from '../config/env-boolean.js'
 import { EntityRegistry, type EntityRow } from '../tools/entity-registry.js'
 
 export type ScopeLabel =
@@ -56,6 +55,11 @@ export interface ScopeVerdict {
    * `LIKE '%name%'` widening is exactly what pulls colliding neighborhoods in.
    */
   expansionTerms?: string[]
+  /**
+   * Fact ids linked to confident landings. Retrieval includes these by set
+   * membership rather than a weighted term (#238 promote, don't only prune).
+   */
+  promotedFactIds?: string[]
 }
 
 const UNRESOLVED: ScopeVerdict = {
@@ -63,11 +67,6 @@ const UNRESOLVED: ScopeVerdict = {
   candidates: [],
   excludedFactIds: [],
   method: 'none',
-}
-
-/** Kill switch: KB_ENTITY_SCOPE=false disables stage-0 entirely. */
-export function isEntityScopeEnabled(): boolean {
-  return !isEnvFalse(process.env.KB_ENTITY_SCOPE)
 }
 
 /** Max catalog size sent to the LLM classifier — beyond this, skip tier 2. */
@@ -78,8 +77,6 @@ export async function inferQueryScope(input: {
   query: string
   llm?: LLMProvider
 }): Promise<ScopeVerdict> {
-  if (!isEntityScopeEnabled()) return UNRESOLVED
-
   let registry: EntityRegistry
   try {
     registry = new EntityRegistry(input.dbPath, { readOnly: true })
@@ -96,12 +93,18 @@ export async function inferQueryScope(input: {
     // it never ran. Those now fall through to tier 2 instead of deciding.
     const mentions = registry.resolveMentions(input.query).filter(m => m.distinctive)
     if (mentions.length > 0) {
-      return gateDeterministicMentions(registry, mentions.map(m => m.entity))
+      return withLandingAids(
+        registry,
+        gateDeterministicMentions(
+          registry,
+          mentions.map(m => m.entity)
+        )
+      )
     }
 
     if (input.llm) {
       const llmVerdict = await classifyScopeWithLLM(registry, input.query, input.llm)
-      if (llmVerdict) return llmVerdict
+      if (llmVerdict) return withLandingAids(registry, llmVerdict)
     }
 
     return UNRESOLVED
@@ -162,9 +165,7 @@ function gateDeterministicMentions(registry: EntityRegistry, matched: EntityRow[
       ? `Interpreting the question as being about ${describeEntity(landing)}; not ${ruledOutNames.join(' or ')}.`
       : `Interpreting the question as being about ${describeEntity(landing)}.`
 
-  const expansionTerms = dedupeStrings(
-    registry.listAliases(landing.id).map(alias => alias.alias)
-  )
+  const expansionTerms = dedupeStrings(registry.listAliases(landing.id).map(alias => alias.alias))
 
   return {
     unresolved: false,
@@ -195,7 +196,9 @@ async function classifyScopeWithLLM(
   if (entities.length === 0 || entities.length > MAX_CLASSIFIER_CATALOG) return null
 
   const catalog = entities
-    .map(e => `- id=${e.id} kind=${e.kind} name="${e.canonicalName}"${e.gloss ? ` — ${e.gloss}` : ''}`)
+    .map(
+      e => `- id=${e.id} kind=${e.kind} name="${e.canonicalName}"${e.gloss ? ` — ${e.gloss}` : ''}`
+    )
     .join('\n')
 
   const prompt = [
@@ -249,6 +252,25 @@ async function classifyScopeWithLLM(
     }
   } catch {
     return null
+  }
+}
+
+/** Attach promoted fact ids and alias expansion terms to a resolved verdict. */
+function withLandingAids(registry: EntityRegistry, verdict: ScopeVerdict): ScopeVerdict {
+  if (verdict.unresolved) return verdict
+  const positives = verdict.candidates.filter(
+    c => c.label === 'very_confident' || c.label === 'confident'
+  )
+  if (positives.length === 0) return verdict
+  const promotedFactIds = registry.linkedFactIds(positives.map(c => c.entity.id))
+  const expansionTerms =
+    verdict.expansionTerms && verdict.expansionTerms.length > 0
+      ? verdict.expansionTerms
+      : dedupeStrings(positives.flatMap(p => registry.listAliases(p.entity.id).map(a => a.alias)))
+  return {
+    ...verdict,
+    ...(promotedFactIds.length > 0 ? { promotedFactIds } : {}),
+    ...(expansionTerms.length > 0 ? { expansionTerms } : {}),
   }
 }
 
