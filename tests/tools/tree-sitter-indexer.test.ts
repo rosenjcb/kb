@@ -652,6 +652,74 @@ describe('TreeSitterIndexer — text fallback', () => {
     db.close()
   })
 
+  it('[TC-SFC1] emits a component-name symbol for an SFC so the component is addressable by its own name', async () => {
+    // A .vue script block never declares the component's own name, so before this
+    // `Gantt.vue` was unreachable by a query saying "Gantt" — while a Java class gets
+    // its class name for free. Measured on eval-kestra Q7 (#238).
+    await writeFile(
+      join(repoRoot, 'src', 'Gantt.vue'),
+      '<script setup lang="ts">\nconst rows = []\n</script>\n<template><div/></template>'
+    )
+    await writeFile(
+      join(repoRoot, 'src', 'Sidebar.svelte'),
+      '<script>\nlet open = true\n</script>\n<div/>'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'Gantt', 'src/Gantt.vue')).toBe(true)
+    expect(querySymbol(db, 'Sidebar', 'src/Sidebar.svelte')).toBe(true)
+    // The extension is not part of the name — a question says "Gantt", never "Gantt.vue".
+    expect(querySymbol(db, 'Gantt.vue', 'src/Gantt.vue')).toBe(false)
+    db.close()
+  })
+
+  it('[TC-ZSYM] emits a file-level symbol when a file parses cleanly but exports nothing', async () => {
+    // shellcheck's `test/shellcheck.hs` is `module Main where` with a bare `main`:
+    // it parses fine, the export queries capture nothing, and the whole test
+    // entrypoint landed zero rows and became invisible to retrieval. Parse
+    // failure already fell back to a file-level symbol; parse-success-with-no-
+    // symbols did not (#238).
+    await writeFile(join(repoRoot, 'src', 'main.go'), 'package main\n\nfunc main() {}\n')
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    const rows = db
+      .prepare('SELECT name FROM code_symbols WHERE rel_path = ?')
+      .all('src/main.go') as { name: string }[]
+    expect(rows.length).toBeGreaterThan(0)
+    db.close()
+  })
+
+  it('[TC-MANIFEST] indexes build manifests that match no AST grammar', async () => {
+    // `ShellCheck.cabal` matched neither EXT_MAP nor the text allowlist, so it was
+    // skipped outright and "how does the Cabal build work" was unanswerable.
+    await writeFile(
+      join(repoRoot, 'Demo.cabal'),
+      'name: demo\nversion: 1.0\nbuild-depends: base\n'
+    )
+
+    const { indexer, factIndexer } = makeIndexer()
+    await indexer.indexProject(repoRoot)
+    indexer.close()
+    factIndexer.close()
+
+    const db = new Database(dbPath)
+    runMigrations(db)
+    expect(querySymbol(db, 'Demo.cabal', 'Demo.cabal')).toBe(true)
+    db.close()
+  })
+
   it('[TC-FBSK] falls back to text-state for .vue/.svelte with no inline script, and for Astro/typo aliases', async () => {
     // No <script> block at all — nothing to extract, falls back to text.
     await writeFile(join(repoRoot, 'src', 'Empty.vue'), '<template><div>flow</div></template>')

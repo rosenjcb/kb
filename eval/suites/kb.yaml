@@ -361,28 +361,96 @@ shapes:
 # Graded retrieval gold citation sets (#237). Positional like shapes:; null = skip axis.
 # Hand-annotated from answer keys (not from kb's own curator). Investigative probes first.
 gold_files:
+  # Q1 overview/workflow — the one question where README legitimately IS the answer.
+  # Deliberate inverse of Q25, where README is the decoy.
+  - - path: README.md
+      role: must_open
+  - - path: packages/kb-core/src/ops/init-cli.ts
+      role: must_open
+    - path: packages/kb-core/src/core/INIT.md
+      role: supporting
+  - - path: packages/kb-core/src/ops/scan-command.ts
+      role: must_open
+    - path: packages/kb-core/src/ops/init-cli.ts
+      role: must_open
+  - - path: packages/kb-core/src/tools/sqlite-document-writer.ts
+      role: must_open
+    - path: packages/kb-core/src/core/scan-document-ingest.ts
+      role: supporting
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+  - - path: packages/kb-core/src/tools/hybrid-retriever.ts
+      role: must_open
+    - path: packages/kb-core/src/tools/sqlite-kb-index.ts
+      role: supporting
+  - - path: packages/kb-client/src/cli/skill-installer.ts
+      role: must_open
+    - path: packages/kb-core/src/skills/loader.ts
+      role: supporting
+      symbol: loadSkill
+  - - path: scripts/eval-run.mjs
+      role: must_open
+    - path: scripts/eval-shared.mjs
+      role: supporting
+  # Q9 local-vs-remote indexing: an architecture/privacy claim with no single
+  # owning file. Left unannotated rather than guessed — a wrong key is worse.
   - null
+  - - path: packages/kb-core/src/core/intent-loop.ts
+      role: must_open
+    - path: packages/kb-core/src/service/query-pipeline.ts
+      role: supporting
+  # Q11 Kubernetes: out of domain. The correct answer is a refusal, so there is
+  # no gold file and recall must not be scored.
   - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
-  - null
+  - - path: packages/kb-core/src/tools/fact-curator.ts
+      role: must_open
+      symbol: shouldCurate
+  - - path: packages/kb-core/src/service/query-pipeline.ts
+      role: must_open
+    - path: packages/kb-core/src/core/intent-loop.ts
+      role: supporting
+    - path: packages/kb-core/src/tools/fact-curator.ts
+      role: supporting
+    - path: packages/kb-core/src/query/chat-synthesis.ts
+      role: supporting
+  - - path: packages/kb-core/src/query/chat-query-orchestrator.ts
+      role: must_open
+      symbol: executeChatQueryTruthRetrieval
+    - path: packages/kb-core/src/service/chat-reply.ts
+      role: supporting
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+    - path: packages/kb-core/package.json
+      role: supporting
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+  # Q17 decoy probe: the gold answer is "one AST path, no separate TS-compiler
+  # indexer" — the file that proves it is the only place TS/JS symbols are made.
+  - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
+      role: must_open
+  - - path: packages/kb-server/src/server-bootstrap.ts
+      role: must_open
+    - path: packages/kb-server/src/http-server.ts
+      role: supporting
+  - - path: packages/kb-server/src/base-cli.ts
+      role: must_open
+    - path: packages/kb-core/src/tools/kb-index-path.ts
+      role: supporting
+  # Q20 length gate: query-expander.ts:46 is the gate itself
+  # (tokenizeMeaningful(query).length <= 2); inquiry-lanes is the fan-out it gates.
+  - - path: packages/kb-core/src/tools/query-expander.ts
+      role: must_open
+    - path: packages/kb-core/src/query/inquiry-lanes.ts
+      role: must_open
+  - - path: packages/kb-core/src/query/scope-inference.ts
+      role: must_open
+      symbol: inferQueryScope
+    - path: packages/kb-core/src/tools/entity-registry.ts
+      role: supporting
+  - - path: packages/kb-core/src/service/query-pipeline.ts
+      role: must_open
+    - path: packages/kb-core/src/query/inquiry-lanes.ts
+      role: supporting
   - - path: packages/kb-core/src/tools/tree-sitter-indexer.ts
       role: must_open
   - - path: packages/kb-server/src/mcp-tools.ts
@@ -396,7 +464,6 @@ gold_files:
     - path: packages/kb-core/src/tools/sqlite-kb-index.ts
       role: must_open
       symbol: searchCodeSymbolsFts
-
 # Expected scope landings (#237 follow-up). Q24's answer lives in kb-server — if scope
 # lands on @kb/client, recall@k is capped before ranking runs.
 gold_scope:

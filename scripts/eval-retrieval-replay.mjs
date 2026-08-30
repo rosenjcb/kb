@@ -22,6 +22,8 @@ import {
   computeRetrievalCostMetrics,
   loadVendorSuite,
   matchesSuite,
+  resolveArtifactRepoRoot,
+  validateGoldFilePaths,
   writeResearchResultsTex,
 } from './eval-shared.mjs'
 
@@ -33,6 +35,7 @@ function usage() {
   node scripts/eval-retrieval-replay.mjs <artifact.json> [--write]
   node scripts/eval-retrieval-replay.mjs --suite <id> --latest [--write]
   node scripts/eval-retrieval-replay.mjs --all [--suite <id>]
+  node scripts/eval-retrieval-replay.mjs --suite <id> --latest --validate-gold
 `)
 }
 
@@ -43,6 +46,7 @@ function parseArgs(argv) {
     latest: false,
     all: false,
     write: false,
+    validateGold: false,
     help: false,
   }
   for (let i = 0; i < argv.length; i++) {
@@ -52,6 +56,7 @@ function parseArgs(argv) {
     else if (a === '--latest') args.latest = true
     else if (a === '--all') args.all = true
     else if (a === '--write') args.write = true
+    else if (a === '--validate-gold') args.validateGold = true
     else if (a === '--help' || a === '-h') args.help = true
     else if (!a.startsWith('-')) args.artifactPath = a
     else throw new Error(`unknown flag: ${a}`)
@@ -85,7 +90,31 @@ function listArtifacts(suiteFilter) {
   return rows
 }
 
-function scoreArtifact(artifact, artifactPath, suiteId, { write = false } = {}) {
+/**
+ * Report gold paths that do not exist in the checkout the artifact scored
+ * against. Unreachable labels cap recall by construction, so they are surfaced
+ * before any number is read.
+ */
+function reportGoldPathDrift(artifact, suite) {
+  const repoRoot = resolveArtifactRepoRoot(artifact)
+  if (!repoRoot) {
+    console.log('  gold paths: repo checkout not resolvable — skipped')
+    return
+  }
+  const { ok, checked, missing } = validateGoldFilePaths(suite, repoRoot)
+  if (ok) {
+    console.log(`  gold paths: ${checked}/${checked} exist in ${path.basename(repoRoot)}`)
+    return
+  }
+  console.log(
+    `  gold paths: ${checked - missing.length}/${checked} exist — ${missing.length} UNREACHABLE (recall is capped by the answer key, not by kb)`
+  )
+  for (const m of missing) {
+    console.log(`    Q${m.question} ${m.role}: ${m.path}  <- not in ${path.basename(repoRoot)}`)
+  }
+}
+
+function scoreArtifact(artifact, artifactPath, suiteId, { write = false, validateGold = false } = {}) {
   const suite = loadVendorSuite(suiteId)
   const qe = artifact.query_evaluation
   if (!Array.isArray(qe) || qe.length === 0) {
@@ -115,6 +144,7 @@ function scoreArtifact(artifact, artifactPath, suiteId, { write = false } = {}) 
   console.log(
     `\n[replay] ${path.basename(path.dirname(artifactPath))}  suite=${suiteId}  gold_qs=${summary?.questions_with_gold ?? 0}`
   )
+  if (validateGold) reportGoldPathDrift(artifact, suite)
   if (!summary) {
     console.log('  (no gold_files annotated for this suite yet)')
   } else {
@@ -220,7 +250,10 @@ function main() {
         continue
       }
       try {
-        scoreArtifact(row.artifact, row.file, suiteId, { write: args.write })
+        scoreArtifact(row.artifact, row.file, suiteId, {
+          write: args.write,
+          validateGold: args.validateGold,
+        })
       } catch (e) {
         console.error(`[replay] ${row.id}: ${e instanceof Error ? e.message : e}`)
       }
@@ -254,7 +287,10 @@ function main() {
 
   const suiteId = args.suite || artifact?.run?.suite
   if (!suiteId) throw new Error('suite id unknown — pass --suite')
-  scoreArtifact(artifact, artifactPath, suiteId, { write: args.write })
+  scoreArtifact(artifact, artifactPath, suiteId, {
+    write: args.write,
+    validateGold: args.validateGold,
+  })
   if (args.write) {
     try {
       const { outPath } = writeResearchResultsTex(KB_REPO)

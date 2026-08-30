@@ -1,5 +1,11 @@
 # @kb/core
 
+## 2.0.9
+
+### Patch Changes
+
+- Emit a component-name symbol for `.vue` / `.svelte` single-file components, so a component is addressable by its own name. An SFC's script block never declares the component's name, leaving `Gantt.vue` unreachable by a query saying "Gantt" while a Java class gets its class name for free.
+
 ## 2.0.8
 
 ### Patch Changes

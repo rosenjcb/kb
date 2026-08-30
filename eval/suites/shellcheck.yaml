@@ -80,3 +80,73 @@ answers:
     SC codes. A correct answer should name those modules in pipeline order. Do not invent a
     harvested CamelCase `ShellCheck` class this thin registry does not have, and do not grade
     kb inquiry-lane or length-gate policy.
+
+# Positional, aligned to questions:.
+shapes:
+  - conceptual
+  - investigative
+  - conceptual
+  - investigative
+  - investigative
+  - conceptual
+  - investigative
+  - conceptual
+  - conceptual
+  - investigative
+
+# Graded retrieval gold citation sets (#238). Hand-annotated against the indexed
+# revision by reading the repo, never from a kb answer.
+#
+# Q6 and Q8 were null while `test/shellcheck.hs` and `*.cabal` were not ingested
+# at all — the files answering them could not be recovered by any retrieval
+# change, so scoring them charged a coverage gap to the retriever. Both are now
+# ingestible: parsed-but-symbol-less files get a file-level symbol, and build
+# manifests joined the text allowlist. They score from the next reindex onward.
+gold_files:
+  - - path: README.md
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: README.md
+      role: supporting
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open
+  - - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/CFGAnalysis.hs
+      role: supporting
+  - - path: test/shellcheck.hs
+      role: must_open
+    - path: ShellCheck.cabal
+      role: supporting
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+      symbol: readAnnotation
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Checker.hs
+      role: supporting
+  - - path: ShellCheck.cabal
+      role: must_open
+  - - path: README.md
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open

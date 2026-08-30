@@ -1,5 +1,12 @@
 # kb-server
 
+## 2.0.9
+
+### Patch Changes
+
+- Updated dependencies
+  - @kb/core@2.0.9
+
 ## 2.0.8
 
 ### Patch Changes

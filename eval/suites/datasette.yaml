@@ -77,3 +77,66 @@ answers:
     (allow/TTL settings), sibling to other handlers such as `HardcodedTokenHandler`. A correct
     answer describes that signed path and plugin registration, must not conflate every token
     handler, and must not discuss kb inquiry lanes or length gates.
+
+# Positional, aligned to questions:.
+shapes:
+  - conceptual
+  - investigative
+  - investigative
+  - conceptual
+  - investigative
+  - investigative
+  - conceptual
+  - investigative
+  - conceptual
+  - investigative
+
+# Graded retrieval gold citation sets (#238). Hand-annotated by reading the
+# cloned repo at the indexed revision — never from a kb answer.
+gold_files:
+  - - path: README.md
+      role: must_open
+  - - path: datasette/cli.py
+      role: must_open
+    - path: datasette/app.py
+      role: supporting
+  - - path: datasette/views/table.py
+      role: must_open
+    - path: datasette/facets.py
+      role: must_open
+    - path: datasette/filters.py
+      role: supporting
+  - - path: datasette/views/stored_queries.py
+      role: must_open
+    - path: datasette/app.py
+      role: supporting
+  - - path: datasette/hookspecs.py
+      role: must_open
+    - path: datasette/plugins.py
+      role: must_open
+  - - path: datasette/app.py
+      role: must_open
+    - path: datasette/views/table.py
+      role: must_open
+    - path: datasette/facets.py
+      role: supporting
+  - - path: datasette/publish/heroku.py
+      role: must_open
+    - path: datasette/publish/cloudrun.py
+      role: must_open
+    - path: datasette/publish/common.py
+      role: supporting
+  - - path: datasette/default_table_actions.py
+      role: must_open
+    - path: datasette/default_query_actions.py
+      role: must_open
+    - path: datasette/default_jump_items.py
+      role: supporting
+  - - path: datasette/tokens.py
+      role: must_open
+  - - path: datasette/tokens.py
+      role: must_open
+    - path: datasette/hookspecs.py
+      role: must_open
+    - path: datasette/app.py
+      role: supporting

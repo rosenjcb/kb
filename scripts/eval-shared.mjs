@@ -1058,6 +1058,57 @@ export function parseRetrievalInstrumentation(detail) {
 }
 
 /**
+ * Verify every `gold_files` path in a suite exists in the repository the suite
+ * is scored against.
+ *
+ * A gold path that is not in the tree can never be recovered, so it silently
+ * depresses recall and manufactures a kb failure that is really annotation
+ * drift. This bit real work: `kestra.yaml` carried
+ * `ui/src/components/flows/create/ImportYaml.vue`, which upstream had already
+ * removed — Q12 reported R@10=0.50 when kb had in fact recovered every
+ * reachable file.
+ *
+ * @param {{ goldFiles: ({path:string,role:string}[]|null)[] }} suite
+ * @param {string} repoRoot Checkout the suite is scored against.
+ * @returns {{ ok: boolean, checked: number, missing: {question:number,path:string,role:string}[] }}
+ */
+export function validateGoldFilePaths(suite, repoRoot) {
+  const missing = []
+  let checked = 0
+  const goldFiles = suite?.goldFiles ?? []
+  for (let i = 0; i < goldFiles.length; i++) {
+    for (const g of goldFiles[i] ?? []) {
+      checked++
+      if (!fs.existsSync(path.join(repoRoot, g.path))) {
+        missing.push({ question: i + 1, path: g.path, role: g.role })
+      }
+    }
+  }
+  return { ok: missing.length === 0, checked, missing }
+}
+
+/**
+ * Locate the checkout an eval artifact scored against, so gold paths can be
+ * validated against the tree that was actually indexed rather than whatever is
+ * on disk today.
+ *
+ * @returns {string|null} repo root, or null when it cannot be resolved.
+ */
+export function resolveArtifactRepoRoot(artifact) {
+  const direct = artifact?.run?.target_cwd
+  if (direct && fs.existsSync(direct)) return direct
+  const base = artifact?.run?.base ?? artifact?.index_fingerprint?.base
+  if (!base) return null
+  const reposDir = path.join(os.homedir(), '.kb', 'sessions', base, 'repos')
+  if (!fs.existsSync(reposDir)) return null
+  const entries = fs
+    .readdirSync(reposDir, { withFileTypes: true })
+    .filter(e => e.isDirectory())
+    .map(e => path.join(reposDir, e.name))
+  return entries.length === 1 ? entries[0] : (entries[0] ?? null)
+}
+
+/**
  * Score landed scope against optional gold_scope. Returns null when unannotated.
  * `matched` is true when any gold token appears in any landing (substring or exact).
  */
