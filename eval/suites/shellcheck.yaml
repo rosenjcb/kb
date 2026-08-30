@@ -80,3 +80,69 @@ answers:
     SC codes. A correct answer should name those modules in pipeline order. Do not invent a
     harvested CamelCase `ShellCheck` class this thin registry does not have, and do not grade
     kb inquiry-lane or length-gate policy.
+
+# Positional, aligned to questions:.
+shapes:
+  - conceptual
+  - investigative
+  - conceptual
+  - investigative
+  - investigative
+  - conceptual
+  - investigative
+  - conceptual
+  - conceptual
+  - investigative
+
+# Graded retrieval gold citation sets (#238). Hand-annotated against the indexed
+# revision by reading the repo, never from a kb answer.
+#
+# Q6 and Q8 are deliberately null: `test/` and `*.cabal` are not ingested by
+# indexing at all (verified against both `code_symbols` and `documents`), so the
+# files that answer them cannot be recovered by any retrieval change. Scoring
+# them would charge a coverage gap to the retriever. Tracked separately as an
+# indexing-coverage finding.
+gold_files:
+  - - path: README.md
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: README.md
+      role: supporting
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open
+  - - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/CFGAnalysis.hs
+      role: supporting
+  - null
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+      symbol: readAnnotation
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Checker.hs
+      role: supporting
+  - null
+  - - path: README.md
+      role: must_open
+  - - path: src/ShellCheck/Parser.hs
+      role: must_open
+    - path: src/ShellCheck/AST.hs
+      role: must_open
+    - path: src/ShellCheck/AnalyzerLib.hs
+      role: must_open
+    - path: src/ShellCheck/Analytics.hs
+      role: must_open
