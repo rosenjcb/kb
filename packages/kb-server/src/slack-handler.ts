@@ -15,6 +15,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import type { QueryEntity } from '@kb/core/query/query-entities.js'
 import type { KbHealth, KbService } from '@kb/core/service/kb-service.js'
 import { type GroupedSource, formatGroupedChatReply } from '@kb/core/service/source-grouping.js'
 import { log } from './logger.js'
@@ -37,7 +38,7 @@ export function verifySlackSignature(
   signingSecret: string,
   rawBody: string,
   timestamp: string | undefined,
-  signature: string | undefined,
+  signature: string | undefined
 ): boolean {
   if (!timestamp || !signature) return false
 
@@ -86,7 +87,7 @@ async function postSlackMessage(
   botToken: string,
   channel: string,
   text: string,
-  threadTs?: string,
+  threadTs?: string
 ): Promise<void> {
   const payload: Record<string, string> = { channel, text }
   if (threadTs) payload.thread_ts = threadTs
@@ -136,7 +137,7 @@ export interface SlackEventPayload {
 export async function dispatchSlackEvent(
   service: KbService,
   slackOpts: SlackOptions,
-  payload: SlackEventPayload,
+  payload: SlackEventPayload
 ): Promise<void> {
   const event = payload.event
   if (!event) return
@@ -162,7 +163,7 @@ export async function dispatchSlackEvent(
         slackOpts.botToken,
         channel,
         `KB bootstrap failed before I could answer: ${afterBootstrap.bootstrapError}`,
-        threadTs,
+        threadTs
       )
       return
     }
@@ -198,30 +199,41 @@ async function replyWithChat(
   message: string,
   channel: string,
   threadTs: string | undefined,
-  sessionId: string,
+  sessionId: string
 ): Promise<void> {
   // Same chat stream as HTTP `/v1/chat` / the Pages demo: answer + source-centric
   // `sources[]` (grouped by file, blob hrefs already resolved by chat-stream).
   let answer = ''
   let sources: GroupedSource[] = []
+  let entities: QueryEntity[] = []
   let errorMessage = ''
   for await (const event of service.chat({ sessionId, message })) {
     if (event.type === 'answer') {
       answer = event.text
       sources = event.sources ?? []
+      entities = event.entities ?? []
     } else if (event.type === 'error') {
       errorMessage = event.message
     }
   }
   if (answer) {
-    const text = formatGroupedChatReply(answer, sources, 'slack')
+    const text = formatGroupedChatReply(answer, sources, 'slack', entities)
     await postSlackMessage(slackOpts.botToken, channel, text, threadTs)
   } else if (errorMessage) {
     // Surface the real failure (e.g. a retired-model 404) instead of silently
     // dropping it — otherwise a broken pipeline looks identical to "no result".
     log.error('slack chat failed', { channel, sessionId, error: errorMessage })
-    await postSlackMessage(slackOpts.botToken, channel, `⚠️ Sorry, I hit an error: ${errorMessage}`, threadTs)
+    await postSlackMessage(
+      slackOpts.botToken,
+      channel,
+      `⚠️ Sorry, I hit an error: ${errorMessage}`,
+      threadTs
+    )
   } else {
-    log.warn('slack chat produced no answer', { channel, sessionId, message: message.slice(0, 100) })
+    log.warn('slack chat produced no answer', {
+      channel,
+      sessionId,
+      message: message.slice(0, 100),
+    })
   }
 }

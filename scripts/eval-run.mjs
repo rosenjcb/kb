@@ -96,6 +96,7 @@ import {
 } from './eval-shared.mjs'
 
 import { readQueryResultFile, runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
+import { passesQualityGate } from './eval-quality-gate.mjs'
 import { startEvalServer, buildEvalOfflineEnv, defaultEvalApiKey } from './eval-server.mjs'
 import {
   DEFAULT_CONTROL_PROMPT,
@@ -1773,11 +1774,8 @@ async function main() {
   const pr =
     query_evaluation.filter(q => q.scores.correctness >= 3 && q.scores.usefulness >= 3).length /
     query_evaluation.length
-  // Headline gate now also requires relevance ≥ 3 — an off-topic answer no longer passes.
-  const prq =
-    query_evaluation.filter(
-      q => q.scores.correctness >= 3 && q.scores.usefulness >= 3 && q.scores.relevance >= 3
-    ).length / query_evaluation.length
+  // Headline gate: correctness + usefulness + relevance + evidence_handling ≥ 3.
+  const prq = query_evaluation.filter(q => passesQualityGate(q.scores)).length / query_evaluation.length
 
   // Retrieval-side relevancy diagnostic: harvest the curator's kept/dropped audit.
   const curationSummary = summarizeCuration(query_evaluation.map(q => q.retrieval?.detail))

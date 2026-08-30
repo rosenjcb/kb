@@ -14,6 +14,7 @@ import {
   applyConfigToEnv,
   createLLMProviderFromConfig,
 } from '@kb/core/config/kb-config.js'
+import type { RunCollector } from '@kb/core/core/telemetry.js'
 import type { ToolExecutor } from '@kb/core/core/tool-registry.js'
 import type { LLMProvider, Message } from '@kb/core/core/types.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
@@ -71,7 +72,7 @@ export interface KbService {
   chat(params: ChatParams): AsyncGenerator<ChatEvent>
   readFacts(params: Record<string, unknown>): Promise<unknown>
   /** Run one incremental rescan. Throws if a reindex is already in progress. */
-  reindex(onProgress?: (line: string) => void): Promise<string>
+  reindex(onProgress?: (line: string) => void, collector?: RunCollector): Promise<string>
   isReindexing(): boolean
   waitForBootstrap(): Promise<void>
   health(): KbHealth
@@ -141,13 +142,13 @@ export function createKbService(options: KbServiceOptions): KbService {
       return toolExecutor.execute({ id: 'kb-service', name: 'read_facts', input: params })
     },
 
-    async reindex(onProgress) {
+    async reindex(onProgress, collector?: RunCollector) {
       if (reindexing) {
         throw new Error('reindex already in progress')
       }
       reindexing = true
       try {
-        const count = await scanBaseRepos(baseDir, { onProgress })
+        const count = await scanBaseRepos(baseDir, { onProgress, collector })
         if (count === 0) {
           throw new Error(
             'This base has no indexed repos to scan. Declare repos via KB_SERVER_BASE_GIT_REPOS ' +

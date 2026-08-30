@@ -1,13 +1,13 @@
 import { mkdtempSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
 import type { ToolDefinition } from '@kb/core/core/types.js'
+import type { KbService } from '@kb/core/service/kb-service.js'
 import { buildMcpToolList, dispatchMcpToolCall } from '@kb/server/mcp-tools.js'
 import { PendingFeedbackStore } from '@kb/server/pending-feedback-store.js'
 import { QueryFeedbackStore } from '@kb/server/query-feedback-store.js'
 import { BaseNotFoundError, type KbServiceRegistry } from '@kb/server/service-registry.js'
-import type { KbService } from '@kb/core/service/kb-service.js'
+import { describe, expect, it, vi } from 'vitest'
 
 const registryTools: ToolDefinition[] = [
   { name: 'read_facts', description: 'Search facts', schema: { type: 'object', properties: {} } },
@@ -85,15 +85,28 @@ describe('dispatchMcpToolCall', () => {
     const body = JSON.parse(result.content[0].text)
     expect(body.answer).toBe('synth:true')
     expect(body.base).toBe('base')
-    expect(body.sources).toEqual([
-      { path: 'src/auth/login.ts', relPath: 'src/auth/login.ts', symbols: ['loginHandler'] },
-    ])
+    expect(body.sources).toEqual([{ path: 'src/auth/login.ts', symbols: ['loginHandler'] }])
     // The noise the trimmed payload exists to drop:
     expect(body.retrieval).toBeUndefined()
     expect(body.results).toBeUndefined()
     expect(result.content[0].text).not.toContain('facts-loop')
     expect(result.content[0].text).not.toContain('snippet')
     expect(result.content[0].text).not.toContain('factCount')
+  })
+
+  it('[TC-MCPC] query records a RunCollector and calls onQueryReport', async () => {
+    const onQueryReport = vi.fn()
+    const result = await dispatchMcpToolCall(
+      makeStubService(),
+      'query',
+      { q: 'auth' },
+      { onQueryReport }
+    )
+    expect(result.isError).toBeUndefined()
+    expect(onQueryReport).toHaveBeenCalledTimes(1)
+    const report = onQueryReport.mock.calls[0][0]
+    expect(report.command).toBe('mcp')
+    expect(report.status).toBe('success')
   })
 
   it('[TC-B233] echoes the served base so agents can detect wrong-base routing', async () => {
@@ -170,7 +183,11 @@ describe('dispatchMcpToolCall', () => {
       query: async params => ({
         status: 'accepted',
         recommendedAction: 'read_facts',
-        data: { answer: `other-base:${params.query}`, results: [], retrieval: { method: 'hybrid' } },
+        data: {
+          answer: `other-base:${params.query}`,
+          results: [],
+          retrieval: { method: 'hybrid' },
+        },
       }),
     })
     const registry = makeStubRegistry({
@@ -189,7 +206,7 @@ describe('dispatchMcpToolCall', () => {
     expect(JSON.parse(result.content[0].text).answer).toBe('other-base:auth')
   })
 
-  it('[TC-QCMR] errors (not a 404) when base names a slug the registry can\'t resolve', async () => {
+  it("[TC-QCMR] errors (not a 404) when base names a slug the registry can't resolve", async () => {
     const registry = makeStubRegistry({
       resolve: slug => {
         throw new BaseNotFoundError(slug ?? '')
@@ -560,7 +577,7 @@ describe('query synthesis failure', () => {
     expect(body.answerError.kind).toBe('insufficient_credits')
     expect(body.notes[0]).toContain('Answer synthesis failed')
     // Sources still ship — retrieval worked, only the answer-writing step failed.
-    expect(body.sources).toEqual([{ path: 'src/auth/login.ts', relPath: 'src/auth/login.ts' }])
+    expect(body.sources).toEqual([{ path: 'src/auth/login.ts' }])
   })
 
   it('[TC-RBLQ] Given synthesis failed, then no feedback is solicited for the missing answer', async () => {

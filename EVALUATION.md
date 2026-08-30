@@ -290,7 +290,7 @@ Artifacts land in `~/.kb/evaluations/<run-name>/artifact.json`. Fields to check:
 - `run.init_result.written_docs` — docs created (only relevant when init ran)
 - `run.init_result.graph_summary.entities` / `.relationships`
 - `aggregate_scores.query.mean_usefulness` / `.mean_relevance`
-- `aggregate_scores.query.pass_rate_quality_axes_at_least_3` (correctness + usefulness + relevance ≥ 3)
+- `aggregate_scores.query.pass_rate_quality_axes_at_least_3` (correctness + usefulness + relevance + evidence_handling ≥ 3; #241 added evidence — not comparable to pre-#241 pass rates)
 - `timeline_summary` — **where the query budget went**: `thinking_token_share` vs `synthesis_token_share`, `retrieval_time_share`, `mean_passes`, `curator_drop_rate`, `slowest_question`, and a plain-language `diagnosis[]`. Start here when kb is slow or token-heavy despite good scores.
 - `query_timeline[]` — the per-question drill-down behind that summary (stage token/time split + retrieval trace: passes, graph hops, per-pass `hops[]`, and the curator's `dropped_fact_ids`). See [Run timeline](eval/EVAL.md#run-timeline-where-the-query-budget-went).
 
@@ -406,7 +406,7 @@ Kb-only runs still record `aggregate_scores.query.success_score` but cannot emit
 | Symbol | Artifact field | Meaning |
 |--------|----------------|---------|
 | **S** | `aggregate_scores.query.success_score` | Continuous `[0,1]` blend of quality + tokens + speed (below) |
-| **pass@3** | `aggregate_scores.query.pass_rate_quality_axes_at_least_3` | Fraction of questions with corr≥3 AND use≥3 AND rel≥3 — quality floor only |
+| **pass@3** | `aggregate_scores.query.pass_rate_quality_axes_at_least_3` | Fraction of questions with corr≥3 AND use≥3 AND rel≥3 AND evidence≥3 — quality floor only. #241 added evidence_handling; pre-#241 pass rates are not comparable. |
 
 High S with low pass@3 means cheap/fast answers that often miss the ≥3 bar (or vice versa).
 
@@ -441,7 +441,7 @@ For each run, compute and record:
 
 - `success_score` (primary) plus its `quality_score`, `token_efficiency`, `speed_score` parts
 - Mean score per axis for `query` (`correctness`, `usefulness`, `relevance`, `specificity`, `evidence_handling`)
-- **Headline pass rate** `pass_rate_quality_axes_at_least_3` where `correctness >= 3` AND `usefulness >= 3` AND `relevance >= 3`. The legacy `pass_rate_correctness_and_usefulness_at_least_3` (no relevance gate) is still written for trend continuity.
+- **Headline pass rate** `pass_rate_quality_axes_at_least_3` where `correctness >= 3` AND `usefulness >= 3` AND `relevance >= 3` AND `evidence_handling >= 3`. The legacy `pass_rate_correctness_and_usefulness_at_least_3` (no relevance or evidence gate) is still written for trend continuity. **#241 added evidence_handling to the headline gate** — do not retune the rubric to recover the old pass rate, and do not compare headline pass rates across that break without a note.
 - `curation_summary` (kb side): the curator's retrieval-relevancy diagnostic — `total_kept`, `total_dropped`, and `retrieval_precision = kept / (kept + dropped)`, harvested from each question's `retrieval.detail`. This is a *retrieval-side* relevancy signal (what reached synthesis), complementary to the judged answer-relevance axis.
 - KB and control token/latency telemetry (`kb_query_telemetry`, `control_telemetry`)
 - Coverage notes by topic area

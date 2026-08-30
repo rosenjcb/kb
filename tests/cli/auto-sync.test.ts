@@ -14,13 +14,17 @@ vi.mock('@kb/core/ops/init-cli.js', () => ({
   runKbInit: vi.fn(),
 }))
 
-vi.mock('@kb/core/core/embeddings.js', () => ({
-  createEmbedder: vi.fn(() => ({
-    modelId: 'test:fake:3',
-    dimensions: 3,
-    embed: vi.fn(async (texts: string[]) => texts.map(() => [1, 0, 0])),
-  })),
-}))
+vi.mock('@kb/core/core/embeddings.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@kb/core/core/embeddings.js')>()
+  return {
+    ...actual,
+    createEmbedder: vi.fn(() => ({
+      modelId: 'test:fake:3',
+      dimensions: 3,
+      embed: vi.fn(async (texts: string[]) => texts.map(() => [1, 0, 0])),
+    })),
+  }
+})
 
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import { createEmbedder } from '@kb/core/core/embeddings.js'

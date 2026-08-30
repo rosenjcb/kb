@@ -13,7 +13,12 @@
  * to no physical file (`fact://` ids, scheme URIs) is dropped here.
  */
 
-import { type ChatReplyFlavor, type ChatSourceRepo, resolveChatSourceDisplay } from './chat-reply.js'
+import { type QueryEntity, formatEntitiesLine } from '../query/query-entities.js'
+import {
+  type ChatReplyFlavor,
+  type ChatSourceRepo,
+  resolveChatSourceDisplay,
+} from './chat-reply.js'
 import { markdownToSlackMrkdwn } from './markdown-to-slack.js'
 import type { QuerySource } from './serialize.js'
 
@@ -160,14 +165,30 @@ export function formatGroupedSourcesFooter(
 export function formatGroupedChatReply(
   answer: string,
   sources: GroupedSource[] | undefined,
-  flavor: ChatReplyFlavor = 'plain'
+  flavor: ChatReplyFlavor = 'plain',
+  entities?: QueryEntity[]
 ): string {
   let body = answer.trim()
   if (flavor === 'slack' && body) {
     body = markdownToSlackMrkdwn(body)
   }
-  const footer = formatGroupedSourcesFooter(sources, flavor)
+  const footer = [
+    formatGroupedSourcesFooter(sources, flavor),
+    formatEntitiesFooter(entities, flavor),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   if (!footer) return body
   if (!body) return footer
   return `${body}\n\n${footer}`
+}
+
+/** Routes / services footer (empty string when nothing to show). */
+export function formatEntitiesFooter(
+  entities: QueryEntity[] | undefined,
+  flavor: ChatReplyFlavor = 'plain'
+): string {
+  if (!entities || entities.length === 0) return ''
+  const heading = flavor === 'slack' ? '*Routes / services*' : '**Routes / services**'
+  return `${heading}\n${formatEntitiesLine(entities)}`
 }

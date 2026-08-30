@@ -1,4 +1,5 @@
 import path from 'node:path'
+import type { RunCollector } from '@kb/core/core/telemetry.js'
 import { scanBaseRepos } from '@kb/core/ops/auto-sync.js'
 import {
   readOptionalCliValue,
@@ -15,12 +16,13 @@ import {
  */
 export async function runScanCommand(
   args: string[],
-  onProgress?: (line: string) => void
+  onProgress?: (line: string) => void,
+  collector?: RunCollector
 ): Promise<string> {
   const baseArg = readOptionalCliValue(args, '--base')
   const skipEmbeddings = args.includes('--skip-embed')
   const baseDir = baseArg ? resolveBaseToDir(baseArg) : (await resolveEffectiveBaseDir()).baseDir
-  const count = await scanBaseRepos(baseDir, { onProgress, skipEmbeddings })
+  const count = await scanBaseRepos(baseDir, { onProgress, skipEmbeddings, collector })
   if (count === 0) {
     throw new Error(
       'This base has no indexed repos to scan. Declare repos via KB_SERVER_BASE_GIT_REPOS ' +

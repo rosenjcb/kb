@@ -23,15 +23,22 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
 import { resolveQueryTimeoutMs } from '@kb/core/config/query-timeout.js'
-import { handleMcpHttpRequest } from './mcp-server.js'
-import { handleAdminRoute } from './admin-routes.js'
+import {
+  ReportWriter,
+  RunCollector,
+  type RunReport,
+  type SessionTurn,
+  costLogFields,
+  estimateCost,
+} from '@kb/core/core/telemetry.js'
 import { resolveSourceRepos } from '@kb/core/service/chat-reply.js'
-import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
-import { log } from './logger.js'
-import { resolveServerVersion } from './version.js'
 import { BOOTSTRAP_INDEXING_MESSAGE, type KbService } from '@kb/core/service/kb-service.js'
+import { serializeMcpQueryResult, serializeQueryResult } from '@kb/core/service/serialize.js'
+import { handleAdminRoute } from './admin-routes.js'
+import { log } from './logger.js'
+import { handleMcpHttpRequest } from './mcp-server.js'
 import { BaseNotFoundError, type KbServiceRegistry } from './service-registry.js'
 import {
   type SlackEventPayload,
@@ -40,13 +47,7 @@ import {
   isDuplicateEvent,
   verifySlackSignature,
 } from './slack-handler.js'
-import {
-  ReportWriter,
-  RunCollector,
-  estimateCost,
-  type RunReport,
-  type SessionTurn,
-} from '@kb/core/core/telemetry.js'
+import { resolveServerVersion } from './version.js'
 
 /** Per-line cap on captured chat transcript text, so run logs stay bounded. */
 const MAX_TURN_CHARS = 4000
@@ -513,8 +514,9 @@ export function createHttpServer(options: HttpServerOptions): Server {
         return
       }
       try {
-        await handleMcpRequest(svc, registry, req, res, body, ctx)
-        buildAndWriteReport('mcp', ctx, 'success', svc, { sessionId: ctx.requestId })
+        await handleMcpRequest(svc, registry, req, res, body, ctx, report => {
+          writeReport(report)
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         buildAndWriteReport('mcp', ctx, 'error', svc, {
@@ -630,7 +632,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
           ? serializeQueryResult(result, { sourceRepos, base: servedBase })
           : serializeMcpQueryResult(result, { sourceRepos, base: servedBase })
       const answerError = serialized.answerError
-      const full = body.verbose === true ? (serialized as ReturnType<typeof serializeQueryResult>) : null
+      const full =
+        body.verbose === true ? (serialized as ReturnType<typeof serializeQueryResult>) : null
+      const report = answerError
+        ? finalizeHttpReport(collector, ctx, 'error', answerError.message)
+        : finalizeHttpReport(collector, ctx, 'success')
       log.info('query complete', {
         requestId: ctx.requestId,
         sourcesCount: serialized.sources.length,
@@ -643,18 +649,11 @@ export function createHttpServer(options: HttpServerOptions): Server {
         ...(answerError
           ? { answerError: answerError.kind, answerErrorMessage: answerError.message }
           : {}),
-        durationMs: Date.now() - ctx.startMs,
+        ...costLogFields(report),
       })
       // Echo the served base so clients can detect silent wrong-base routing (#233).
       sendJson(res, 200, { ...serialized, base: servedBase })
-      // Retrieval succeeded and the caller still gets its sources, so this stays a 200 —
-      // but recording it as a plain success would hide provider outages from telemetry
-      // exactly when the RunReports are what you'd go looking at.
-      writeReport(
-        answerError
-          ? finalizeHttpReport(collector, ctx, 'error', answerError.message)
-          : finalizeHttpReport(collector, ctx, 'success')
-      )
+      writeReport(report)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       const status = message === 'query timed out' ? 504 : 500
@@ -750,6 +749,14 @@ export function createHttpServer(options: HttpServerOptions): Server {
         answerLen,
         factsRetrieved,
         durationMs: Date.now() - ctx.startMs,
+        inputTokens,
+        outputTokens,
+        estimatedCostUsd: estimateCost(
+          svcHealth.provider ?? 'unknown',
+          svcHealth.model ?? 'unknown',
+          inputTokens,
+          outputTokens
+        ),
       })
       buildAndWriteReport('chat', ctx, 'success', svc, {
         sessionId,
@@ -860,7 +867,8 @@ async function handleMcpRequest(
   req: IncomingMessage,
   res: ServerResponse,
   body: unknown,
-  ctx: RequestCtx
+  ctx: RequestCtx,
+  onQueryReport?: (report: RunReport) => void
 ): Promise<void> {
   // Extract the JSON-RPC method name for logging (best-effort, body may be null/non-object).
   const rpcMethod =
@@ -872,15 +880,30 @@ async function handleMcpRequest(
       : undefined
 
   log.info('mcp request', { requestId: ctx.requestId, rpcMethod })
+  let wroteQueryReport = false
   try {
     // requestId rides into query payloads so submit_feedback can reference this call;
     // registry lets query's optional `base` argument override the session's default.
-    await handleMcpHttpRequest(service, req, res, body, { requestId: ctx.requestId, registry })
-    log.info('mcp complete', {
+    await handleMcpHttpRequest(service, req, res, body, {
       requestId: ctx.requestId,
-      rpcMethod,
-      durationMs: Date.now() - ctx.startMs,
+      registry,
+      onQueryReport: report => {
+        wroteQueryReport = true
+        onQueryReport?.(report)
+        log.info('mcp complete', {
+          requestId: ctx.requestId,
+          rpcMethod,
+          ...costLogFields(report),
+        })
+      },
     })
+    if (!wroteQueryReport) {
+      log.info('mcp complete', {
+        requestId: ctx.requestId,
+        rpcMethod,
+        durationMs: Date.now() - ctx.startMs,
+      })
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error('mcp error', {

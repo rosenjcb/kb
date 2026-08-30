@@ -27,6 +27,7 @@ import {
   formatAnswerTelemetryLog,
 } from './eval-shared.mjs'
 import { runAutoScoreFile, scoreFromLabel } from './eval-score.mjs'
+import { passesQualityGate } from './eval-quality-gate.mjs'
 
 export const DEFAULT_CONTROL_PROMPT =
   'You are answering a question about the repository in the current working directory. ' +
@@ -349,11 +350,9 @@ export async function runControlPass({
   const passRate =
     query_evaluation.filter(x => x.scores.correctness >= 3 && x.scores.usefulness >= 3).length /
     query_evaluation.length
-  // Headline gate now also requires relevance ≥ 3 (matches kb-side prq).
+  // Headline gate matches kb-side prq (includes evidence_handling).
   const passRateQuality =
-    query_evaluation.filter(
-      x => x.scores.correctness >= 3 && x.scores.usefulness >= 3 && (x.scores.relevance ?? 0) >= 3
-    ).length / query_evaluation.length
+    query_evaluation.filter(x => passesQualityGate(x.scores)).length / query_evaluation.length
 
   const tels = perQuestion.map(qf => qf.telemetry).filter(Boolean)
   const answered = perQuestion.filter(qf => String(qf.answer ?? '').trim()).length

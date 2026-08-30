@@ -6,7 +6,7 @@ tests:
   - ../../../../tests/tools/tree-sitter-indexer.test.ts
 description: Behavioral specification for Tree-Sitter Code Graph Indexer
 tags: [spec, kb]
-timestamp: 2026-08-23T21:00:00Z
+timestamp: 2026-08-29T17:47:00Z
 ---
 
 ### Intro
@@ -59,8 +59,8 @@ still not indexed, in either case.
 
 **Text-state fallback.** A `.vue` or `.svelte` file with no inline script,
 or whose extracted script fails to parse, gets a `code_file_state` row and
-no `code_symbols`. This is the same text-only treatment the indexer gives
-any unsupported extension, so a template-only file is never dropped.
+one `kind=file` symbol. This is the same text-only treatment the indexer
+gives any unsupported extension, so a template-only file is never dropped.
 
 **Astro and the Svelte typo alias.** `.astro` files, and files with the
 `.svlete` extension (a legacy typo alias for `.svelte`), always get
@@ -73,9 +73,11 @@ them.
 |------|------------|
 | FR-1 | Tree-sitter indexer parses ASTs and indexes code symbols with source text (no structural edge facts in v1) |
 | FR-2 | Parses inline `<script>` blocks in .vue/.svelte files through the JS/TS grammar and indexes their exported symbols |
-| FR-3 | Falls back to text-state indexing for .vue/.svelte with no parseable inline script, and always for .astro and the .svlete alias |
+| FR-3 | [UPDATED] Falls back to text-state indexing plus one `kind=file` symbol for .vue/.svelte with no parseable inline script, and always for .astro and the .svlete alias |
 | FR-4 | Indexes a non-exported top-level function or function-valued constant in an embedded .vue/.svelte script, without extending that rule to standalone .ts/.js files |
 | FR-5 | [UPDATED] Text-only allowlist files write one `kind=file` code_symbol; content-hash skip requires searchable rows so legacy state-only indexes heal on rescan; parse failures also emit a file-level symbol |
+| FR-6 | [NEW] Emits a `kind=component` symbol named after the file basename for each .vue/.svelte file that has an embedded script |
+| FR-7 | [NEW] Emits a `kind=file` symbol when parse succeeds but yields no symbols; indexes build-manifest extensions (`.cabal`, `.gradle`) as file-level symbols |
 
 ### QA Test Cases
 
@@ -110,6 +112,9 @@ them.
 | TC-VUEN | FR-4 | does not extend non-exported function capture to plain .ts/.js modules | pass |
 | TC-F234 | FR-5 | [NEW] indexes `share/completions/scp.fish` as a searchable file-level symbol | pass |
 | TC-H234 | FR-5 | [NEW] re-index after wiping symbols but keeping matching content_hash state | emits `kind=file` symbol again; skipped stays 0 |
+| TC-SFC1 | FR-6 | [NEW] `Gantt.vue` / `Sidebar.svelte` with an embedded script | `kind=component` symbols named `Gantt` and `Sidebar`; not `Gantt.vue` |
+| TC-ZSYM | FR-7 | [NEW] a file that parses cleanly but exports nothing | one `kind=file` symbol so the path stays searchable |
+| TC-MANIFEST | FR-7 | [NEW] `Demo.cabal` with no AST grammar | indexed as a `kind=file` symbol |
 
 ### Related docs
 

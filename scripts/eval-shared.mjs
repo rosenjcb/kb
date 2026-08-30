@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
 import yaml from 'js-yaml'
 
+import { passesQualityGate } from './eval-quality-gate.mjs'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const KB_REPO = path.resolve(__dirname, '..')
 const SUITES_DIR = path.join(KB_REPO, 'eval', 'suites')
@@ -1467,11 +1469,7 @@ export function summarizeScoresByShape(queryEvaluation) {
       mean_specificity: meanOf('specificity'),
       mean_evidence_handling: meanOf('evidence_handling'),
       pass_rate_quality_axes_at_least_3: Number(
-        (
-          bucket.filter(
-            q => q.scores.correctness >= 3 && q.scores.usefulness >= 3 && q.scores.relevance >= 3
-          ).length / bucket.length
-        ).toFixed(3)
+        (bucket.filter(q => passesQualityGate(q.scores)).length / bucket.length).toFixed(3)
       ),
     }
   }

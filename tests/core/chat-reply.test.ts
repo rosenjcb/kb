@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest'
 import { gitRemoteToBrowseUrl } from '@kb/core/ops/git-sync.js'
 import {
   chatSourceReposFromBaseRepos,
@@ -10,6 +9,7 @@ import {
   groupSources,
 } from '@kb/core/service/source-grouping.js'
 import type { BaseRepo } from '@kb/core/storage/base-repos.js'
+import { describe, expect, it } from 'vitest'
 
 const kbRepo = {
   slug: 'rosenjcb-kb',
@@ -28,13 +28,13 @@ const raylibRepo = {
 describe('gitRemoteToBrowseUrl', () => {
   it('[TC-7FWQ] maps https and ssh remotes to browse roots; rejects local paths', () => {
     expect(gitRemoteToBrowseUrl('https://github.com/rosenjcb/kb.git')).toBe(
-      'https://github.com/rosenjcb/kb',
+      'https://github.com/rosenjcb/kb'
     )
     expect(gitRemoteToBrowseUrl('git@github.com:rosenjcb/kb.git')).toBe(
-      'https://github.com/rosenjcb/kb',
+      'https://github.com/rosenjcb/kb'
     )
     expect(gitRemoteToBrowseUrl('ssh://git@gitlab.com/org/repo.git')).toBe(
-      'https://gitlab.com/org/repo',
+      'https://gitlab.com/org/repo'
     )
     expect(gitRemoteToBrowseUrl('/tmp/local-clone')).toBeNull()
     expect(gitRemoteToBrowseUrl('file:///tmp/local-clone')).toBeNull()
@@ -74,9 +74,9 @@ describe('chatSourceReposFromBaseRepos', () => {
 
 describe('resolveChatSourceDisplay', () => {
   it('[TC-4P8G] keeps fact:// ids and drops other schemes', () => {
-    expect(
-      resolveChatSourceDisplay({ filePath: 'fact://abc123' }, [kbRepo])?.label,
-    ).toBe('fact://abc123')
+    expect(resolveChatSourceDisplay({ filePath: 'fact://abc123' }, [kbRepo])?.label).toBe(
+      'fact://abc123'
+    )
     expect(resolveChatSourceDisplay({ filePath: 'https://example.com/x' }, [kbRepo])).toBeNull()
   })
 })
@@ -90,10 +90,16 @@ describe('groupSources', () => {
         { filePath: 'rosenjcb-kb/src/tools/x.ts', gitRepo: 'rosenjcb-kb', symbol: 'foo' },
         { filePath: 'fact://deadbeef' },
       ],
-      { sourceRepos: [kbRepo] },
+      { sourceRepos: [kbRepo] }
     )
     expect(
-      out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href, symbols: g.symbols })),
+      out.map(g => ({
+        path: g.path,
+        repo: g.repo,
+        relPath: g.relPath,
+        href: g.href,
+        symbols: g.symbols,
+      }))
     ).toEqual([
       {
         path: 'rosenjcb/kb/packages/kb-core/src/core/CHAT.md',
@@ -129,9 +135,11 @@ describe('groupSources', () => {
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
         { filePath: 'raysan5-raylib/src/raudio.c', gitRepo: 'raysan5-raylib' },
       ],
-      { sourceRepos: [kbRepo, raylibRepo] },
+      { sourceRepos: [kbRepo, raylibRepo] }
     )
-    expect(out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))).toEqual([
+    expect(
+      out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))
+    ).toEqual([
       {
         path: 'rosenjcb/kb/packages/kb-core/src/core/CHAT.md',
         repo: 'rosenjcb/kb',
@@ -151,9 +159,9 @@ describe('groupSources', () => {
     const out = groupSources([{ filePath: 'other-slug/README.md', gitRepo: 'other-slug' }], {
       sourceRepos: [kbRepo],
     })
-    expect(out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))).toEqual([
-      { path: 'README.md', repo: undefined, relPath: 'README.md', href: undefined },
-    ])
+    expect(
+      out.map(g => ({ path: g.path, repo: g.repo, relPath: g.relPath, href: g.href }))
+    ).toEqual([{ path: 'README.md', repo: undefined, relPath: 'README.md', href: undefined }])
   })
 
   it('[TC-N3WQ] no citation path ever contains a local clone dir name', () => {
@@ -161,7 +169,9 @@ describe('groupSources', () => {
     // registry) rendered `kb-2026-08-15-1419-kb/packages/…` — a local provisioning
     // artifact — as the file a user was told to open.
     const cloneSlug = 'kb-2026-08-15-1419-kb'
-    const facts = [{ filePath: `${cloneSlug}/packages/kb-core/src/core/CHAT.md`, gitRepo: cloneSlug }]
+    const facts = [
+      { filePath: `${cloneSlug}/packages/kb-core/src/core/CHAT.md`, gitRepo: cloneSlug },
+    ]
     for (const sourceRepos of [[], [kbRepo], [kbRepo, raylibRepo]]) {
       for (const g of groupSources(facts, { sourceRepos })) {
         expect(g.path).not.toContain(cloneSlug)
@@ -178,7 +188,7 @@ describe('formatGroupedChatReply', () => {
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
         { filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' },
       ],
-      { sourceRepos: [kbRepo] },
+      { sourceRepos: [kbRepo] }
     )
     expect(formatGroupedChatReply('Hello.', grouped)).toBe(
       [
@@ -186,24 +196,41 @@ describe('formatGroupedChatReply', () => {
         '',
         'Sources',
         '1. [rosenjcb/kb/packages/kb-core/src/core/CHAT.md](https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md)',
-      ].join('\n'),
+      ].join('\n')
     )
   })
 
   it('[TC-AZBG] formats Slack mrkdwn with per-repo clickable links', () => {
     const grouped = groupSources(
       [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
-      { sourceRepos: [kbRepo] },
+      { sourceRepos: [kbRepo] }
     )
     const text = formatGroupedChatReply('Hello.', grouped, 'slack')
     expect(text).toContain('*Sources*')
     expect(text).toContain(
-      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|rosenjcb/kb/packages/kb-core/src/core/CHAT.md>',
+      '<https://github.com/rosenjcb/kb/blob/main/packages/kb-core/src/core/CHAT.md|rosenjcb/kb/packages/kb-core/src/core/CHAT.md>'
     )
   })
 
   it('[TC-NL7F] returns answer alone when sources are empty', () => {
     expect(formatGroupedChatReply('Just text.', [])).toBe('Just text.')
     expect(formatGroupedSourcesFooter([])).toBe('')
+  })
+
+  it('[TC-ENTF] appends a Routes / services section when entities are present', () => {
+    const grouped = groupSources(
+      [{ filePath: 'rosenjcb-kb/packages/kb-core/src/core/CHAT.md', gitRepo: 'rosenjcb-kb' }],
+      { sourceRepos: [kbRepo] }
+    )
+    const text = formatGroupedChatReply('Hello.', grouped, 'plain', [
+      { kind: 'api', name: '/v1/query', role: 'scope' },
+    ])
+    expect(text).toContain('**Routes / services**')
+    expect(text).toContain('api /v1/query')
+    const slack = formatGroupedChatReply('Hello.', grouped, 'slack', [
+      { kind: 'service', name: 'kb-server', role: 'cited' },
+    ])
+    expect(slack).toContain('*Routes / services*')
+    expect(slack).toContain('service kb-server')
   })
 })

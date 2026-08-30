@@ -16,9 +16,11 @@
  *
  * Scoring is label-based: the judge picks a named label per axis (not a bare
  * number), which removes the "guess a number 0-4" failure mode. Each label maps
- * to an ordinal 0-4 level under the hood, so every downstream metric (adequacy
- * utility φ with τ=3, pass-rate ≥3 gates, success_score, the paper's equations)
- * is unchanged and historical artifacts stay comparable.
+ * to an ordinal 0-4 level under the hood. Adequacy utility φ (τ=3) and
+ * success_score still use correctness/usefulness/(optional) relevance. The
+ * headline pass gate also requires evidence_handling ≥ 3 (#241) — that break
+ * is documented in EVAL.md / EVALUATION.md; do not retune the rubric to recover
+ * the old pass rate.
  */
 
 import fs from 'node:fs'
@@ -140,12 +142,25 @@ export const RUBRIC_AXES = [
   {
     key: 'evidence_handling',
     title: 'Evidence handling',
-    prompt: 'Is every claim traceable to the evidence, and are gaps named honestly?',
+    prompt:
+      'Is every material claim traceable to the supplied evidence, sources, or reference? Pass/fail: an ungrounded file path, symbol, or API is a fail even when the rest of the answer is fluent and probably true. Gaps presented as fact are a fail. Name gaps when evidence is thin.',
     labels: [
-      { label: 'well_grounded', score: 4, desc: 'every claim traceable to the evidence and gaps are acknowledged' },
-      { label: 'grounded', score: 3, desc: 'reasonably grounded; little that is unsupported' },
-      { label: 'some_speculation', score: 2, desc: 'asserts specifics the evidence does not clearly support' },
-      { label: 'speculative', score: 1, desc: 'strong speculation or unsupported claims' },
+      {
+        label: 'well_grounded',
+        score: 4,
+        desc: 'every claim traceable to the evidence; gaps named when evidence is thin',
+      },
+      {
+        label: 'grounded',
+        score: 3,
+        desc: 'every material claim traceable; no ungrounded file, symbol, or API',
+      },
+      {
+        label: 'some_speculation',
+        score: 2,
+        desc: 'names a file, symbol, or API the evidence does not contain, or asserts a specific the sources do not establish',
+      },
+      { label: 'speculative', score: 1, desc: 'strong speculation or several unsupported claims' },
       { label: 'ungrounded', score: 0, desc: 'no evidence discipline' },
     ],
   },
@@ -210,11 +225,13 @@ Before choosing each label, identify the single biggest weakness of the answer o
 
 Hard caps — these override the per-axis descriptions below:
 - Any off-topic, padding, or non-load-bearing claim caps Relevance at "padded" or worse.
-- Any claim that is unsupported by the supplied evidence, provenance, or reference — or that asserts specifics the evidence does not establish — caps Evidence handling at "some_speculation" or worse, even if the claim is plausibly true.
+- Any file path, symbol, or API name that the supplied evidence, sources, or reference do not contain caps Evidence handling at "some_speculation" or worse — even if the claim is plausibly true. "grounded" is a pass and requires every material claim to be traceable; "a little unsupported" is a fail, not a pass.
+- Any specific the evidence does not establish, or a gap papered over with confident prose, caps Evidence handling at "some_speculation" or worse.
 - A scaffold, stub, or "here is how you would find out" offered in place of a real answer caps Usefulness at "needs_followup" or worse.
 - Missing or contradicting a key fact caps Correctness at "mixed" or worse.
+- An answer that asserts an ungrounded file path also caps Correctness at "mixed" or worse — fluent invention is not "mostly_correct".
 
-Calibration: an answer that states the right high-level facts fluently but adds an unsupported or tangential aside and lacks concrete project-specific detail should land around correctness "mostly_correct", usefulness "helpful", relevance "padded", specificity "partly_generic", evidence "some_speculation". Do not drift above this anchor without a concrete reason.
+Calibration: an answer that states the right high-level facts fluently but names a file absent from the supplied sources fails Evidence handling ("some_speculation" or worse) and must not pass. An answer that stays inside the sources but adds a tangential aside and lacks project-specific detail should land around correctness "mostly_correct", usefulness "helpful", relevance "padded", specificity "partly_generic", evidence "grounded" only if every remaining claim is traceable. Do not drift above this anchor without a concrete reason.
 
 ${axisLines}
 

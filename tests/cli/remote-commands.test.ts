@@ -1,14 +1,14 @@
-import { mkdtemp, rm } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   dispatchRemoteChatStreamEvent,
   isClientLocalCommand,
   resolveDisplayBase,
 } from '@kb/client/cli/remote-commands.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('isClientLocalCommand', () => {
   it('[TC-KFYC] keeps mcp/skills/uninstall/sync/base use on the client', () => {
@@ -56,7 +56,7 @@ describe('resolveDisplayBase', () => {
       'fetch',
       vi.fn(async () => {
         throw new Error('resolveDisplayBase must never probe the network')
-      }),
+      })
     )
     await expect(resolveDisplayBase({})).resolves.toEqual({
       name: 'raylib',
@@ -73,7 +73,7 @@ describe('resolveDisplayBase', () => {
       'fetch',
       vi.fn(async () => {
         throw new Error('resolveDisplayBase must never probe the network')
-      }),
+      })
     )
     await expect(resolveDisplayBase({})).resolves.toEqual({
       name: 'default',
@@ -87,10 +87,13 @@ describe('dispatchRemoteChatStreamEvent', () => {
     const log = vi.fn()
     const progress = vi.fn()
     dispatchRemoteChatStreamEvent({ type: 'meta', text: 'stage> route:start' }, { log, progress })
-    dispatchRemoteChatStreamEvent({ type: 'reasoning', text: 'considering Lua…' }, { log, progress })
+    dispatchRemoteChatStreamEvent(
+      { type: 'reasoning', text: 'considering Lua…' },
+      { log, progress }
+    )
     dispatchRemoteChatStreamEvent(
       { type: 'meta', text: 'stage> route:still-working 12s' },
-      { log, progress },
+      { log, progress }
     )
 
     expect(log.mock.calls.map(c => c[0])).toEqual([
@@ -100,7 +103,7 @@ describe('dispatchRemoteChatStreamEvent', () => {
     expect(progress.mock.calls.map(c => c[0])).toEqual(['considering Lua…'])
   })
 
-  it('[TC-4RGX] surfaces the answer event\'s grouped sources via onSources', () => {
+  it("[TC-4RGX] surfaces the answer event's grouped sources via onSources", () => {
     const onSources = vi.fn()
     const grouped = [
       {
@@ -117,9 +120,25 @@ describe('dispatchRemoteChatStreamEvent', () => {
     dispatchRemoteChatStreamEvent(
       { type: 'answer', text: 'Hello.', sources: grouped, factsRetrieved: 1 },
       { log: vi.fn(), progress: vi.fn() },
-      { onSources },
+      { onSources }
     )
     expect(onSources).toHaveBeenCalledWith(grouped)
+  })
+
+  it('[TC-ENTC] surfaces the answer event entities via onEntities', () => {
+    const onEntities = vi.fn()
+    dispatchRemoteChatStreamEvent(
+      {
+        type: 'answer',
+        text: 'Hello.',
+        sources: [],
+        factsRetrieved: 0,
+        entities: [{ kind: 'api', name: '/v1/query', role: 'scope' }],
+      },
+      { log: vi.fn(), progress: vi.fn() },
+      { onEntities }
+    )
+    expect(onEntities).toHaveBeenCalledWith([{ kind: 'api', name: '/v1/query', role: 'scope' }])
   })
 })
 

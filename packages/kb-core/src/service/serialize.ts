@@ -9,11 +9,16 @@ import {
   isEvidenceAtLeast,
   weakestEvidence,
 } from '@kb/core/core/evidence-label.js'
-import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
 import { type LLMFailure, describeLLMFailure } from '@kb/core/core/llm-error.js'
 import type { IntentResult } from '@kb/core/intents/types.js'
+import type { ReadDocumentsResultData, ReadDocumentsResultItem } from '@kb/core/query/intent-cli.js'
+import {
+  LEAN_ENTITY_CAP,
+  type QueryEntity,
+  capQueryEntities,
+} from '@kb/core/query/query-entities.js'
 import type { ChatSourceRepo } from './chat-reply.js'
-import { type GroupedSource, groupSources } from './source-grouping.js'
+import { DEFAULT_SOURCE_LIMIT, type GroupedSource, groupSources } from './source-grouping.js'
 
 export interface QuerySource {
   id?: string
@@ -74,7 +79,14 @@ export interface QueryResponseBody {
   answerError?: LLMFailure
   /** Server-side path to the deep trace dump when `trace: true` was requested. */
   traceFile?: string
+  /**
+   * Harvested ontology for this answer. Omitted when empty. Lean payloads cap
+   * at {@link LEAN_ENTITY_CAP}; verbose keeps the pipeline's longer list.
+   */
+  entities?: QueryEntity[]
 }
+
+export type { QueryEntity } from '@kb/core/query/query-entities.js'
 
 const SNIPPET_MAX_CHARS = 280
 
@@ -145,12 +157,6 @@ export interface McpSource {
   path: string
   /** `owner/repo` (GitHub `nameWithOwner`) when known. */
   repo?: string
-  /**
-   * Repo-relative path on its own. Split out so an agent can open or grep the
-   * file without parsing `path` — which is guesswork when the owner segment
-   * itself contains slashes (GitLab subgroups).
-   */
-  relPath: string
   /** Distinct fact subjects when known; omitted when empty. */
   symbols?: string[]
   /** Blob deep link when the repo registry resolved one. */
@@ -162,6 +168,11 @@ export interface McpQueryResponseBody {
   answer: string | null
   /** Lean file citations — open these to verify the answer. */
   sources: McpSource[]
+  /**
+   * Harvested ontology for this answer (`scope` landings + cited hits).
+   * Omitted when empty. Capped at {@link LEAN_ENTITY_CAP}.
+   */
+  entities?: QueryEntity[]
   evidence?: EvidenceLabel
   /** Actionable caveats: verify hints, answer/evidence path mismatches. */
   notes?: string[]
@@ -269,8 +280,7 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
     seen.add(normalized)
     const hasPath = normalized.includes('/')
     const grounded = hasPath
-      ? knownPaths.has(normalized) ||
-        [...knownPaths].some(p => p.endsWith(`/${normalized}`))
+      ? knownPaths.has(normalized) || [...knownPaths].some(p => p.endsWith(`/${normalized}`))
       : knownBasenames.has(normalized)
     if (!grounded) ungrounded.push(token)
   }
@@ -278,24 +288,77 @@ export function findUngroundedFileReferences(answer: string, sourcePaths: string
 }
 
 /**
+ * Prompt templates and changelogs that retrieval often ranks high but that are
+ * not openable evidence for a product question. Lean MCP drops them unless the
+ * answer actually names the file.
+ */
+export function isLeanCitationNoise(path: string): boolean {
+  const n = path.replace(/\\/g, '/').toLowerCase()
+  if (n.includes('/prompts/')) return true
+  const base = n.split('/').pop() ?? ''
+  return base === 'changelog.md'
+}
+
+function sourceMentionedInAnswer(path: string, relPath: string | undefined, answer: string): boolean {
+  const hay = answer.toLowerCase()
+  const rel = (relPath || path).replace(/\\/g, '/').toLowerCase()
+  const base = rel.split('/').pop()
+  if (base && hay.includes(base)) return true
+  return rel.length > 3 && hay.includes(rel)
+}
+
+/**
+ * Lean MCP citations: files the answer names first, then other retrieval hits,
+ * dropping prompt/changelog noise that the answer did not name. Group first
+ * with {@link DEFAULT_SOURCE_LIMIT} so noise in the top 5 cannot hide a named file.
+ */
+export function selectLeanGroupedSources(
+  grouped: GroupedSource[],
+  answer: string | null,
+  maxSources: number
+): GroupedSource[] {
+  const mentioned: GroupedSource[] = []
+  const rest: GroupedSource[] = []
+  for (const g of grouped) {
+    const hit = Boolean(answer) && sourceMentionedInAnswer(g.path, g.relPath, answer ?? '')
+    if (hit) mentioned.push(g)
+    else if (!isLeanCitationNoise(g.path) && !isLeanCitationNoise(g.relPath)) rest.push(g)
+  }
+  return [...mentioned, ...rest].slice(0, maxSources)
+}
+
+function demoteStatusWhenGroundingFails(
+  status: IntentResult['status'],
+  groundingFailed: boolean
+): IntentResult['status'] {
+  if (!groundingFailed) return status
+  if (status === 'accepted' || status === 'valid') return 'uncertain'
+  return status
+}
+
+/**
  * Lean `{ path, symbols?, href? }` citations for the agent payload. Reuses the
- * canonical {@link groupSources} (drops non-openable refs, dedupes by file, folds
- * symbols) at MCP's tighter caps. Omits label/gitRepo/facts/factCount — those are
- * verbose-only. Empty `symbols` is omitted to save tokens.
+ * canonical {@link groupSources} then {@link selectLeanGroupedSources}. Omits
+ * label/gitRepo/facts/factCount/`relPath` — `relPath` is reconstructible from
+ * `path` + optional `repo`. Empty `symbols` is omitted to save tokens.
  *
  * Takes the same `sourceRepos` as every other surface: the two citation forms
  * (repo-relative path, blob href) come from one registry, so an agent's `path`
  * and a human's link always name the same file.
  */
-function formatMcpSources(results: QuerySource[], sourceRepos: ChatSourceRepo[]): McpSource[] {
-  return groupSources(results, {
+function formatMcpSources(
+  results: QuerySource[],
+  sourceRepos: ChatSourceRepo[],
+  answer: string | null
+): McpSource[] {
+  const grouped = groupSources(results, {
     sourceRepos,
-    maxSources: MCP_MAX_SOURCES,
+    maxSources: DEFAULT_SOURCE_LIMIT,
     maxSymbolsPerSource: MCP_MAX_SYMBOLS_PER_SOURCE,
-  }).map(g => ({
+  })
+  return selectLeanGroupedSources(grouped, answer, MCP_MAX_SOURCES).map(g => ({
     path: g.path,
     ...(g.repo ? { repo: g.repo } : {}),
-    relPath: g.relPath,
     ...(g.symbols.length > 0 ? { symbols: g.symbols } : {}),
     ...(g.href ? { href: g.href } : {}),
   }))
@@ -318,9 +381,10 @@ function computeQueryGrounding(params: {
   hasSources: boolean
   /** Served base slug — used for wrong-base visibility when nothing was retrieved. */
   base?: string
-}): { notes: string[]; evidence?: EvidenceLabel } {
+}): { notes: string[]; evidence?: EvidenceLabel; groundingFailed: boolean } {
   const notes: string[] = []
   let evidence = params.evidence
+  let groundingFailed = false
 
   // Floor note uses the *original* label: a `strong` answer later downgraded by a
   // grounding check gets the sharper ungrounded/claims note below, not this one.
@@ -340,6 +404,7 @@ function computeQueryGrounding(params: {
       // evidence no matter how many results came back — downgrade rather than
       // let a note-only warning coexist with an unchanged top-level label.
       if (evidence) evidence = weakestEvidence([evidence, 'weak'])
+      groundingFailed = true
     }
 
     // Prose claims the opt-in verification pass judged unsupported by the evidence
@@ -351,6 +416,7 @@ function computeQueryGrounding(params: {
         `The answer makes claim(s) the cited sources do not directly support: ${params.unsupportedClaims.join('; ')} — verify against the sources before relying on this.`
       )
       if (evidence) evidence = weakestEvidence([evidence, 'weak'])
+      groundingFailed = true
     }
   } else if (params.answerError) {
     // Lead with the failure. "Open the cited sources directly" reads as a retrieval
@@ -375,7 +441,7 @@ function computeQueryGrounding(params: {
     )
   }
 
-  return { notes, evidence }
+  return { notes, evidence, groundingFailed }
 }
 
 /** Options shared by both serializers. */
@@ -402,10 +468,12 @@ export function serializeMcpQueryResult(
   options: SerializeQueryOptions
 ): McpQueryResponseBody {
   const full = serializeQueryResult(result, options)
+  const entities = capQueryEntities(full.entities, LEAN_ENTITY_CAP)
   return {
     status: full.status,
     answer: full.answer,
-    sources: formatMcpSources(full.results, options.sourceRepos),
+    sources: formatMcpSources(full.results, options.sourceRepos, full.answer),
+    ...(entities.length > 0 ? { entities } : {}),
     ...(full.evidence ? { evidence: full.evidence } : {}),
     ...(full.notes && full.notes.length > 0 ? { notes: full.notes } : {}),
     ...(full.answerError ? { answerError: full.answerError } : {}),
@@ -431,7 +499,7 @@ export function serializeQueryResult(
   const sources = groupSources(querySources, { sourceRepos: options.sourceRepos })
   const answer = data.answer?.trim() || null
 
-  const { notes, evidence } = computeQueryGrounding({
+  const { notes, evidence, groundingFailed } = computeQueryGrounding({
     answer,
     evidence: result.evidence,
     evidencePaths: querySources.flatMap(r => (r.filePath ? [r.filePath] : [])),
@@ -452,7 +520,7 @@ export function serializeQueryResult(
   }
 
   return {
-    status: result.status,
+    status: demoteStatusWhenGroundingFails(result.status, groundingFailed),
     answer,
     sources,
     results: querySources,
@@ -466,5 +534,6 @@ export function serializeQueryResult(
     ...(evidence ? { evidence } : {}),
     ...(data.answerError ? { answerError: data.answerError } : {}),
     ...(typeof data.traceFile === 'string' && data.traceFile ? { traceFile: data.traceFile } : {}),
+    ...(data.entities && data.entities.length > 0 ? { entities: data.entities } : {}),
   }
 }

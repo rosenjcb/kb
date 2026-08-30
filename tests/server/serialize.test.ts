@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest'
 import type { IntentResult } from '@kb/core/intents/types.js'
 import {
   findUngroundedFileReferences,
   serializeMcpQueryResult,
   serializeQueryResult,
 } from '@kb/core/service/serialize.js'
+import { describe, expect, it } from 'vitest'
 
 describe('serializeQueryResult', () => {
   it('[TC-17SF] maps a read_facts IntentResult into the REST response body', () => {
@@ -48,31 +48,37 @@ describe('serializeQueryResult', () => {
   })
 
   it('[TC-0CD9] returns null answer when none is present', () => {
-    const body = serializeQueryResult({ status: 'accepted', data: { results: [] } }, { sourceRepos: [] })
+    const body = serializeQueryResult(
+      { status: 'accepted', data: { results: [] } },
+      { sourceRepos: [] }
+    )
     expect(body.answer).toBeNull()
     expect(body.results).toEqual([])
     expect(body.evidence).toBeUndefined()
   })
 
   it('[TC-C759] surfaces the physical sourcePath (+symbol) as the location, not the fact:// URI', () => {
-    const body = serializeQueryResult({
-      status: 'accepted',
-      data: {
-        results: [
-          {
-            metadata: {
-              id: 'fact-1',
-              title: 'AST parsers',
-              filePath: 'fact://abc123',
-              sourcePath: 'src/ast/langs/typescript.ts',
-              symbol: 'parseModule',
-              tags: ['import_code', 'fact'],
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          results: [
+            {
+              metadata: {
+                id: 'fact-1',
+                title: 'AST parsers',
+                filePath: 'fact://abc123',
+                sourcePath: 'src/ast/langs/typescript.ts',
+                symbol: 'parseModule',
+                tags: ['import_code', 'fact'],
+              },
+              content: 'Parses a TypeScript module into AST nodes.',
             },
-            content: 'Parses a TypeScript module into AST nodes.',
-          },
-        ],
+          ],
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     // filePath must be the openable physical path, never the opaque fact:// id.
     expect(body.results[0].filePath).toBe('src/ast/langs/typescript.ts')
     expect(body.results[0].symbol).toBe('parseModule')
@@ -80,26 +86,32 @@ describe('serializeQueryResult', () => {
   })
 
   it('[TC-L9F8] falls back to the fact:// URI when no physical sourcePath is known', () => {
-    const body = serializeQueryResult({
-      status: 'accepted',
-      data: {
-        results: [{ metadata: { id: 'fact-2', title: 't', filePath: 'fact://def456' } }],
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          results: [{ metadata: { id: 'fact-2', title: 't', filePath: 'fact://def456' } }],
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.results[0].filePath).toBe('fact://def456')
   })
 
   it('[TC-C4IU] exposes source-centric `sources` (files, symbols folded, non-openable dropped)', () => {
-    const body = serializeQueryResult({
-      status: 'accepted',
-      data: {
-        results: [
-          { metadata: { id: 'f1', title: 'a', sourcePath: 'src/a.ts', symbol: 'alpha' } },
-          { metadata: { id: 'f2', title: 'a', sourcePath: 'src/a.ts', symbol: 'beta' } },
-          { metadata: { id: 'f3', title: 'unknown', filePath: 'fact://deadbeef' } },
-        ],
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          results: [
+            { metadata: { id: 'f1', title: 'a', sourcePath: 'src/a.ts', symbol: 'alpha' } },
+            { metadata: { id: 'f2', title: 'a', sourcePath: 'src/a.ts', symbol: 'beta' } },
+            { metadata: { id: 'f3', title: 'unknown', filePath: 'fact://deadbeef' } },
+          ],
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     // Two facts for src/a.ts collapse to one file with both symbols; the fact:// row drops.
     expect(body.sources).toHaveLength(1)
     expect(body.sources[0]).toMatchObject({
@@ -112,13 +124,16 @@ describe('serializeQueryResult', () => {
   })
 
   it('[TC-6JDU] includes traceFile when the retrieval wrote a deep trace dump', () => {
-    const body = serializeQueryResult({
-      status: 'accepted',
-      data: {
-        results: [],
-        traceFile: '/tmp/kb/traces/qtrace-1.json',
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          results: [],
+          traceFile: '/tmp/kb/traces/qtrace-1.json',
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.traceFile).toBe('/tmp/kb/traces/qtrace-1.json')
   })
 })
@@ -132,21 +147,24 @@ function factItem(sourcePath: string, symbol?: string, id = sourcePath) {
 
 describe('serializeMcpQueryResult', () => {
   it('[TC-7277] trims to answer + lean citations and drops retrieval metadata and the fact dump', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      evidence: 'strong' as const,
-      data: {
-        answer: 'Login flows through `login.ts` and `session.ts`.',
-        results: [factItem('src/auth/login.ts', 'loginHandler'), factItem('src/auth/session.ts')],
-        retrieval: { method: 'facts-loop', detail: 'passes:1;ponds:6;stop:answerable_plateau' },
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'Login flows through `login.ts` and `session.ts`.',
+          results: [factItem('src/auth/login.ts', 'loginHandler'), factItem('src/auth/session.ts')],
+          retrieval: { method: 'facts-loop', detail: 'passes:1;ponds:6;stop:answerable_plateau' },
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body).toEqual({
       status: 'accepted',
       answer: 'Login flows through `login.ts` and `session.ts`.',
       sources: [
-        { path: 'src/auth/login.ts', relPath: 'src/auth/login.ts', symbols: ['loginHandler'] },
-        { path: 'src/auth/session.ts', relPath: 'src/auth/session.ts' },
+        { path: 'src/auth/login.ts', symbols: ['loginHandler'] },
+        { path: 'src/auth/session.ts' },
       ],
       evidence: 'strong',
     })
@@ -181,7 +199,6 @@ describe('serializeMcpQueryResult', () => {
       {
         path: 'rosenjcb/kb/src/auth/login.ts',
         repo: 'rosenjcb/kb',
-        relPath: 'src/auth/login.ts',
         symbols: ['loginHandler'],
         href: 'https://github.com/rosenjcb/kb/blob/main/src/auth/login.ts',
       },
@@ -189,15 +206,18 @@ describe('serializeMcpQueryResult', () => {
   })
 
   it('[TC-Q93N] adds a verify note when evidence is below the floor', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      evidence: 'weak' as const,
-      data: {
-        answer: 'Something about `login.ts`.',
-        results: [factItem('src/auth/login.ts')],
-        retrieval: {},
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'weak' as const,
+        data: {
+          answer: 'Something about `login.ts`.',
+          results: [factItem('src/auth/login.ts')],
+          retrieval: {},
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.notes).toEqual([
       'Retrieval evidence was weak — verify the cited sources before relying on this answer.',
     ])
@@ -213,39 +233,90 @@ describe('serializeMcpQueryResult', () => {
       factItem('src/e.ts', undefined, 'f6'),
       factItem('src/f.ts', undefined, 'f7'),
     ]
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      data: { answer: 'See `a.ts`.', results, retrieval: {} },
-    }, { sourceRepos: [] })
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: { answer: 'See `a.ts`.', results, retrieval: {} },
+      },
+      { sourceRepos: [] }
+    )
     expect(body.sources).toHaveLength(5)
     expect(body.sources[0]).toEqual({
       path: 'src/a.ts',
-      relPath: 'src/a.ts',
       symbols: ['alpha', 'beta'],
     })
     expect(body.sources.map(s => s.path)).not.toContain('src/f.ts')
   })
 
-  it('[TC-8URR] flags answer file references that match no cited source path', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      data: {
-        answer: 'The schema lives in `dto.ts` next to **reversal.ts**.',
-        results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
-        retrieval: {},
+  it('[TC-LEAN] lean MCP sources prefer files the answer names and drop prompt noise', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'The TUI session lives in `App.tsx`.',
+          results: [
+            factItem('packages/kb-core/src/prompts/chat-decompose-system.md', undefined, 'p1'),
+            factItem('packages/kb-core/CHANGELOG.md', undefined, 'p2'),
+            factItem('packages/kb-client/src/tui/App.tsx', 'App', 'p3'),
+            factItem('packages/kb-core/src/intents/INTENTS.md', undefined, 'p4'),
+          ],
+          retrieval: {},
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
+    expect(body.status).toBe('accepted')
+    expect(body.sources[0]?.path).toContain('App.tsx')
+    expect(body.sources.map(s => s.path).join('\n')).not.toMatch(/prompts\//)
+    expect(body.sources.map(s => s.path).join('\n')).not.toMatch(/CHANGELOG/i)
+  })
+
+  it('[TC-NOIZ] lean MCP drops prompt files even when the answer names no files', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'Indexing runs on the server, not in the client.',
+          results: [
+            factItem('packages/kb-core/src/prompts/query-expand.md', undefined, 'n1'),
+            factItem('packages/kb-core/src/core/INIT.md', undefined, 'n2'),
+          ],
+          retrieval: {},
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.sources.map(s => s.path)).toEqual(['packages/kb-core/src/core/INIT.md'])
+  })
+
+  it('[TC-8URR] flags answer file references that match no cited source path', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'The schema lives in `dto.ts` next to **reversal.ts**.',
+          results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+          retrieval: {},
+        },
+      },
+      { sourceRepos: [] }
+    )
     expect(body.notes).toHaveLength(1)
     expect(body.notes?.[0]).toContain('dto.ts')
     expect(body.notes?.[0]).not.toContain('reversal.ts')
     expect(body.notes?.[0]).toContain('trust the sources list')
+    expect(body.status).toBe('uncertain')
   })
 
   it('[TC-OADK] notes when sources exist but no answer was synthesized', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      data: { results: [factItem('src/a.ts')], retrieval: {} },
-    }, { sourceRepos: [] })
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: { results: [factItem('src/a.ts')], retrieval: {} },
+      },
+      { sourceRepos: [] }
+    )
     expect(body.answer).toBeNull()
     expect(body.notes).toEqual([
       'No synthesized answer was produced — open the cited sources directly.',
@@ -253,45 +324,78 @@ describe('serializeMcpQueryResult', () => {
   })
 
   it('[TC-CA0M] downgrades evidence when the answer cites a file not in the sources', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'The schema lives in `dto.ts`.',
+          results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+          retrieval: {},
+        },
+      },
+      { sourceRepos: [] }
+    )
+    // A note alone isn't enough — the top-level label an agent scans for must
+    // reflect the same mismatch the note describes.
+    expect(body.evidence).toBe('weak')
+    expect(body.status).toBe('uncertain')
+  })
+
+  it('[TC-UGST] ungrounded file names demote status from accepted to uncertain', () => {
+    const result = {
+      status: 'accepted' as const,
       evidence: 'strong' as const,
       data: {
         answer: 'The schema lives in `dto.ts`.',
         results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
         retrieval: {},
       },
-    }, { sourceRepos: [] })
-    // A note alone isn't enough — the top-level label an agent scans for must
-    // reflect the same mismatch the note describes.
-    expect(body.evidence).toBe('weak')
+    }
+    const rest = serializeQueryResult(result, { sourceRepos: [] })
+    const mcp = serializeMcpQueryResult(result, { sourceRepos: [] })
+    expect(rest.status).toBe('uncertain')
+    expect(mcp.status).toBe('uncertain')
+    expect(rest.evidence).toBe('weak')
+    expect(mcp.evidence).toBe('weak')
   })
 
   it('[TC-KG1I] leaves evidence untouched when every citation is grounded', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      evidence: 'strong' as const,
-      data: {
-        answer: 'The schema lives in `reversal.ts`.',
-        results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
-        retrieval: {},
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'The schema lives in `reversal.ts`.',
+          results: [factItem('packages/common/reversal.ts', 'ReversalSchema')],
+          retrieval: {},
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.evidence).toBe('strong')
+    expect(body.status).toBe('accepted')
   })
 
   it('[TC-SVF8] notes and downgrades on unsupported prose claims even when the cited file is real', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      evidence: 'strong' as const,
-      data: {
-        answer: 'The `FlowsApi.ts` confirms import POSTs the flow to the backend and persists it.',
-        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
-        retrieval: { unsupportedClaims: ['import POSTs the flow to the backend and persists it'] },
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer:
+            'The `FlowsApi.ts` confirms import POSTs the flow to the backend and persists it.',
+          results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+          retrieval: {
+            unsupportedClaims: ['import POSTs the flow to the backend and persists it'],
+          },
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     // The file name is grounded, so the file-name check stays silent — but the claim check fires.
     expect(body.evidence).toBe('weak')
+    expect(body.status).toBe('uncertain')
     const claimNote = (body.notes ?? []).find(n => n.includes('do not directly support'))
     expect(claimNote).toBeDefined()
     expect(claimNote).toContain('POSTs the flow to the backend')
@@ -299,18 +403,20 @@ describe('serializeMcpQueryResult', () => {
   })
 
   it('[TC-QS05] surfaces unsupportedClaims on the full REST retrieval body', () => {
-    const body = serializeQueryResult({
-      status: 'accepted',
-      evidence: 'strong' as const,
-      data: {
-        answer: 'Import persists to the backend.',
-        results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
-        retrieval: { method: 'hybrid', unsupportedClaims: ['Import persists to the backend'] },
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        evidence: 'strong' as const,
+        data: {
+          answer: 'Import persists to the backend.',
+          results: [factItem('src/FlowsApi.ts', 'FlowsApi')],
+          retrieval: { method: 'hybrid', unsupportedClaims: ['Import persists to the backend'] },
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.retrieval.unsupportedClaims).toEqual(['Import persists to the backend'])
   })
-
 })
 
 describe('findUngroundedFileReferences', () => {
@@ -438,43 +544,123 @@ describe('synthesis failure surfacing', () => {
   })
 
   it('[TC-EKVK] Given a degraded best-effort stage, then the payload says ranking is weaker than usual', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      recommendedAction: 'read_facts',
-      data: {
-        answer: 'An answer.',
-        retrieval: {
-          method: 'facts-loop',
-          degraded: [
-            {
-              stage: 'curation',
-              kind: 'rate_limit',
-              message: '[anthropic] API request failed (429): slow down',
-              provider: 'anthropic',
-              status: 429,
-              retryable: true,
-            },
-          ],
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          answer: 'An answer.',
+          retrieval: {
+            method: 'facts-loop',
+            degraded: [
+              {
+                stage: 'curation',
+                kind: 'rate_limit',
+                message: '[anthropic] API request failed (429): slow down',
+                provider: 'anthropic',
+                status: 429,
+                retryable: true,
+              },
+            ],
+          },
+          results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
         },
-        results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.answer).toBe('An answer.')
     expect((body.notes ?? []).join(' ')).toContain('curation (rate_limit)')
   })
 
   it('[TC-10E6] Given no answer and no failure, then the original evidence note is unchanged', () => {
-    const body = serializeMcpQueryResult({
-      status: 'accepted',
-      recommendedAction: 'read_facts',
-      data: {
-        retrieval: { method: 'facts-loop' },
-        results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        recommendedAction: 'read_facts',
+        data: {
+          retrieval: { method: 'facts-loop' },
+          results: [{ metadata: { id: 'f1', title: 'Auth', sourcePath: 'src/a.ts' } }],
+        },
       },
-    }, { sourceRepos: [] })
+      { sourceRepos: [] }
+    )
     expect(body.notes).toEqual([
       'No synthesized answer was produced — open the cited sources directly.',
     ])
     expect(body.answerError).toBeUndefined()
+  })
+})
+
+describe('query entities on the wire', () => {
+  const entities = [
+    { kind: 'api' as const, name: '/v1/query', role: 'scope' as const },
+    { kind: 'service' as const, name: 'kb-server', role: 'cited' as const },
+  ]
+
+  it('[TC-ENT1] verbose serializer includes entities when present', () => {
+    const body = serializeQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'Query hits /v1/query.',
+          results: [factItem('src/http-server.ts')],
+          entities,
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.entities).toEqual(entities)
+  })
+
+  it('[TC-ENT2] lean serializer includes entities and omits the field when empty', () => {
+    const withEntities = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: {
+          answer: 'Query hits /v1/query.',
+          results: [factItem('src/http-server.ts')],
+          entities,
+        },
+      },
+      { sourceRepos: [] }
+    )
+    expect(withEntities.entities).toEqual(entities)
+    const empty = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: { answer: 'None.', results: [factItem('src/a.ts')] },
+      },
+      { sourceRepos: [] }
+    )
+    expect(empty.entities).toBeUndefined()
+  })
+
+  it('[TC-ENT3] lean serializer caps entities at 8', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      kind: 'api' as const,
+      name: `/r${i}`,
+      role: 'cited' as const,
+    }))
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: { answer: 'Many routes.', results: [factItem('src/a.ts')], entities: many },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.entities).toHaveLength(8)
+    expect(body.entities?.[0].name).toBe('/r0')
+  })
+
+  it('[TC-ENT4] lean sources omit relPath', () => {
+    const body = serializeMcpQueryResult(
+      {
+        status: 'accepted',
+        data: { answer: 'Login.', results: [factItem('src/auth/login.ts', 'loginHandler')] },
+      },
+      { sourceRepos: [] }
+    )
+    expect(body.sources[0]).toEqual({ path: 'src/auth/login.ts', symbols: ['loginHandler'] })
+    expect(body.sources[0]).not.toHaveProperty('relPath')
   })
 })

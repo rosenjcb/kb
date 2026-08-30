@@ -12,6 +12,8 @@ import {
   scoreFromLabel,
   withRetry,
 } from '../../scripts/eval-score.mjs'
+import { passesQualityGate } from '../../scripts/eval-quality-gate.mjs'
+import { summarizeScoresByShape } from '../../scripts/eval-shared.mjs'
 
 describe('withRetry', () => {
   it('[TC-RXUO] returns the result immediately when the fn succeeds on the first attempt', async () => {
@@ -86,6 +88,54 @@ describe('label-based scoring', () => {
     expect(rubric).toContain('output the label string')
     expect(rubric).toContain('"mostly_correct"')
     expect(rubric).not.toContain('integer 0')
+  })
+
+  it('[TC-RUBR] evidence handling fails an ungrounded file path, not "grounded"', () => {
+    const rubric = buildRubric('the kb self-check', false)
+    expect(rubric).toContain('ungrounded file path')
+    expect(rubric).toContain('some_speculation')
+    expect(rubric).toContain('a little unsupported" is a fail')
+    expect(rubric).not.toContain('reasonably grounded; little that is unsupported')
+  })
+})
+
+describe('quality pass gate includes evidence_handling', () => {
+  it('[TC-PGAT] fluent scores fail when evidence_handling is below 3', () => {
+    const fluent = {
+      correctness: 4,
+      usefulness: 4,
+      relevance: 4,
+      specificity: 4,
+      evidence_handling: 2,
+    }
+    expect(passesQualityGate(fluent)).toBe(false)
+    expect(passesQualityGate({ ...fluent, evidence_handling: 3 })).toBe(true)
+  })
+
+  it('[TC-PRQ3] summarizeScoresByShape pass rate requires evidence_handling ≥ 3', () => {
+    const out = summarizeScoresByShape([
+      {
+        shape: 'conceptual',
+        scores: {
+          correctness: 4,
+          usefulness: 4,
+          relevance: 4,
+          specificity: 4,
+          evidence_handling: 2,
+        },
+      },
+      {
+        shape: 'conceptual',
+        scores: {
+          correctness: 4,
+          usefulness: 4,
+          relevance: 4,
+          specificity: 4,
+          evidence_handling: 3,
+        },
+      },
+    ])
+    expect(out.conceptual.pass_rate_quality_axes_at_least_3).toBe(0.5)
   })
 })
 

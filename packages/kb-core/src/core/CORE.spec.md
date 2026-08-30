@@ -34,7 +34,7 @@ tests:
   - ../../../../tests/core/markdown-sections.test.ts
 description: Behavioral specification for KB Core
 tags: [spec, kb]
-timestamp: 2026-08-08T22:40:00Z
+timestamp: 2026-08-29T17:47:00Z
 ---
 
 ### Intro
@@ -79,6 +79,7 @@ See companion doc for full vocabulary where applicable.
 | FR-28 | [NEW] Classify LLM transport failures into a structured error (provider, HTTP status, kind, retryability) so callers can distinguish a spent credit balance, a rate limit, bad credentials, and a timeout from one another — and from a model that simply returned nothing |
 | FR-29 | [NEW] Cap Gemini thinking: every Gemini 2.5/3 generateContent call sends an explicit `thinkingConfig.thinkingBudget` (never omit it). Resolve budget as per-call `thinkingBudget` → `GEMINI_THINKING_BUDGET` env → mode default (1024 when reasoning/`includeThoughts`, else 0). Parse `usageMetadata` so `outputTokens` = `candidatesTokenCount` + `thoughtsTokenCount` (thinking billed as output) |
 | FR-30 | [NEW] Split a markdown body into indexable sections on heading boundaries, carrying the heading trail, merging runs too small to stand alone and splitting oversized ones on paragraph boundaries — so the retrieval unit is a section rather than a whole file |
+| FR-31 | [NEW] Init and scan record a RunCollector with code-index, entity-index, and create-embeddings stages. Embed cost uses character count divided by 4. Gemini embed bills; local ONNX cost is 0 |
 
 ### QA Test Cases
 
@@ -242,6 +243,9 @@ See companion doc for full vocabulary where applicable.
 | TC-MDS6 | FR-30 | Section below the minimum size | Merged forward instead of fragmenting |
 | TC-MDS7 | FR-30 | Section far over the size ceiling | Split on paragraph boundaries, parent heading retained |
 | TC-MDS8 | FR-30 | Content before the first heading | Preamble kept with an empty heading |
+| TC-EMB1 | FR-31 | [NEW] Character counts 0, 1, 4, 5 | Token estimates 0, 1, 1, 2 |
+| TC-EMB2 | FR-31 | [NEW] Gemini embedder modelId and 400 chars | Stage `create-embeddings` with 100 input tokens |
+| TC-EMB3 | FR-31 | [NEW] Local ONNX modelId | `estimatedCostUsd` is 0 |
 
 ### Related docs
 

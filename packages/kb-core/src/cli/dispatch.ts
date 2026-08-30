@@ -162,7 +162,7 @@ export async function runServerCommandWithOutput(
     const reporter = new ReportWriter(defaultLogsDir())
     const collector = new RunCollector('scan', { sessionId })
     try {
-      const summary = await runScanCommand(args.slice(1), line => out.log(line))
+      const summary = await runScanCommand(args.slice(1), line => out.log(line), collector)
       out.log(summary)
       await reporter.append(collector.finish('success', undefined))
       return 0
