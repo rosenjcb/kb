@@ -1,44 +1,37 @@
-# Fly.io BUILDER for the kb chat demo — the daily, one-shot 4GB machine.
+# Fly.io BUILDER for the kb chat demo — the daily, one-shot machine.
 #
-# This app has NO http service. Its single job: once a day, spawn a 4GB
-# machine that rescans EVERY base in scripts/fly/bases.json + its git(s),
-# publishes a fresh sha256-verified snapshot per base to Tigris, and rolls the
-# serving app (kb-demo) onto them — then stops. Because it runs as a Fly
-# *scheduled* machine that exits when done, the big node only costs money for the
-# few minutes it actually builds each day.
+# This app has NO http service. Its single job: once a day, spawn a machine that
+# rescans EVERY base in scripts/fly/bases.json + its git(s), publishes a fresh
+# sha256-verified snapshot per base to Tigris, and rolls the serving app
+# (kb-demo) onto them — then stops. Because it runs as a Fly *scheduled* machine
+# that exits when done, it only costs money for the few minutes it actually
+# builds each day.
 #
 # It shares the serving image (Dockerfile.fly) but overrides the command to the
-# builder script and runs at 4GB.
+# builder script. See the [[vm]] block at the bottom for the size and why.
 #
-# Setup (once):
-#   fly apps create kb-demo-builder
-#   fly deploy -c fly.builder.toml -a kb-demo-builder            # builds/pushes the image
-#   # Give the builder access to the SAME bucket + provider key + a deploy token
-#   # for the serving app so it can roll it:
-#   fly storage update <tigris-id> --app kb-demo-builder         # or copy AWS_* + BUCKET_NAME secrets
-#   fly secrets set -a kb-demo-builder GEMINI_API_KEY=... \
-#       SERVE_APP=kb-demo \
-#       FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
-#   # Create the daily, run-to-completion machine (this is the scheduler).
-#   # --region is NOT optional and is NOT read from this file: `fly machine
-#   # run -c` ignores primary_region below and places the machine near the
-#   # caller. A builder in a different region than kb-demo makes Tigris hand
-#   # the serving node a stale LIST view of the prefix it just published
-#   # (keys head-object 200, `s3 cp --recursive` copies nothing) — see the
-#   # region note in fly.toml. scripts/fly/deploy.sh reads it from here.
+# Setup from nothing: `scripts/fly/bootstrap.sh` does the whole cold standup
+# (apps, bucket, secrets, image, seed, serving deploy, scheduler) in the one
+# order that works. Tearing it all back down: `scripts/fly/teardown.sh`.
+# Shipping an update to an existing deployment: `scripts/fly/deploy.sh`.
+# Full model + operations: FLY_ORCHESTRATION.md
+#
+# Every `fly machine run` against this app must pass the region, [[vm]] size,
+# and [env] table explicitly, because `fly machine run -c` reads NONE of them
+# from this file. Do not hand-copy them — `scripts/fly/builder-args.mjs` parses
+# them out of this file for every caller:
+#
 #   fly machine run . -c fly.builder.toml -a kb-demo-builder \
 #       --schedule daily --restart no \
-#       --region iad --vm-size performance-4x --vm-memory 8192 \
+#       $(node scripts/fly/builder-args.mjs | tr '\n' ' ') \
 #       bash /app/scripts/fly/refresh.sh
-#
-# Full model + operations: FLY_ORCHESTRATION.md
 
 app = "kb-demo-builder"
 # Keep builder + serving + Tigris traffic in one region (see fly.toml note).
-# NOTE: this is honored by `fly deploy -c`, but NOT by `fly machine run -c` —
-# and the builder's only machine is created by `fly machine run`. Every such
-# call must pass `--region` explicitly (scripts/fly/deploy.sh and
-# .github/workflows/fly-deploy.yml parse it out of this line).
+# Honored by `fly deploy -c`, but NOT by `fly machine run -c` — and the
+# builder's only machine is created by `fly machine run`, so every such call
+# passes --region from scripts/fly/builder-args.mjs, which also hard-fails if
+# this value and fly.toml's primary_region ever disagree.
 primary_region = "iad"
 
 [build]
@@ -70,14 +63,27 @@ primary_region = "iad"
 # The builder is a batch job, not a service: no [http_service], no checks. The
 # scheduled machine (created with `fly machine run --schedule daily`) runs
 # scripts/fly/refresh.sh to completion and stops until the next day.
-# performance-2x/4GB OOM-killed mid cold-build (confirmed via live logs: "Out
-# of memory: Killed process") — the real embedding step (skipped only in local
-# dev when @huggingface/transformers isn't installed) is memory-hungry, and a
-# cold build never reaching /healthz just silently eats the whole
-# COLD_BUILD_TIMEOUT budget looking like a hang. performance-4x/8GB gives that
-# headroom (plus 2 extra cores for the CPU-bound tree-sitter/FTS indexing
-# pipeline). At a few minutes/day this costs cents/month either way, so the
-# tier choice is effectively free; take the headroom.
+#
+# SIZING — right-sized down from performance-4x/8192mb (2026-11-26).
+# The 8GB tier dated from before the builder's two memory sinks were fixed:
+#   * `embedAllFacts` allocated one array for every fact up front; it now
+#     paginates (packages/kb-core/src/core/INIT.md § Regression benchmark —
+#     1,000,000 facts → peak RSS 163.7 MiB), and
+#   * the default Local ONNX embedder loaded ~207 MiB of model weights on its
+#     first call; KB_EMBEDDER=gemini above has no local model to load.
+# Measured since: a cold `kb-server refresh` of the `brew` base inside
+# `docker run --memory=2g` stayed flat at 215-250 MiB and was not OOM-killed
+# (scripts/bench/large-repo-memory-bench.sh), and a real 10-base cold seed on
+# Fly peaked at 679 MiB whole-VM usage, again on `brew`. 2048mb leaves >3x
+# headroom over the worst base measured.
+#
+# One performance core (down from 4) makes a cold seed of all 10 bases slower
+# in wall-clock while costing ~4x less; the daily run takes the warm
+# incremental path and is far lighter than a cold build either way. If a cold
+# rebuild of every base ever needs to be fast, bump this block — the three
+# `fly machine run` callers read it via scripts/fly/builder-args.mjs, so one
+# edit here now reaches all of them instead of drifting apart (which it did,
+# twice).
 [[vm]]
-  size = "performance-4x"
-  memory = "8192mb"
+  size = "performance-1x"
+  memory = "2048mb"

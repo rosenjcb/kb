@@ -5,8 +5,10 @@
 # instead of waiting for the next daily tick.
 #
 # Mirrors "Deploying an update" in FLY_ORCHESTRATION.md. Assumes the one-time
-# setup already happened (fly apps create, fly storage create, secrets) — see
-# that doc's "One-time setup" section if it hasn't.
+# setup already happened (apps, bucket, secrets). If it hasn't — or you just ran
+# scripts/fly/teardown.sh — use scripts/fly/bootstrap.sh instead: a cold standup
+# needs a different ORDER (serving cannot boot before the first snapshot
+# exists), not just a few extra commands.
 #
 # Usage: scripts/fly/deploy.sh [--no-seed]
 set -euo pipefail
@@ -17,36 +19,38 @@ BUILDER_APP="${BUILDER_APP:-kb-demo-builder}"
 SEED=1
 [[ "${1:-}" == "--no-seed" ]] && SEED=0
 
-# kb-demo-builder's [[vm]] size in fly.builder.toml (see there for why 8GB).
-# `fly machine run -c fly.builder.toml` does NOT inherit this block — it must
-# be passed explicitly on every machine-creating command below, or you silently
-# get Fly's bare platform default (shared-cpu-1x/256mb). Keep this in sync with
-# fly.builder.toml AND .github/workflows/fly-deploy.yml's recreate-scheduler
-# step — they drifted apart once already (shared-cpu-2x/4096 vs
-# performance-2x/4096) and cold builds got OOM-killed on whichever one a given
-# path actually used.
-BUILDER_VM_SIZE="performance-4x"
-BUILDER_VM_MEMORY="8192"
+# Region, [[vm]] size/memory, and the whole [env] table come from
+# fly.builder.toml — but `fly machine run -c` applies NONE of them, so every
+# machine-creating command below has to pass them explicitly or silently get
+# Fly's bare platform default (shared-cpu-1x/256mb) and refresh.sh's own
+# fallback timeouts. They used to be hand-copied here and in
+# .github/workflows/fly-deploy.yml, and drifted twice (shared-cpu-2x/4096 vs
+# performance-2x/4096 — cold builds OOM-killed on whichever path ran; and the
+# docs still quoting performance-2x/4096 long after this script moved on).
+# scripts/fly/builder-args.mjs parses them out of the toml instead, and
+# hard-fails if fly.builder.toml and fly.toml disagree on primary_region (a
+# cross-region builder makes Tigris hand the serving node a stale LIST view of
+# the prefix it just published — observed: scheduler in `lax`, serving in
+# `iad`).
+# Portable read loop, NOT `mapfile`: mapfile is bash 4+, and macOS still ships
+# bash 3.2 as /bin/bash. There it fails with "mapfile: command not found",
+# leaving BUILDER_ARGS empty — and an empty array means the machine is created
+# with Fly's bare defaults (shared-cpu-1x/256mb, no [env], placed near the
+# caller, not the pinned region) while `fly machine run` reports success.
+# Observed for real on macOS: two machines landed as shared-cpu-1x/256mb in
+# `sjc` with serving in `iad`. This loop works on bash 3.2+.
+BUILDER_ARGS=()
+while IFS= read -r _line; do BUILDER_ARGS+=("$_line"); done < <(node scripts/fly/builder-args.mjs)
 
-# Same non-inheritance trap as [[vm]] and [env] below: `fly machine run -c
-# fly.builder.toml` does NOT honor the file's `primary_region` either — it
-# places the machine near whoever ran the command (a laptop, or a GitHub
-# runner). That is not cosmetic: builder and serving MUST share a region or
-# Tigris serves the serving node a stale LIST view of a freshly published
-# prefix — head-object 200s on every key while `aws s3 cp --recursive` copies
-# nothing, and the demo crash-loops on "downloaded prefix … is incomplete".
-# Observed for real: the scheduler landed in `lax`, serving stayed in `iad`.
-# Read it from the toml instead of hard-coding a copy that can drift.
-BUILDER_REGION="$(node -e '
-  const fs = require("fs");
-  const m = fs.readFileSync("fly.builder.toml", "utf8").match(/^\s*primary_region\s*=\s*"([^"]+)"/m);
-  process.stdout.write(m ? m[1] : "");
-')"
-if [[ -z "$BUILDER_REGION" ]]; then
-  echo "error: could not read primary_region from fly.builder.toml." >&2
+# Belt and braces: node missing, or the shim erroring, also yields an empty
+# array. Never let that reach `fly machine run`.
+if (( ${#BUILDER_ARGS[@]} == 0 )); then
+  echo "error: scripts/fly/builder-args.mjs produced no arguments." >&2
+  echo "       Without them a builder machine gets shared-cpu-1x/256mb in the" >&2
+  echo "       wrong region. Is node on PATH? Try: node scripts/fly/builder-args.mjs" >&2
   exit 1
 fi
-echo "==> builder region pinned to '$BUILDER_REGION' (must match fly.toml's primary_region)"
+echo "==> builder machine args: ${BUILDER_ARGS[*]}"
 
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"
 # --build-only --push: build and push the image WITHOUT deploying/releasing it.
@@ -70,21 +74,11 @@ if [[ -n "$scheduler_id" ]]; then
 else
   echo "    no existing scheduler found; creating one"
 fi
-# -e COLD_BUILD_TIMEOUT / -e KB_EMBEDDER: same non-inheritance problem as
-# [[vm]] above — `fly machine run -c fly.builder.toml` does NOT apply
-# fly.builder.toml's [env] block either. Without COLD_BUILD_TIMEOUT,
-# refresh.sh silently falls back to its own 1800s default instead of the
-# 5400s the toml declares, and the biggest cold builds (brew, kestra) get
-# killed as a false "timeout" well before they'd actually finish. Without
-# KB_EMBEDDER, createEmbedder() falls back to Local ONNX, which OOMs a
-# performance-4x builder mid cold-build (see fly.builder.toml's [[vm]] note) —
-# the builder and serving node must also share a backend so query vectors
-# match stored model_id rows.
+# A scheduled machine pins its image, vm size, AND env at creation time, so
+# recreating it is the only way it picks any of them up. BUILDER_ARGS carries
+# all three from the toml (see the note at the top).
 fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --detach \
-    --region "$BUILDER_REGION" \
-    --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
-    -e COLD_BUILD_TIMEOUT=5400 \
-    -e KB_EMBEDDER=gemini \
+    "${BUILDER_ARGS[@]}" \
     --schedule daily --restart no \
     bash /app/scripts/fly/refresh.sh
 
@@ -97,10 +91,7 @@ fly deploy -a "$SERVE_APP" -c fly.toml --wait-timeout 15m
 if [[ "$SEED" -eq 1 ]]; then
   echo "==> 4/4 seeding every base now (skip with --no-seed)"
   fly machine run . -c fly.builder.toml -a "$BUILDER_APP" --rm \
-      --region "$BUILDER_REGION" \
-      --vm-size "$BUILDER_VM_SIZE" --vm-memory "$BUILDER_VM_MEMORY" \
-      -e COLD_BUILD_TIMEOUT=5400 \
-    -e KB_EMBEDDER=gemini \
+      "${BUILDER_ARGS[@]}" \
       bash /app/scripts/fly/refresh.sh
   fly logs -a "$BUILDER_APP"
 else

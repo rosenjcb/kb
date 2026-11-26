@@ -3,6 +3,14 @@ name: Deploy Fly.io chat demo
 # Redeploys the two Fly apps behind the chat demo whenever their server code
 # changes on main. See FLY_ORCHESTRATION.md for the full model.
 #
+# REQUIRES two GitHub secrets, FLY_API_TOKEN_KB_DEMO and
+# FLY_API_TOKEN_KB_DEMO_BUILDER. They are **app-scoped** Fly deploy tokens, so
+# they do not survive their app being destroyed and recreated — after a
+# scripts/fly/teardown.sh + bootstrap.sh cycle both jobs here fail with an auth
+# error even though the demo itself is healthy. bootstrap.sh prints the two
+# `gh secret set` commands that fix it; FLY_ORCHESTRATION.md § Tear down and
+# stand back up has them too.
+#
 #   kb-demo (serving)         — plain `fly deploy`, safe: it has a normal
 #                               [http_service] release process.
 #   kb-demo-builder (builder) — build+push only, THEN destroy+recreate the
@@ -94,35 +102,35 @@ jobs:
           if [ -n "$scheduler_id" ]; then
             flyctl machine destroy "$scheduler_id" -a kb-demo-builder --force
           fi
-          # --region: `fly machine run` ignores fly.builder.toml's
-          # primary_region too, so without this the scheduler is placed near
-          # the GitHub runner instead of next to the serving app. Builder and
-          # serving MUST share a region — a cross-region Tigris reader gets a
+          # `fly machine run -c` applies NONE of fly.builder.toml's
+          # primary_region, [[vm]] block, or [env] table — and the builder's
+          # only machine is created by `fly machine run`. This step used to
+          # hand-copy those values, which drifted from the toml twice
+          # (shared-cpu-2x/4096 here vs performance-2x/4096 there; cold builds
+          # were OOM-killed on whichever tier actually ran). builder-args.mjs
+          # parses them out of the toml, forwards every [env] key rather than
+          # the two this step happened to remember, and hard-fails if
+          # fly.builder.toml and fly.toml disagree on primary_region — builder
+          # and serving MUST share a region or Tigris hands the serving node a
           # stale LIST view of a freshly published prefix (every key
           # head-objects 200 while `s3 cp --recursive` copies nothing) and the
-          # demo crash-loops on "downloaded prefix … is incomplete". Read from
-          # the toml so this can never drift from fly.toml's primary_region.
-          builder_region="$(node -e '
-            const fs = require("fs");
-            const m = fs.readFileSync("fly.builder.toml", "utf8").match(/^\s*primary_region\s*=\s*"([^"]+)"/m);
-            process.stdout.write(m ? m[1] : "");
-          ')"
-          if [ -z "$builder_region" ]; then
-            echo "error: could not read primary_region from fly.builder.toml." >&2
+          # demo crash-loops on "downloaded prefix … is incomplete".
+          # Portable read loop, not `mapfile` (bash 4+; macOS /bin/bash is
+          # 3.2, where it fails and leaves the array empty — see deploy.sh).
+          builder_args=()
+          while IFS= read -r _line; do builder_args+=("$_line"); done \
+            < <(node scripts/fly/builder-args.mjs)
+          # mapfile cannot fail on its own: a missing node or a broken shim
+          # yields an EMPTY array, and the machine is then created with Fly's
+          # bare defaults (shared-cpu-1x/256mb, no [env], placed near the
+          # runner rather than in the pinned region) while `fly machine run`
+          # still reports success. Observed for real. Fail instead.
+          if [ "${#builder_args[@]}" -eq 0 ]; then
+            echo "error: builder-args.mjs produced no arguments" >&2
             exit 1
           fi
-          # --vm-size/--vm-memory must match fly.builder.toml's [[vm]] block —
-          # `fly machine run` does NOT read it (see fly.builder.toml comment).
-          # Previously shared-cpu-2x/4096 here diverged from performance-2x in
-          # the toml; cold builds were then OOM-killed on whichever tier
-          # actually got used. performance-4x/8192mb now matches on both.
-          # -e COLD_BUILD_TIMEOUT: same non-inheritance problem for [env] —
-          # without this it silently falls back to refresh.sh's own 1800s
-          # default instead of the 5400s the toml declares.
+          echo "builder machine args: ${builder_args[*]}"
           flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
-            --region "$builder_region" \
-            --vm-size performance-4x --vm-memory 8192 \
-            -e COLD_BUILD_TIMEOUT=5400 \
-            -e KB_EMBEDDER=gemini \
+            "${builder_args[@]}" \
             --schedule daily --restart no \
             bash /app/scripts/fly/refresh.sh

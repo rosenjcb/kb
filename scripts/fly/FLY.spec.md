@@ -6,6 +6,10 @@ sources:
   - ./serve-entrypoint.sh
   - ./refresh.sh
   - ./deploy.sh
+  - ./bootstrap.sh
+  - ./teardown.sh
+  - ./builder-args.mjs
+  - ../../.github/workflows/fly-lifecycle.yml
   - ./roll-serving.mjs
   - ../../fly.toml
   - ../../fly.builder.toml
@@ -75,6 +79,12 @@ from crash-looping the public demo. Architecture narrative:
 |------|-------------|
 | FR-1 | [NEW] Serving and builder apps declare the same Fly `primary_region` so snapshot LIST/GET and publish share one region |
 | FR-8 | [NEW] Every command that creates a builder machine passes `--region` explicitly, sourced from `fly.builder.toml`'s `primary_region` — `fly machine run -c` does not inherit it, so declaring the region alone does not place the machine |
+| FR-14 | [NEW] `fly.builder.toml` is the single source of truth for the builder machine's region, `[[vm]]` size/memory, and `[env]` table; every `fly machine run` caller (`deploy.sh`, `bootstrap.sh`, the CI workflow) obtains all of them from `scripts/fly/builder-args.mjs` and hard-codes none of them |
+| FR-15 | [NEW] `builder-args.mjs` exits non-zero when `fly.builder.toml` and `fly.toml` declare different `primary_region` values, rather than emitting flags that would place a cross-region builder (FR-1's invariant, enforced before a machine exists) |
+| FR-16 | [NEW] Cold standup order: the first seed publishes at least one snapshot **before** the serving app is deployed (serving pins `--bootstrap-policy snapshot-only` and fails its release on an empty bucket), and the builder's `SERVE_APP`/`FLY_API_TOKEN` roll credentials are set only **after** serving has machines (`roll-serving.mjs` exits non-zero with none) |
+| FR-18 | [NEW] Standup and teardown are runnable as a manual GitHub Actions workflow (`fly-lifecycle.yml`) that delegates to `bootstrap.sh`/`teardown.sh` rather than reimplementing their ordering; teardown requires an explicit confirmation phrase, the two never run concurrently, and neither is cancellable in flight |
+| FR-19 | [NEW] Teardown ends by verifying no billable resource survived — the two apps, their machines and volumes, the Tigris bucket, and any leftover `fly-builder-*` remote-builder app — and exits non-zero if any remain |
+| FR-17 | [NEW] Teardown destroys the snapshot bucket by default, because Tigris credentials are printed once by `fly storage create` and are unreadable afterwards — a bucket that outlives its apps' secrets cannot be authenticated against |
 | FR-9 | [NEW] A snapshot pull that cannot assemble the required objects from the LIST-driven recursive copy refetches them by exact key (manifest at its fixed name, index files named by the manifest's `contents.index`) before failing the attempt |
 | FR-2 | [NEW] After uploading an immutable snapshot prefix, the builder does not flip `latest.json` until every required object is readable via head-object (not LIST alone) |
 | FR-3 | [NEW] Snapshot pull retries until required objects are present locally (or attempts are exhausted); aws progress must not pollute captured stdout (e.g. version strings) |
@@ -92,12 +102,19 @@ from crash-looping the public demo. Architecture narrative:
 | Test ID | Requirement | Scenario | Expected Outcome |
 |---------|-------------|---------|------------------|
 | TC-D98R | FR-1 | `fly.toml` and `fly.builder.toml` `primary_region` compared | Identical region string (currently `iad`) |
-| TC-PDQD | FR-8 | `scripts/fly/deploy.sh` and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call passes `--region` read from `fly.builder.toml`; no hard-coded second copy of the region |
+| TC-PDQD | FR-8, FR-14 | `deploy.sh`, `bootstrap.sh`, and the workflow's recreate-scheduler step inspected for `fly machine run` calls | Every call forwards `builder-args.mjs`'s output; no literal `--region`/`--vm-size` anywhere in the three callers |
 | TC-4JKB | FR-8 | `fly machine list -a kb-demo-builder` after a deploy | Scheduler machine's region equals `fly.toml`'s `primary_region` |
+| TC-WQ3F | FR-14 | `builder-args.mjs` executed in the repo root | Emits `--region` matching the toml, a `--vm-size`/`--vm-memory` pair, and one `-e KEY=VALUE` for **every** key in the toml's `[env]` table |
+| TC-K2QW | FR-14 | `deploy.sh`, `bootstrap.sh`, and the workflow inspected for how they read the shim's output | None calls `mapfile` (bash 4+; macOS ships bash 3.2, where it fails and leaves the array empty, silently yielding a `shared-cpu-1x`/256MB machine in the caller's region); each uses a `while IFS= read` loop and aborts when the shim yields no arguments |
+| TC-M8ZK | FR-15 | `builder-args.mjs` run against a fixture whose two tomls declare `iad` and `lax` | Exits non-zero naming the region mismatch; emits no flags |
+| TC-T41C | FR-16 | `bootstrap.sh` step order inspected | The cold seed precedes `fly deploy -a $SERVE_APP`, and `fly tokens create deploy` / the `SERVE_APP` secret follow it |
+| TC-3VPL | FR-18 | `fly-lifecycle.yml` inspected | Has `workflow_dispatch` with a `stand-up`/`tear-down` choice, gates teardown on `confirm == DESTROY`, calls `bootstrap.sh`/`teardown.sh`, and sets `cancel-in-progress: false` on a shared concurrency group |
+| TC-7BQN | FR-19 | `teardown.sh` run to completion | Reports each app, bucket, and `fly-builder-*` app as gone, and exits non-zero if any survived |
+| TC-9XBD | FR-17 | `teardown.sh` inspected with no flags | Destroys the Tigris bucket (`KEEP_BUCKET=0` default) and warns that CI's app-scoped `FLY_API_TOKEN_*` secrets are now dead |
 | TC-IHL1 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
 | TC-OUBI | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
 | TC-MHQN | FR-9 | `pull_latest`/`s3_pull_prefix` retry/refetch path inspected | `lib.sh` implements the retry-then-refetch-by-key sequence |
-| TC-E9O4 | FR-10 | `scripts/fly/deploy.sh` `fly machine run` calls inspected | Every call sets `KB_EMBEDDER=gemini` alongside `--region` |
+| TC-E9O4 | FR-10, FR-14 | `KB_EMBEDDER` as delivered to a builder machine | `builder-args.mjs` emits `-e KB_EMBEDDER=gemini` from the toml's `[env]`, so every caller sets it without repeating it |
 | TC-ROM5 | FR-10 | Production `fly.toml` and `fly.builder.toml` inspected | Both the builder and serve app declare `KB_EMBEDDER=gemini` |
 | TC-SH7G | FR-11 | `refresh.sh` fail-fast loop when a base fails | Later bases in the loop do not run and the roll is skipped |
 | TC-RM3X | FR-11 | `refresh.sh` fail-fast loop when a base fails | Same failure short-circuits the loop (paired assertion with TC-SH7G) |

@@ -34,13 +34,13 @@ It is a concrete Fly.io mapping of the vendor-agnostic
 | | Serving node (`kb-demo`) | Builder (`kb-demo-builder`) |
 |---|---|---|
 | Config | [`fly.toml`](fly.toml) | [`fly.builder.toml`](fly.builder.toml) |
-| Size | `shared-cpu-1x` / **1024MB**, always-warm | `performance-4x` / **8GB**, daily one-shot |
+| Size | `shared-cpu-1x` / **1024MB**, always-warm | `performance-1x` / **2GB**, daily one-shot |
 | Region | **`iad` (must match builder)** | **`iad`** |
 | Volume | **none** (stateless) | none (ephemeral `/work`) |
 | Command | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) |
 | Bases | imports **all** of [`bases.json`](scripts/fly/bases.json) (default first + listen, then the rest) | builds + publishes **each** base in [`bases.json`](scripts/fly/bases.json) |
 | Policy | `--bootstrap-policy snapshot-only` (frozen: no git, no reindex) | `auto` (clones/pulls + indexes) |
-| Cost | one tiny machine 24/7 | ~minutes of 8GB per day |
+| Cost | one tiny machine 24/7 | ~minutes of a 2GB machine per day |
 
 > **Region co-location is load-bearing.** Builder writes snapshots to Tigris from
 > `iad`; serving from `ams` has been observed to `LIST`/`GET` a *partial* object
@@ -62,7 +62,7 @@ picks the command and VM size.
 
 ```mermaid
 flowchart LR
-  subgraph B ["Builder (4GB, scheduled daily, one-shot)"]
+  subgraph B ["Builder (2GB, scheduled daily, one-shot)"]
     B1["download current snapshot"]
     B2["kb-server scan --from cur --out new<br/>(git pull + incremental reindex + VACUUM INTO)"]
     B3["upload → immutable version prefix"]
@@ -73,7 +73,7 @@ flowchart LR
   subgraph T ["Tigris (S3)"]
     P["snapshots/kb/&lt;version&gt;/ (immutable)<br/>snapshots/kb/latest.json (pointer)"]
   end
-  subgraph S ["Serving node (256MB, always-warm)"]
+  subgraph S ["Serving node (1GB, always-warm)"]
     S1["restart → wipe KB_HOME"]
     S2["download version latest.json points at"]
     S3["kb-server start --from … --bootstrap-policy snapshot-only<br/>(sha256-verified adopt)"]
@@ -85,7 +85,7 @@ flowchart LR
   P --> S2
 ```
 
-1. **Rescan (builder).** The scheduled 4GB machine downloads the current
+1. **Rescan (builder).** The scheduled machine downloads the current
    snapshot, then `kb-server scan --from cur --out new` adopts it, `git pull`s
    every tracked repo, incrementally reindexes only what changed, and exports a
    fresh snapshot via SQLite `VACUUM INTO` (one consistent `.kb-index.sqlite`,
@@ -130,54 +130,167 @@ This design has neither:
   time behind Fly's load balancer. To get this, raise `min_machines_running`
   and scale the serving app to 2; no other change needed.
 
-## One-time setup
+## Stand it up from nothing
 
 ```bash
-# 0. Provider key on both apps
-fly secrets set -a kb-demo GEMINI_API_KEY=...
-
-# 1. Tigris bucket for snapshot transport (injects AWS_* + BUCKET_NAME secrets)
-fly storage create --app kb-demo
-
-# 2. Serving app (stateless; no volume to create)
-fly deploy -a kb-demo -c fly.toml
-
-# 3. Builder app — shares the image, gets bucket access + a deploy token so it
-#    can roll the serving app
-fly apps create kb-demo-builder
-fly deploy -a kb-demo-builder -c fly.builder.toml
-fly storage update <tigris-id> --app kb-demo-builder      # or copy AWS_*/BUCKET_NAME secrets
-fly secrets set -a kb-demo-builder \
-    GEMINI_API_KEY=... \
-    SERVE_APP=kb-demo \
-    FLY_API_TOKEN="$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
-
-# 4. Seed all bases (cold build) + create the daily scheduler machine (8GB)
-#    --region MUST match fly.toml's primary_region (see the co-location note
-#    above); `fly machine run -c` ignores the toml's primary_region.
-fly machine run . -c fly.builder.toml -a kb-demo-builder \
-    --schedule daily --restart no \
-    --region iad --vm-size performance-4x --vm-memory 8192 \
-    bash /app/scripts/fly/refresh.sh
+GEMINI_API_KEY=... scripts/fly/bootstrap.sh
 ```
+
+That is the whole cold standup: both apps, the Tigris bucket, every secret, the
+image, a cold build of every base, the serving node, and the daily scheduler. It
+takes roughly 20-30 minutes, nearly all of it the cold seed.
+
+Run it when the apps **do not exist** (a first deployment, or after
+[`teardown.sh`](scripts/fly/teardown.sh)). To ship a code change to a deployment
+that already exists, use [`deploy.sh`](scripts/fly/deploy.sh) instead — a cold
+standup differs in its **order**, not just in having a few extra commands.
+
+### Three traps the order exists to avoid
+
+Worth knowing even if you only ever run the script, because each one surfaces as
+a confusing failure somewhere else:
+
+1. **Serving cannot be deployed before the first snapshot exists.** `fly.toml`
+   pins `KB_SERVER_BOOTSTRAP_POLICY=snapshot-only`, so the serving boot
+   downloads a published snapshot and refuses to bind the port without one — on
+   an empty bucket `fly deploy -a kb-demo` *fails the release*, it does not come
+   up degraded and backfill later. The seed has to run first. (The order
+   documented here previously deployed serving second, before the builder image
+   even existed.)
+
+2. **The seed cannot roll a serving app that has no machines yet.** `refresh.sh`
+   ends by rolling `SERVE_APP`, and `roll-serving.mjs` exits non-zero on "no
+   started serving machines found". So `bootstrap.sh` sets `SERVE_APP` and
+   `FLY_API_TOKEN` on the builder *after* the seed: with them unset the seed
+   logs `skipping serving roll` and exits 0, which is correct for a cold
+   standup.
+
+3. **Tigris credentials are printed exactly once and are then unrecoverable.**
+   `fly storage create` writes `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` to
+   stdout and sets them as secrets on the single app passed to `--app`. Nothing
+   reads them back afterwards: no `fly storage` subcommand reveals them, `fly
+   storage update` has no credential flags, and the addon's GraphQL
+   `environment` field returns `{}`. Both apps need them, so `bootstrap.sh`
+   captures that one stdout and fans the values out to both. Fly also allows one
+   Tigris *project per app*, so a second `fly storage create --app kb-demo`
+   fails with `a Tigris project named … already exists for app kb-demo` even
+   under a different bucket name — if you have lost the keys, the only way
+   forward is a new bucket (`--bucket <name>`) or a teardown.
 
 The first builder run takes the **cold path** for every base (no `latest.json`
-yet): for each base in [`bases.json`](scripts/fly/bases.json) it boots
-`kb-server start` to clone that base's repo and build, then exports and
-publishes. Every subsequent daily run takes the cheap **warm path**
-(`scan --from cur`) per base. Because each base is isolated, a single flaky
-clone leaves that base's previous snapshot live while the rest still refresh.
+yet): for each base in [`bases.json`](scripts/fly/bases.json) it clones that
+base's repo, builds, exports, and publishes. Every subsequent daily run takes
+the cheap **warm path** (`refresh --from cur`) per base. Because each base is
+isolated, a single flaky clone leaves that base's previous snapshot live while
+the rest still refresh.
 
-To seed immediately without waiting for the first schedule tick, run the machine
-once on demand (the first full cold build of ~10 repos takes a while):
+## Tear down and stand back up
+
+The demo is two machines and a bucket; parking it between pushes is reasonable,
+as long as standing it back up is one command.
+
+From the **Actions tab** → *Fly demo lifecycle* → *Run workflow*, pick
+`stand-up` or `tear-down` (teardown asks you to type `DESTROY`). Or locally:
 
 ```bash
-fly machine run . -c fly.builder.toml -a kb-demo-builder --rm \
-    --region iad --vm-size performance-4x --vm-memory 8192 \
-    bash /app/scripts/fly/refresh.sh
+scripts/fly/teardown.sh                  # scheduler + both apps + bucket
+GEMINI_API_KEY=... scripts/fly/bootstrap.sh   # back up, ~20-30 min (cold seed)
 ```
 
-### Bases
+Teardown ends by **verifying** the bill is zero — it re-lists the apps, their
+machines and volumes, the bucket, and any leftover `fly-builder-*` remote-builder
+app, and exits non-zero if anything survived. A green teardown means nothing is
+billing, not merely that the commands ran.
+
+[`fly-lifecycle.yml`](.github/workflows/fly-lifecycle.yml) needs one secret the
+other workflows do not: **`FLY_API_TOKEN_ORG`**, an org-scoped Fly token.
+`fly-deploy.yml` deliberately uses *app-scoped* deploy tokens — it only deploys
+to apps that already exist, so a leak costs one app. Creating and destroying
+apps are org-level operations that an app-scoped token cannot perform, and after
+a teardown there is no app left to scope a token to. Treat that secret as a root
+credential: give it an expiry and rotate it if it leaks. Set `GH_SECRETS_PAT`
+(a PAT with `secrets: write`) as well and standup will remint the two app-scoped
+deploy tokens for you; without it, the run tells you the two commands to run.
+
+**Teardown destroys the bucket by default, and that is deliberate.** The
+bucket's credentials live only as secrets on the apps and cannot be read back
+(trap 3 above), so destroying the apps destroys the only copy of the keys. A
+surviving bucket full of snapshots that nothing can authenticate against is not
+a backup — it is a bill. The next bootstrap cold-builds fresh snapshots.
+`--keep-bucket` exists only for when you have already copied the `AWS_*` values
+somewhere durable.
+
+**One thing teardown cannot clean up: the CI secrets.**
+[`fly-deploy.yml`](.github/workflows/fly-deploy.yml) authenticates with
+`FLY_API_TOKEN_KB_DEMO` and `FLY_API_TOKEN_KB_DEMO_BUILDER`, which are
+**app-scoped** Fly deploy tokens. A token does not survive its app being
+destroyed and recreated, so after any teardown/bootstrap cycle both CI jobs fail
+with an auth error *even though the demo is healthy*. `bootstrap.sh` prints
+these two lines at the end; run them:
+
+```bash
+gh secret set FLY_API_TOKEN_KB_DEMO --body "$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"
+gh secret set FLY_API_TOKEN_KB_DEMO_BUILDER --body "$(fly tokens create deploy -a kb-demo-builder --expiry 8760h | tail -n1)"
+```
+
+## Builder sizing
+
+The builder is `performance-1x` / **2048MB**, down from `performance-4x` / 8GB.
+The 8GB tier predated the fixes for the two things that actually used that
+memory:
+
+- `embedAllFacts` allocated one array covering every fact up front; it now
+  paginates — **1,000,000 facts → peak RSS 163.7 MiB**
+  ([`INIT.md` § Regression benchmark](packages/kb-core/src/core/INIT.md)).
+- the default Local ONNX embedder loaded **~207 MiB** of model weights on its
+  first `.embed()` call; `KB_EMBEDDER=gemini` (set on both apps, and required
+  anyway so builder and serving share a vector space) has no local model.
+
+Measured since: a cold `refresh` of the `brew` base inside `docker run
+--memory=2g` stayed flat at 215-250 MiB and was not OOM-killed
+([`scripts/bench/large-repo-memory-bench.sh`](scripts/bench/large-repo-memory-bench.sh)),
+and a real 10-base cold seed on Fly peaked at **679 MiB** whole-VM usage, again
+on `brew`. 2048MB leaves >3x headroom over the worst base measured.
+
+The warm (daily) path is lighter still: a measured incremental run peaked at
+**352 MiB**.
+
+One performance core instead of four makes a *cold* seed of all ten bases slower
+in wall-clock while costing ~4x less; the daily run takes the warm incremental
+path and is far lighter either way. Changing it is now a one-line edit to
+`fly.builder.toml`'s `[[vm]]` block, because every `fly machine run` caller reads
+that block through
+[`scripts/fly/builder-args.mjs`](scripts/fly/builder-args.mjs) rather than
+hand-copying it.
+
+### Why `builder-args.mjs` exists
+
+`fly machine run -c fly.builder.toml` reads the app and image from the config and
+**ignores `primary_region`, the `[[vm]]` block, and the entire `[env]` table** —
+and the builder's only machine is created by `fly machine run`, never by `fly
+deploy`. So every caller has to repeat those values, and three of them did, by
+hand. They drifted twice:
+
+- CI said `shared-cpu-2x/4096` while the toml said `performance-2x/4096`; cold
+  builds were OOM-killed on whichever path happened to run.
+- The docs still quoted `--vm-size performance-2x --vm-memory 4096` long after
+  `deploy.sh` had moved to `performance-4x/8192`.
+- Only `COLD_BUILD_TIMEOUT` and `KB_EMBEDDER` were forwarded, so every other
+  `[env]` key (`SNAPSHOT_NO_REPOS`, `LOG_LEVEL`, `KB_HOME`, …) silently fell back
+  to a code default on the scheduled machine but not on a deployed one.
+
+`builder-args.mjs` parses the toml and emits the flags, so the toml is the single
+source of truth again. Callers read its output with a `while IFS= read`
+loop rather than `mapfile`, which is bash 4+ — macOS ships bash 3.2, where
+`mapfile` fails and leaves the array empty, and an empty array means `fly
+machine run` silently falls back to `shared-cpu-1x`/256MB placed near *you*
+rather than in the pinned region, while still reporting success. Each caller
+also aborts outright if the shim yields no arguments. It also hard-fails when `fly.builder.toml` and `fly.toml`
+disagree on `primary_region` — the one invariant neither file can express, and a
+mismatch that previously only surfaced as a crash-looping serving node (see the
+co-location note above).
+
+## Bases
 
 The base set is data-driven from the eval suites. To add or remove a base, edit
 `eval/suites/*.yaml` and regenerate the manifest, then redeploy the builder:
@@ -223,10 +336,11 @@ It builds + pushes the `kb-demo-builder` image (`--build-only --push` — a plai
 `fly deploy` on an app with no `[processes]`/`[http_service]` still creates or
 replaces a running machine using the image's default `CMD`, which would clobber
 the scheduled machine's custom command), destroys and recreates the scheduled
-machine (`--schedule daily --restart no`; **`[[vm]]` in `fly.builder.toml` is
-not inherited by `fly machine run -c`** — vm size/memory must be passed
-explicitly as `--vm-size performance-2x --vm-memory 4096` every time, or you
-silently get Fly's bare platform default of `shared-cpu-1x`/256MB), deploys
+machine (`--schedule daily --restart no`; **`fly machine run -c` inherits
+neither `primary_region`, `[[vm]]`, nor `[env]` from `fly.builder.toml`** — all
+three are forwarded by
+[`scripts/fly/builder-args.mjs`](scripts/fly/builder-args.mjs), without which
+you silently get Fly's bare platform default of `shared-cpu-1x`/256MB), deploys
 `kb-demo` (`-c fly.toml`), then seeds every base immediately instead of waiting
 for the schedule (publishes each and auto-rolls the serving node onto the full
 set). Override the app names with `SERVE_APP=... BUILDER_APP=...` if you're
@@ -254,7 +368,7 @@ Set as env/secrets on the relevant app.
 
 | Var | Where | Default | Meaning |
 |---|---|---|---|
-| `BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` | both | from `fly storage create` | Tigris / S3 transport |
+| `BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` | both | from `fly storage create` (printed **once**, unrecoverable — see trap 3) | Tigris / S3 transport |
 | `KB_BASE` | both | `kb` | default base name (fallback when `bases.json` has no `default`) |
 | `BASES_MANIFEST` | both | `scripts/fly/bases.json` | the base set to build/serve |
 | `SNAPSHOT_ROOT` | both | `snapshots` | object-store root; each base lives at `<root>/<base>` |
@@ -264,6 +378,8 @@ Set as env/secrets on the relevant app.
 | `FLY_API_TOKEN` | builder | — | deploy token scoped to `SERVE_APP` |
 | `SERVE_HEALTH_URL` | builder | `https://<SERVE_APP>.fly.dev/healthz` | health gate for the roll |
 | `COLD_BUILD_TIMEOUT` | builder | `5400` (set in `fly.builder.toml`; code default is `1800`) | seconds to wait for each base's cold build |
+| `ONLY_BASES` | builder | — | comma-separated allowlist to scope one run to specific bases |
+| `FORCE_COLD` | builder | `false` | ignore the existing pointer and rebuild from scratch |
 
 The repo each base indexes is read from `bases.json`, not an env var — cold
 builds clone per-base.
@@ -307,9 +423,10 @@ fly logs -a kb-demo-builder         # last builder run
 fly machine list -a kb-demo-builder # the scheduled machine (stopped between runs)
 curl -sS https://kb-demo.fly.dev/healthz   # ok:true when serving a snapshot
 
-# Force a refresh now (outside the daily schedule):
+# Force a refresh now (outside the daily schedule). builder-args.mjs supplies
+# the region, vm size, and [env] table that `fly machine run -c` would not:
 fly machine run . -c fly.builder.toml -a kb-demo-builder --rm \
-    --region iad --vm-size performance-4x --vm-memory 8192 \
+    $(node scripts/fly/builder-args.mjs | tr '\n' ' ') \
     bash /app/scripts/fly/refresh.sh
 ```
 
@@ -318,13 +435,16 @@ fly machine run . -c fly.builder.toml -a kb-demo-builder --rm \
 | Path | Role |
 |---|---|
 | [`fly.toml`](fly.toml) | serving app (1024MB, stateless, snapshot-only, region-matched to builder) |
-| [`fly.builder.toml`](fly.builder.toml) | builder app (4GB, scheduled one-shot) |
+| [`fly.builder.toml`](fly.builder.toml) | builder app (2GB, scheduled one-shot) — the one place its region/size/env are declared |
 | [`Dockerfile.fly`](Dockerfile.fly) | shared image: server + AWS CLI + `scripts/fly` |
 | [`scripts/fly/bases.json`](scripts/fly/bases.json) | committed base manifest (default + one per eval-suite repo) |
 | [`scripts/fly/gen-bases.mjs`](scripts/fly/gen-bases.mjs) | regenerate `bases.json` from `eval/suites/*.yaml` |
 | [`scripts/fly/serve-entrypoint.sh`](scripts/fly/serve-entrypoint.sh) | serving boot: wipe → import every base → warm-start frozen on the default |
 | [`scripts/fly/refresh.sh`](scripts/fly/refresh.sh) | builder: for each base rescan → publish → prune, then roll once |
-| [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: deploy builder + recreate scheduler + deploy serving + seed all bases |
+| [`scripts/fly/bootstrap.sh`](scripts/fly/bootstrap.sh) | one command: cold standup **from nothing** (apps, bucket, secrets, image, seed, serving, scheduler) |
+| [`scripts/fly/teardown.sh`](scripts/fly/teardown.sh) | one command: destroy scheduler + both apps + bucket |
+| [`scripts/fly/deploy.sh`](scripts/fly/deploy.sh) | one command: ship an update to an **existing** deployment (builder + scheduler + serving + reseed) |
+| [`scripts/fly/builder-args.mjs`](scripts/fly/builder-args.mjs) | forwards `fly.builder.toml`'s region/`[[vm]]`/`[env]` to `fly machine run`, which ignores all three |
 | [`scripts/fly/roll-serving.mjs`](scripts/fly/roll-serving.mjs) | health-gated rolling restart via Fly Machines API |
 | [`scripts/fly/lib.sh`](scripts/fly/lib.sh) | shared config + S3 transport helpers |
 | [`scripts/snapshot-pull.mjs`](scripts/snapshot-pull.mjs) | `pnpm run snapshot:pull` — read-only consumer: adopt a published snapshot locally for evaluation |
