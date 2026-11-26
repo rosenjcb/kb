@@ -115,9 +115,68 @@ for app in "$SERVE_APP" "$BUILDER_APP"; do
   fi
 done
 
+# ---- 4. Verify nothing is left that can bill -------------------------------
+# The whole point of a teardown is a zero bill, so assert it rather than assume
+# it. Anything still here is something you would keep paying for: a surviving
+# app can hold started machines, a volume outlives the machine that used it,
+# and a dedicated IPv4 is billed whether or not anything answers on it.
+echo "==> verifying nothing is left billing"
+leftovers=0
+apps_json="$(fly apps list --json 2>/dev/null || echo '[]')"
+for app in "$SERVE_APP" "$BUILDER_APP"; do
+  if printf '%s' "$apps_json" | grep -q "\"$app\""; then
+    echo "  ✗ app still exists: $app" >&2
+    leftovers=$((leftovers + 1))
+    # Machines and volumes under a surviving app are the actual charge.
+    fly machine list -a "$app" 2>/dev/null | grep -E "started|stopped" | sed 's/^/      machine: /' || true
+    fly volumes list -a "$app" 2>/dev/null | grep -E "^ [a-z0-9]" | sed 's/^/      volume: /' || true
+  else
+    echo "  ✓ app gone: $app"
+  fi
+done
+
+if [[ "$KEEP_BUCKET" -eq 0 ]]; then
+  remaining="$(buckets_for_app | tr -d '[:space:]')"
+  if [[ -n "$remaining" ]]; then
+    echo "  ✗ Tigris bucket(s) still present:" >&2
+    buckets_for_app | sed 's/^/      - /'
+    leftovers=$((leftovers + 1))
+  else
+    echo "  ✓ no Tigris buckets"
+  fi
+else
+  echo "  — bucket kept on purpose (--keep-bucket); it still accrues storage cost"
+fi
+
+# A remote `fly deploy` can leave a persistent builder app (fly-builder-*) with
+# its own volume — a classic surprise line item that survives destroying your
+# own apps, because it is not one of them.
+builders="$(printf '%s' "$apps_json" | node -e '
+  let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+    let rows = []; try { rows = JSON.parse(s || "[]") } catch {}
+    for (const r of rows) if (r.Name && /^fly-builder-/.test(r.Name)) console.log(r.Name)
+  });
+' 2>/dev/null || true)"
+if [[ -n "$builders" ]]; then
+  echo "  ! remote builder app(s) present — these bill for their volume:"
+  printf '%s\n' "$builders" | sed 's/^/      - /'
+  echo "      destroy with: fly apps destroy <name> --yes"
+else
+  echo "  ✓ no remote builder apps"
+fi
+
+if (( leftovers > 0 )); then
+  echo
+  echo "error: $leftovers resource group(s) survived the teardown — you are still billing." >&2
+  echo "       Re-run this script, or remove them by hand with the commands above." >&2
+  exit 1
+fi
+
 cat <<'EOS'
 
-==> done. Remaining cleanup that is NOT automatic:
+==> done. Nothing above is billing any more.
+
+Remaining cleanup that is NOT automatic:
 
   * GitHub Actions secrets FLY_API_TOKEN_KB_DEMO and
     FLY_API_TOKEN_KB_DEMO_BUILDER are app-scoped deploy tokens. They are now
@@ -126,4 +185,5 @@ cat <<'EOS'
     bootstrap.sh mints replacements (it prints the exact `gh secret set` lines).
 
   * Stand it all back up with:  scripts/fly/bootstrap.sh
+    (or run the "Fly demo: stand up" workflow from the Actions tab)
 EOS

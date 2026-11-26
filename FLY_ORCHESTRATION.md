@@ -189,10 +189,28 @@ the rest still refresh.
 The demo is two machines and a bucket; parking it between pushes is reasonable,
 as long as standing it back up is one command.
 
+From the **Actions tab** → *Fly demo lifecycle* → *Run workflow*, pick
+`stand-up` or `tear-down` (teardown asks you to type `DESTROY`). Or locally:
+
 ```bash
 scripts/fly/teardown.sh                  # scheduler + both apps + bucket
 GEMINI_API_KEY=... scripts/fly/bootstrap.sh   # back up, ~20-30 min (cold seed)
 ```
+
+Teardown ends by **verifying** the bill is zero — it re-lists the apps, their
+machines and volumes, the bucket, and any leftover `fly-builder-*` remote-builder
+app, and exits non-zero if anything survived. A green teardown means nothing is
+billing, not merely that the commands ran.
+
+[`fly-lifecycle.yml`](.github/workflows/fly-lifecycle.yml) needs one secret the
+other workflows do not: **`FLY_API_TOKEN_ORG`**, an org-scoped Fly token.
+`fly-deploy.yml` deliberately uses *app-scoped* deploy tokens — it only deploys
+to apps that already exist, so a leak costs one app. Creating and destroying
+apps are org-level operations that an app-scoped token cannot perform, and after
+a teardown there is no app left to scope a token to. Treat that secret as a root
+credential: give it an expiry and rotate it if it leaks. Set `GH_SECRETS_PAT`
+(a PAT with `secrets: write`) as well and standup will remint the two app-scoped
+deploy tokens for you; without it, the run tells you the two commands to run.
 
 **Teardown destroys the bucket by default, and that is deliberate.** The
 bucket's credentials live only as secrets on the apps and cannot be read back

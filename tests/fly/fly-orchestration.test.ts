@@ -177,6 +177,39 @@ describe('Fly build-to-serve orchestration contracts', () => {
     expect(teardown).toMatch(/FLY_API_TOKEN_KB_DEMO/)
   })
 
+  it('[TC-3VPL] Given fly-lifecycle.yml, when inspected, then it is manual, confirmed, serialized, and delegates to the scripts', () => {
+    const wf = read('.github/workflows/fly-lifecycle.yml')
+    expect(wf).toMatch(/workflow_dispatch:/)
+    expect(wf).toMatch(/- stand-up/)
+    expect(wf).toMatch(/- tear-down/)
+    // Teardown destroys every snapshot and the bucket keys are unrecoverable,
+    // so a misfire costs a full cold rebuild: require an explicit phrase.
+    expect(wf).toMatch(/inputs\.confirm \}\}" != "DESTROY"/)
+    // Never overlap, never cancel mid-flight — a cancel inside teardown can
+    // leave resources alive and still billing.
+    expect(wf).toMatch(/group: fly-lifecycle/)
+    expect(wf).toMatch(/cancel-in-progress: false/)
+    // The ordering lives in the scripts, not duplicated into YAML.
+    expect(wf).toMatch(/scripts\/fly\/bootstrap\.sh/)
+    expect(wf).toMatch(/scripts\/fly\/teardown\.sh --yes/)
+    // Creating/destroying apps is org-level; app-scoped deploy tokens cannot.
+    expect(wf).toMatch(/FLY_API_TOKEN_ORG/)
+    // A deploy token printed into a log is a live credential.
+    expect(wf).not.toMatch(/echo "\$\(fly tokens create/)
+  })
+
+  it('[TC-7BQN] Given teardown.sh, when it finishes, then it verifies no billable resource survived', () => {
+    const teardown = read('scripts/fly/teardown.sh')
+    // A green teardown must mean a zero bill, so assert rather than assume.
+    expect(teardown).toMatch(/verifying nothing is left billing/)
+    expect(teardown).toMatch(/leftovers=\$\(\(leftovers \+ 1\)\)/)
+    expect(teardown).toMatch(/exit 1/)
+    // A remote `fly deploy` can leave a persistent builder app with a volume —
+    // it survives destroying your own apps because it is not one of them.
+    expect(teardown).toMatch(/fly-builder-/)
+    expect(teardown).toMatch(/volumes list/)
+  })
+
   it('[TC-SH7G][TC-RM3X] Given refresh.sh fail-fast loop, when a base fails, then later bases do not run and roll is skipped', () => {
     const refresh = read('scripts/fly/refresh.sh')
     expect(refresh).toMatch(/aborting builder|not building further bases/i)

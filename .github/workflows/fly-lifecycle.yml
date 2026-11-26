@@ -1,0 +1,191 @@
+name: Fly demo lifecycle (stand up / tear down)
+
+# Manual, one-click standup and teardown of the kb-demo chat demo, so the whole
+# deployment can be parked when nobody is using it and brought back without
+# anyone needing a local flyctl, a Fly login, or the ordering knowledge in
+# FLY_ORCHESTRATION.md.
+#
+# Run both from the Actions tab → "Fly demo lifecycle" → Run workflow.
+#
+# ─── THE TOKEN THIS NEEDS, AND WHY IT IS DIFFERENT ──────────────────────────
+# Secret: FLY_API_TOKEN_ORG — an **org-scoped** Fly token
+#   (`fly tokens create org --expiry 8760h`, or a personal access token).
+#
+# fly-deploy.yml uses *app-scoped* deploy tokens, which is correct there: that
+# workflow only ever deploys to apps that already exist, so the blast radius of
+# a leaked token is one app. These jobs cannot use them. Creating an app and
+# destroying an app are org-level operations — an app-scoped token cannot do
+# either, and after a teardown there is no app left for a token to be scoped
+# to. So this one secret is necessarily more powerful than the others: treat it
+# like a root credential, give it an expiry, and rotate it if it ever leaks.
+#
+# That asymmetry is also why standing back up breaks fly-deploy.yml until its
+# two app-scoped secrets are reminted — a deploy token does not survive its app
+# being destroyed and recreated. The standup job rotates them automatically
+# when GH_SECRETS_PAT is present, and tells you exactly what to run when it is
+# not. It never prints a token value into the log.
+#
+# Other secrets: GEMINI_API_KEY (both apps need it; KB_EMBEDDER=gemini is
+# pinned in both tomls), and optionally GH_SECRETS_PAT (a PAT with
+# `secrets: write` on this repo — GITHUB_TOKEN cannot write Actions secrets).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        options:
+          - stand-up
+          - tear-down
+      seed:
+        description: "stand-up only: cold-build every base now (~30 min). Off = bases fill on the first daily tick, and the demo stays down until then."
+        required: false
+        type: boolean
+        default: true
+      confirm:
+        description: "tear-down only: type DESTROY to confirm. Everything goes, snapshots included."
+        required: false
+        type: string
+        default: ""
+
+# Standup and teardown must never overlap, and neither may be cancelled
+# mid-flight: a cancel inside teardown can leave half the resources alive
+# (still billing), and a cancel inside standup can leave apps with no
+# scheduler. Share one group with the per-app deploy jobs' concurrency in
+# fly-deploy.yml kept separate, since those are safe to supersede.
+concurrency:
+  group: fly-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  stand-up:
+    if: inputs.action == 'stand-up'
+    name: Stand up kb-demo (from nothing)
+    runs-on: ubuntu-latest
+    # A full cold seed of all 10 bases ran ~35 min when this was measured;
+    # COLD_BUILD_TIMEOUT allows 90 min for a single pathological base. Bound
+    # the job so a wedged build cannot idle to GitHub's 6h ceiling.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Stand up (apps, bucket, secrets, image, seed, serving, scheduler)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_ORG }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "::error::FLY_API_TOKEN_ORG is not set. Creating apps needs an org-scoped token (see this file's header)."
+            exit 1
+          fi
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY is not set. Both apps need it; KB_EMBEDDER=gemini is pinned in both tomls."
+            exit 1
+          fi
+          # bootstrap.sh is the single source of truth for the ORDER — serving
+          # cannot boot before a snapshot exists, and the seed cannot roll an
+          # app with no machines. Do not reimplement those steps here.
+          args=""
+          if [ "${{ inputs.seed }}" != "true" ]; then args="--no-seed"; fi
+          scripts/fly/bootstrap.sh $args
+
+      - name: Rotate the app-scoped deploy tokens used by fly-deploy.yml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_ORG }}
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+        run: |
+          set -euo pipefail
+          # The apps were just recreated, so fly-deploy.yml's two app-scoped
+          # tokens are dead. Rotate them if we were given a PAT that can write
+          # Actions secrets (GITHUB_TOKEN cannot), otherwise say so loudly.
+          # Token values are piped straight into `gh secret set` and never
+          # echoed — a printed deploy token in a public log is a live credential.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::GH_SECRETS_PAT not set — fly-deploy.yml will fail on the next push to main."
+            echo "Run these two locally to fix it:"
+            echo '  gh secret set FLY_API_TOKEN_KB_DEMO --body "$(fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1)"'
+            echo '  gh secret set FLY_API_TOKEN_KB_DEMO_BUILDER --body "$(fly tokens create deploy -a kb-demo-builder --expiry 8760h | tail -n1)"'
+            exit 0
+          fi
+          fly tokens create deploy -a kb-demo --expiry 8760h | tail -n1 \
+            | gh secret set FLY_API_TOKEN_KB_DEMO --body-file -
+          fly tokens create deploy -a kb-demo-builder --expiry 8760h | tail -n1 \
+            | gh secret set FLY_API_TOKEN_KB_DEMO_BUILDER --body-file -
+          echo "rotated FLY_API_TOKEN_KB_DEMO and FLY_API_TOKEN_KB_DEMO_BUILDER"
+
+      - name: Report what is now running (and what it costs)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_ORG }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### kb-demo is up"
+            echo
+            echo '```'
+            curl -sS --max-time 30 https://kb-demo.fly.dev/healthz || true
+            echo
+            curl -sS --max-time 30 https://kb-demo.fly.dev/v1/bases 2>/dev/null \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const b=(JSON.parse(s).bases||[]).map(x=>x.name);console.log(b.length+" bases: "+b.join(", "))}catch{console.log("(bases not readable yet)")}})' || true
+            echo '```'
+            echo
+            echo "Billing from now on: the always-warm serving node, plus a few minutes"
+            echo "of builder time per day. Tear it all down from this same workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tear-down:
+    if: inputs.action == 'tear-down'
+    name: Tear down kb-demo (destroy everything)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the confirmation phrase
+        run: |
+          set -euo pipefail
+          # Deliberate friction: this destroys every published snapshot, and the
+          # bucket's credentials cannot be recovered afterwards, so a misfired
+          # run costs a full ~30 min cold rebuild.
+          if [ "${{ inputs.confirm }}" != "DESTROY" ]; then
+            echo "::error::Set the 'confirm' input to DESTROY to run a teardown. Got: '${{ inputs.confirm }}'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Tear down and verify nothing is left billing
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_ORG }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "::error::FLY_API_TOKEN_ORG is not set. Destroying apps needs an org-scoped token (see this file's header)."
+            exit 1
+          fi
+          # teardown.sh ends with a verification pass that fails the run if any
+          # app, machine, volume, or bucket survived — so a green check here
+          # means the bill really is zero, not just that the commands ran.
+          scripts/fly/teardown.sh --yes
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### kb-demo torn down"
+            echo
+            echo "Apps, machines, and the snapshot bucket are gone; the teardown"
+            echo "step fails the job if anything survived, so a green check means"
+            echo "nothing is billing."
+            echo
+            echo "Note: fly-deploy.yml's app-scoped tokens are now dead. Standing"
+            echo "back up via this workflow rotates them (with GH_SECRETS_PAT set)."
+          } >> "$GITHUB_STEP_SUMMARY"

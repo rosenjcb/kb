@@ -9,6 +9,7 @@ sources:
   - ./bootstrap.sh
   - ./teardown.sh
   - ./builder-args.mjs
+  - ../../.github/workflows/fly-lifecycle.yml
   - ./roll-serving.mjs
   - ../../fly.toml
   - ../../fly.builder.toml
@@ -81,6 +82,8 @@ from crash-looping the public demo. Architecture narrative:
 | FR-14 | [NEW] `fly.builder.toml` is the single source of truth for the builder machine's region, `[[vm]]` size/memory, and `[env]` table; every `fly machine run` caller (`deploy.sh`, `bootstrap.sh`, the CI workflow) obtains all of them from `scripts/fly/builder-args.mjs` and hard-codes none of them |
 | FR-15 | [NEW] `builder-args.mjs` exits non-zero when `fly.builder.toml` and `fly.toml` declare different `primary_region` values, rather than emitting flags that would place a cross-region builder (FR-1's invariant, enforced before a machine exists) |
 | FR-16 | [NEW] Cold standup order: the first seed publishes at least one snapshot **before** the serving app is deployed (serving pins `--bootstrap-policy snapshot-only` and fails its release on an empty bucket), and the builder's `SERVE_APP`/`FLY_API_TOKEN` roll credentials are set only **after** serving has machines (`roll-serving.mjs` exits non-zero with none) |
+| FR-18 | [NEW] Standup and teardown are runnable as a manual GitHub Actions workflow (`fly-lifecycle.yml`) that delegates to `bootstrap.sh`/`teardown.sh` rather than reimplementing their ordering; teardown requires an explicit confirmation phrase, the two never run concurrently, and neither is cancellable in flight |
+| FR-19 | [NEW] Teardown ends by verifying no billable resource survived — the two apps, their machines and volumes, the Tigris bucket, and any leftover `fly-builder-*` remote-builder app — and exits non-zero if any remain |
 | FR-17 | [NEW] Teardown destroys the snapshot bucket by default, because Tigris credentials are printed once by `fly storage create` and are unreadable afterwards — a bucket that outlives its apps' secrets cannot be authenticated against |
 | FR-9 | [NEW] A snapshot pull that cannot assemble the required objects from the LIST-driven recursive copy refetches them by exact key (manifest at its fixed name, index files named by the manifest's `contents.index`) before failing the attempt |
 | FR-2 | [NEW] After uploading an immutable snapshot prefix, the builder does not flip `latest.json` until every required object is readable via head-object (not LIST alone) |
@@ -104,6 +107,8 @@ from crash-looping the public demo. Architecture narrative:
 | TC-WQ3F | FR-14 | `builder-args.mjs` executed in the repo root | Emits `--region` matching the toml, a `--vm-size`/`--vm-memory` pair, and one `-e KEY=VALUE` for **every** key in the toml's `[env]` table |
 | TC-M8ZK | FR-15 | `builder-args.mjs` run against a fixture whose two tomls declare `iad` and `lax` | Exits non-zero naming the region mismatch; emits no flags |
 | TC-T41C | FR-16 | `bootstrap.sh` step order inspected | The cold seed precedes `fly deploy -a $SERVE_APP`, and `fly tokens create deploy` / the `SERVE_APP` secret follow it |
+| TC-3VPL | FR-18 | `fly-lifecycle.yml` inspected | Has `workflow_dispatch` with a `stand-up`/`tear-down` choice, gates teardown on `confirm == DESTROY`, calls `bootstrap.sh`/`teardown.sh`, and sets `cancel-in-progress: false` on a shared concurrency group |
+| TC-7BQN | FR-19 | `teardown.sh` run to completion | Reports each app, bucket, and `fly-builder-*` app as gone, and exits non-zero if any survived |
 | TC-9XBD | FR-17 | `teardown.sh` inspected with no flags | Destroys the Tigris bucket (`KEEP_BUCKET=0` default) and warns that CI's app-scoped `FLY_API_TOKEN_*` secrets are now dead |
 | TC-IHL1 | FR-9 | Prefix whose LIST returns empty while every required key head-objects 200 | Recursive copy comes back empty, required objects are refetched by key, pull returns 0 with both files local |
 | TC-OUBI | FR-9 | Prefix that is genuinely absent (keys neither LIST-able nor GET-able) | Both paths fail every attempt; pull returns non-zero (no false success) |
