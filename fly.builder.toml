@@ -74,7 +74,7 @@ primary_region = "iad"
 # Measured since: a cold `kb-server refresh` of the `brew` base inside
 # `docker run --memory=2g` stayed flat at 215-250 MiB and was not OOM-killed
 # (scripts/bench/large-repo-memory-bench.sh), and a real 10-base cold seed on
-# Fly peaked at 605 MiB whole-VM usage, again on `brew`. 2048mb leaves >3x
+# Fly peaked at 679 MiB whole-VM usage, again on `brew`. 2048mb leaves >3x
 # headroom over the worst base measured.
 #
 # One performance core (down from 4) makes a cold seed of all 10 bases slower

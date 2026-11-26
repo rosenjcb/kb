@@ -249,8 +249,11 @@ memory:
 Measured since: a cold `refresh` of the `brew` base inside `docker run
 --memory=2g` stayed flat at 215-250 MiB and was not OOM-killed
 ([`scripts/bench/large-repo-memory-bench.sh`](scripts/bench/large-repo-memory-bench.sh)),
-and a real 10-base cold seed on Fly peaked at **656 MiB** whole-VM usage, again
+and a real 10-base cold seed on Fly peaked at **679 MiB** whole-VM usage, again
 on `brew`. 2048MB leaves >3x headroom over the worst base measured.
+
+The warm (daily) path is lighter still: a measured incremental run peaked at
+**352 MiB**.
 
 One performance core instead of four makes a *cold* seed of all ten bases slower
 in wall-clock while costing ~4x less; the daily run takes the warm incremental
