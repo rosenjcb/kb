@@ -32,7 +32,24 @@ SEED=1
 # cross-region builder makes Tigris hand the serving node a stale LIST view of
 # the prefix it just published — observed: scheduler in `lax`, serving in
 # `iad`).
-mapfile -t BUILDER_ARGS < <(node scripts/fly/builder-args.mjs)
+# Portable read loop, NOT `mapfile`: mapfile is bash 4+, and macOS still ships
+# bash 3.2 as /bin/bash. There it fails with "mapfile: command not found",
+# leaving BUILDER_ARGS empty — and an empty array means the machine is created
+# with Fly's bare defaults (shared-cpu-1x/256mb, no [env], placed near the
+# caller, not the pinned region) while `fly machine run` reports success.
+# Observed for real on macOS: two machines landed as shared-cpu-1x/256mb in
+# `sjc` with serving in `iad`. This loop works on bash 3.2+.
+BUILDER_ARGS=()
+while IFS= read -r _line; do BUILDER_ARGS+=("$_line"); done < <(node scripts/fly/builder-args.mjs)
+
+# Belt and braces: node missing, or the shim erroring, also yields an empty
+# array. Never let that reach `fly machine run`.
+if (( ${#BUILDER_ARGS[@]} == 0 )); then
+  echo "error: scripts/fly/builder-args.mjs produced no arguments." >&2
+  echo "       Without them a builder machine gets shared-cpu-1x/256mb in the" >&2
+  echo "       wrong region. Is node on PATH? Try: node scripts/fly/builder-args.mjs" >&2
+  exit 1
+fi
 echo "==> builder machine args: ${BUILDER_ARGS[*]}"
 
 echo "==> 1/4 building + pushing builder image ($BUILDER_APP)"

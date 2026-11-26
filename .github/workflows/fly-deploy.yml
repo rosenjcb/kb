@@ -115,7 +115,20 @@ jobs:
           # stale LIST view of a freshly published prefix (every key
           # head-objects 200 while `s3 cp --recursive` copies nothing) and the
           # demo crash-loops on "downloaded prefix … is incomplete".
-          mapfile -t builder_args < <(node scripts/fly/builder-args.mjs)
+          # Portable read loop, not `mapfile` (bash 4+; macOS /bin/bash is
+          # 3.2, where it fails and leaves the array empty — see deploy.sh).
+          builder_args=()
+          while IFS= read -r _line; do builder_args+=("$_line"); done \
+            < <(node scripts/fly/builder-args.mjs)
+          # mapfile cannot fail on its own: a missing node or a broken shim
+          # yields an EMPTY array, and the machine is then created with Fly's
+          # bare defaults (shared-cpu-1x/256mb, no [env], placed near the
+          # runner rather than in the pinned region) while `fly machine run`
+          # still reports success. Observed for real. Fail instead.
+          if [ "${#builder_args[@]}" -eq 0 ]; then
+            echo "error: builder-args.mjs produced no arguments" >&2
+            exit 1
+          fi
           echo "builder machine args: ${builder_args[*]}"
           flyctl machine run . -c fly.builder.toml -a kb-demo-builder --detach \
             "${builder_args[@]}" \

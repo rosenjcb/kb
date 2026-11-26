@@ -259,7 +259,12 @@ hand. They drifted twice:
   to a code default on the scheduled machine but not on a deployed one.
 
 `builder-args.mjs` parses the toml and emits the flags, so the toml is the single
-source of truth again. It also hard-fails when `fly.builder.toml` and `fly.toml`
+source of truth again. Callers read its output with a `while IFS= read`
+loop rather than `mapfile`, which is bash 4+ — macOS ships bash 3.2, where
+`mapfile` fails and leaves the array empty, and an empty array means `fly
+machine run` silently falls back to `shared-cpu-1x`/256MB placed near *you*
+rather than in the pinned region, while still reporting success. Each caller
+also aborts outright if the shim yields no arguments. It also hard-fails when `fly.builder.toml` and `fly.toml`
 disagree on `primary_region` — the one invariant neither file can express, and a
 mismatch that previously only surfaced as a crash-looping serving node (see the
 co-location note above).

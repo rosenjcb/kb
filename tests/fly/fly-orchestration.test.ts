@@ -121,6 +121,37 @@ describe('Fly build-to-serve orchestration contracts', () => {
     ).toThrow(/primary_region|region/i)
   })
 
+  it('[TC-K2QW] Given a bash 3.2 host, when a caller builds the args array, then it uses a portable loop and aborts if the array is empty', () => {
+    // Two coupled failure modes, both observed for real on macOS while
+    // validating the right-size:
+    //  1. `mapfile` is bash 4+, and macOS ships bash 3.2 as /bin/bash. There it
+    //     fails with "command not found" and leaves the array EMPTY.
+    //  2. An empty array means `fly machine run` falls back to Fly's bare
+    //     defaults — shared-cpu-1x/256mb, no [env], placed near the caller
+    //     rather than the pinned region — and still reports success. Two
+    //     machines landed as shared-cpu-1x/256mb in `sjc` with serving in `iad`.
+    for (const rel of ['scripts/fly/deploy.sh', 'scripts/fly/bootstrap.sh']) {
+      const src = read(rel)
+      // Comments may name mapfile (they explain why it is avoided); no
+      // executable line may call it.
+      const code = src.split('\n').filter((l) => !l.trim().startsWith('#'))
+      expect(code.join('\n'), `${rel} must not call mapfile (bash 4+ only)`).not.toMatch(
+        /^\s*mapfile\b/m,
+      )
+      expect(src, `${rel} must build the args with a portable read loop`).toMatch(
+        /while IFS= read -r [^\n]*BUILDER_ARGS\+=/,
+      )
+      expect(src, `${rel} must abort on empty builder args`).toMatch(
+        /\$\{#BUILDER_ARGS\[@\]\}\s*==\s*0/,
+      )
+    }
+    const wf = read('.github/workflows/fly-deploy.yml')
+    const wfCode = wf.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n')
+    expect(wfCode).not.toMatch(/^\s*mapfile\b/m)
+    expect(wf).toMatch(/while IFS= read -r [^\n]*builder_args\+=/)
+    expect(wf).toMatch(/\$\{#builder_args\[@\]\}"?\s*-eq\s*0/)
+  })
+
   it('[TC-T41C] Given bootstrap.sh, when its step order is inspected, then the seed precedes the serving deploy and the roll token follows it', () => {
     const bootstrap = read('scripts/fly/bootstrap.sh')
     const seed = bootstrap.indexOf('cold-seeding every base')
